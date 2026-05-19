@@ -66,13 +66,13 @@ pub(crate) fn resolve_run_input(
 }
 
 fn default_selector(problem: &Problem) -> Result<CaseSelector> {
-    if let Some(task) = problem.test.tasks.first() {
-        if let Some(bundle) = task.bundles.first() {
-            return Ok(CaseSelector {
-                bundle: bundle.clone(),
-                index: 0,
-            });
-        }
+    if let Some(task) = problem.test.tasks.first()
+        && let Some(bundle) = task.bundles.first()
+    {
+        return Ok(CaseSelector {
+            bundle: bundle.clone(),
+            index: 0,
+        });
     }
     let Some(bundle) = problem.test.bundles.keys().min().cloned() else {
         anyhow::bail!("problem.yaml has no test bundles");
