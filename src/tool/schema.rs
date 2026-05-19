@@ -196,6 +196,8 @@ pub struct StressPlan {
     pub against: Vec<String>,
     #[serde(default = "default_stress_cases")]
     pub cases: usize,
+    #[serde(default)]
+    pub seed_base: Option<u64>,
 }
 
 fn default_stress_cases() -> usize {

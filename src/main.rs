@@ -119,7 +119,10 @@ enum Commands {
         #[arg(last = true, help = "Arguments passed to the generator after --")]
         args: Vec<String>,
     },
-    #[command(about = "Run stress plans declared in problem.yaml")]
+    #[command(
+        about = "Run stress plans declared in problem.yaml",
+        long_about = "Run stress plans declared in problem.yaml. Plan args support {seed}, {case}, and {case0}; {seed} is deterministic and may be controlled with stress.plans[].seed_base."
+    )]
     StressPlan {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,

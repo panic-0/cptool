@@ -379,6 +379,42 @@ fn stress_plan_summary_only_suppresses_case_progress() {
     assert!(!stdout.contains("stress plan `tiny` passed"));
 }
 
+#[test]
+fn stress_plan_expands_seed_and_case_placeholders() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-plan-placeholders");
+    run_cptool(
+        ["init", "stress_plan_placeholders", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp
+        .path()
+        .join("problems")
+        .join("stress_plan_placeholders");
+    configure_python_problem(&problem_dir);
+    overwrite_generator_for_stress_plan_placeholders(&problem_dir);
+    append_stress_plan_with_seed_placeholders(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "seeded",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("plan `seeded` case 1 ok"));
+    assert!(stdout.contains("plan `seeded` case 2 ok"));
+    assert!(stdout.contains("stress plan `seeded` passed: 2 cases"));
+}
+
 fn configure_python_problem(problem_dir: &Path) {
     std::fs::write(
         problem_dir.join("problem.yaml"),
@@ -435,6 +471,22 @@ sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
     .unwrap();
 }
 
+fn overwrite_generator_for_stress_plan_placeholders(problem_dir: &Path) {
+    std::fs::write(
+        problem_dir.join("src").join("gen.py"),
+        r#"import sys
+
+seed = int(sys.argv[1])
+case = int(sys.argv[2])
+case0 = int(sys.argv[3])
+if case != case0 + 1:
+    raise SystemExit(7)
+sys.stdout.buffer.write(f"{seed} {case}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+}
+
 fn append_stress_plan(problem_dir: &Path) {
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
@@ -446,6 +498,23 @@ fn append_stress_plan(problem_dir: &Path) {
     args: ["3", "4"]
     against: [std, brute]
     cases: 2
+"#,
+    );
+    std::fs::write(yaml_path, yaml).unwrap();
+}
+
+fn append_stress_plan_with_seed_placeholders(problem_dir: &Path) {
+    let yaml_path = problem_dir.join("problem.yaml");
+    let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    yaml.push_str(
+        r#"stress:
+  plans:
+  - name: seeded
+    generator: gen
+    args: ["{seed}", "{case}", "{case0}"]
+    against: [std, brute]
+    cases: 2
+    seed_base: 20260519
 "#,
     );
     std::fs::write(yaml_path, yaml).unwrap();
