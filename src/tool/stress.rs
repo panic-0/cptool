@@ -50,6 +50,13 @@ struct StressFailure {
     results: Vec<RunResult>,
 }
 
+struct StressOutputArtifact {
+    label: String,
+    status_line: String,
+    stdout_path: PathBuf,
+    stderr_path: PathBuf,
+}
+
 fn run_stress_case(
     work_dir: &Path,
     generator: &ProgramSpec,
@@ -96,10 +103,11 @@ fn save_stress_failure(failure_dir: &Path, failure: StressFailure) -> Result<()>
     std::fs::create_dir_all(failure_dir)?;
     let (stem, mut input_file) = create_failure_input(failure_dir)?;
     input_file.write_all(&failure.input)?;
-    let report = render_stress_failure(failure.case_index, &failure.results);
+    let artifacts = write_stress_outputs(&stem, &failure.results)?;
+    let report = render_stress_failure(failure.case_index, &failure.results, &artifacts);
     std::fs::write(stem.with_extension("txt"), report.as_bytes())?;
     anyhow::bail!(
-        "stress failed on case {}; {}; saved {}.in and {}.txt",
+        "stress failed on case {}; {}; saved {}.in, {}.txt, and per-program .out/.err files",
         failure.case_index,
         failure.reason,
         stem.display(),
@@ -122,6 +130,59 @@ fn create_failure_input(failure_dir: &Path) -> Result<(PathBuf, std::fs::File)> 
     }
     unreachable!()
 }
+
+fn write_stress_outputs(stem: &Path, results: &[RunResult]) -> Result<Vec<StressOutputArtifact>> {
+    results
+        .iter()
+        .enumerate()
+        .map(|(index, result)| {
+            let artifact_stem = result_artifact_stem(stem, index, &result.label);
+            let stdout_path = artifact_stem.with_extension("out");
+            let stderr_path = artifact_stem.with_extension("err");
+            std::fs::write(&stdout_path, &result.stdout_bytes)?;
+            std::fs::write(&stderr_path, &result.stderr_bytes)?;
+            Ok(StressOutputArtifact {
+                label: result.label.clone(),
+                status_line: result.status_line(),
+                stdout_path,
+                stderr_path,
+            })
+        })
+        .collect()
+}
+
+fn result_artifact_stem(stem: &Path, index: usize, label: &str) -> PathBuf {
+    let base = stem
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("stress");
+    stem.with_file_name(format!(
+        "{base}-{}-{}",
+        index + 1,
+        sanitize_artifact_label(label)
+    ))
+}
+
+fn sanitize_artifact_label(label: &str) -> String {
+    let sanitized = label
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if sanitized.is_empty() {
+        "program".to_string()
+    } else {
+        sanitized
+    }
+}
+
 pub(crate) fn normalize_output(text: &str) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -138,15 +199,19 @@ pub(crate) fn normalize_output(text: &str) -> String {
     }
 }
 
-fn render_stress_failure(case_index: usize, results: &[RunResult]) -> String {
+fn render_stress_failure(
+    case_index: usize,
+    results: &[RunResult],
+    artifacts: &[StressOutputArtifact],
+) -> String {
     let mut report = format!("stress failed on case {case_index}\n\n");
     if let Some(reason) = classify_stress_failure(results) {
         report.push_str(&format!("reason: {reason}\n\n"));
     }
-    for result in results {
-        report.push_str(&format!("{}\n", result.status_line()));
-        report.push_str(&format!("stdout:\n{}\n", result.stdout));
-        report.push_str(&format!("stderr:\n{}\n\n", result.stderr));
+    for artifact in artifacts {
+        report.push_str(&format!("[{}] {}\n", artifact.label, artifact.status_line));
+        report.push_str(&format!("stdout: {}\n", artifact.stdout_path.display()));
+        report.push_str(&format!("stderr: {}\n\n", artifact.stderr_path.display()));
     }
     report
 }
