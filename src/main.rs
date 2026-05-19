@@ -35,6 +35,10 @@ enum Commands {
         stderr_path: Option<PathBuf>,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
         output_limit_bytes: usize,
+        #[arg(long)]
+        summary_only: bool,
+        #[arg(long)]
+        hide_stdout: bool,
         #[arg(last = true)]
         args: Vec<String>,
     },
@@ -91,6 +95,8 @@ fn main() -> anyhow::Result<()> {
             stdout_path,
             stderr_path,
             output_limit_bytes,
+            summary_only,
+            hide_stdout,
             args,
         } => {
             let (program, selector) = normalize_run_positionals(program, case);
@@ -106,11 +112,20 @@ fn main() -> anyhow::Result<()> {
                 args,
                 output_limit_bytes,
             })?;
-            println!("{}", result.status_line());
-            if stdout_path.is_none() && !result.stdout.is_empty() {
+            if summary_only {
+                println!("{}", result.summary_line());
+                if !result.ok {
+                    eprintln!(
+                        "hint: rerun without --summary-only or use --stdout-path/--stderr-path to save full output"
+                    );
+                }
+            } else {
+                println!("{}", result.status_line());
+            }
+            if !summary_only && !hide_stdout && stdout_path.is_none() && !result.stdout.is_empty() {
                 print!("{}", result.stdout);
             }
-            if stderr_path.is_none() && !result.stderr.is_empty() {
+            if !summary_only && stderr_path.is_none() && !result.stderr.is_empty() {
                 eprint!("{}", result.stderr);
             }
             if !result.ok {

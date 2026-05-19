@@ -150,6 +150,15 @@ fn generate_one_case(
             context.output_limit_bytes
         );
     }
+    if generated.stdout_bytes.is_empty() {
+        eprintln!(
+            "warning: generator_output_suspicious case={}[{}] generator={} stdout_bytes=0 stderr_bytes={}",
+            selector.bundle,
+            selector.index,
+            generator.label,
+            generated.stderr_bytes.len()
+        );
+    }
     std::fs::write(&input_path, &generated.stdout_bytes)?;
     if let Some(validator) = context.validator {
         let validation = run_spec(
@@ -186,6 +195,18 @@ fn generate_one_case(
             selector.bundle,
             selector.index,
             context.output_limit_bytes
+        );
+    }
+    if !context.problem.output.allow_empty
+        && !generated.stdout_bytes.is_empty()
+        && answer.stdout_bytes.is_empty()
+    {
+        eprintln!(
+            "warning: empty_answer case={}[{}] solution={} stdout_bytes=0 stderr_bytes={}",
+            selector.bundle,
+            selector.index,
+            context.solution.label,
+            answer.stderr_bytes.len()
         );
     }
     std::fs::write(&answer_path, &answer.stdout_bytes)?;

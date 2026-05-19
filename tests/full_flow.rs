@@ -81,6 +81,129 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
     );
 }
 
+#[test]
+fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-run-summary");
+    run_cptool(["init", "summary_problem", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("summary_problem");
+    configure_python_problem(&problem_dir);
+    run_cptool(["gen", "-w"], Some(&problem_dir));
+
+    let summary = run_cptool(
+        [
+            "run",
+            "std",
+            "sample[0]",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+        ],
+        None,
+    );
+    let summary_stdout = String::from_utf8_lossy(&summary.stdout);
+
+    assert!(summary_stdout.contains("std: ok exit=0"));
+    assert!(summary_stdout.contains("stdout_bytes=2"));
+    assert!(summary_stdout.contains("stdout_lines=1"));
+    assert!(summary_stdout.contains("stdout_sha256="));
+    assert!(summary_stdout.contains("stderr_bytes=0"));
+    assert!(!summary_stdout.contains("\n7\n"));
+
+    let hidden = run_cptool(
+        [
+            "run",
+            "std",
+            "sample[0]",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--hide-stdout",
+        ],
+        None,
+    );
+    let hidden_stdout = String::from_utf8_lossy(&hidden.stdout);
+
+    assert!(hidden_stdout.contains("std: ok exit=0"));
+    assert!(!hidden_stdout.contains("\n7\n"));
+}
+
+#[test]
+fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-empty-answer");
+    run_cptool(["init", "empty_answer", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("empty_answer");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("solve.py"),
+        "import sys\nsys.stdin.buffer.read()\n",
+    )
+    .unwrap();
+
+    let result = run_cptool(["gen", "-w"], Some(&problem_dir));
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert!(stderr.contains("warning: empty_answer"));
+    assert!(stderr.contains("case=sample[0]"));
+    assert!(stderr.contains("solution=std"));
+    assert!(stderr.contains("stdout_bytes=0"));
+    assert!(stderr.contains("stderr_bytes=0"));
+
+    let yaml_path = problem_dir.join("problem.yaml");
+    let yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    std::fs::write(
+        &yaml_path,
+        yaml.replacen(
+            "programs:\n",
+            "output:\n  allow_empty: true\nprograms:\n",
+            1,
+        ),
+    )
+    .unwrap();
+
+    let allowed = run_cptool(["gen", "-w"], Some(&problem_dir));
+    let allowed_stderr = String::from_utf8_lossy(&allowed.stderr);
+
+    assert!(!allowed_stderr.contains("warning: empty_answer"));
+}
+
+#[test]
+fn gen_warns_when_generator_stdout_is_empty() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-empty-generator");
+    run_cptool(["init", "empty_generator", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("empty_generator");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("gen.py"),
+        "import sys\nsys.stderr.write('no input produced')\n",
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("solve.py"),
+        "import sys\nsys.stdin.buffer.read()\n",
+    )
+    .unwrap();
+
+    let result = run_cptool(["gen", "-w"], Some(&problem_dir));
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert!(stderr.contains("warning: generator_output_suspicious"));
+    assert!(stderr.contains("case=sample[0]"));
+    assert!(stderr.contains("generator=gen"));
+    assert!(stderr.contains("stdout_bytes=0"));
+    assert!(stderr.contains("stderr_bytes="));
+}
+
 fn configure_python_problem(problem_dir: &Path) {
     std::fs::write(
         problem_dir.join("problem.yaml"),

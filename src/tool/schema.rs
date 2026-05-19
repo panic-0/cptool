@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -71,6 +72,30 @@ impl RunResult {
         }
         report
     }
+
+    pub fn summary_line(&self) -> String {
+        format!(
+            "{} stdout_bytes={} stdout_lines={} stdout_sha256={} stderr_bytes={} stderr_nonempty={}",
+            self.status_line(),
+            self.stdout_bytes.len(),
+            count_lines(&self.stdout_bytes),
+            sha256_hex(&self.stdout_bytes),
+            self.stderr_bytes.len(),
+            !self.stderr_bytes.is_empty(),
+        )
+    }
+}
+
+fn count_lines(bytes: &[u8]) -> usize {
+    if bytes.is_empty() {
+        0
+    } else {
+        bytes.iter().filter(|byte| **byte == b'\n').count() + usize::from(!bytes.ends_with(b"\n"))
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -154,6 +179,8 @@ pub struct Test {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Problem {
     pub name: String,
+    #[serde(default)]
+    pub output: OutputConfig,
     pub programs: HashMap<String, Program>,
     pub test: Test,
     #[serde(rename = "solution")]
@@ -162,4 +189,57 @@ pub struct Problem {
     pub validator_name: Option<String>,
     #[serde(rename = "checker")]
     pub checker_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct OutputConfig {
+    #[serde(default)]
+    pub allow_empty: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_summary_reports_sizes_lines_and_hash() {
+        let result = RunResult {
+            label: "std".to_string(),
+            ok: true,
+            kind: "ok".to_string(),
+            exit_code: Some(0),
+            elapsed_ms: 12,
+            stdout_bytes: b"a\nb".to_vec(),
+            stderr_bytes: b"warn".to_vec(),
+            stdout: "a\nb".to_string(),
+            stderr: "warn".to_string(),
+            truncated_stdout: false,
+            truncated_stderr: false,
+        };
+
+        assert_eq!(
+            result.summary_line(),
+            "std: ok exit=0 elapsed=12ms stdout_bytes=3 stdout_lines=2 stdout_sha256=7e18f737311b2dc3b2f269dd78396b0351f14fb66efa879f768cb23181883c78 stderr_bytes=4 stderr_nonempty=true"
+        );
+    }
+
+    #[test]
+    fn run_summary_counts_empty_output_as_zero_lines() {
+        let result = RunResult {
+            label: "std".to_string(),
+            ok: true,
+            kind: "ok".to_string(),
+            exit_code: Some(0),
+            elapsed_ms: 1,
+            stdout_bytes: Vec::new(),
+            stderr_bytes: Vec::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+            truncated_stdout: false,
+            truncated_stderr: false,
+        };
+
+        assert!(result.summary_line().contains("stdout_lines=0"));
+        assert!(result.summary_line().contains("stderr_nonempty=false"));
+    }
 }

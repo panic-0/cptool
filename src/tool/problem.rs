@@ -235,6 +235,7 @@ mod tests {
         programs.insert("std".to_string(), cpp_program());
         Problem {
             name: "sample".to_string(),
+            output: Default::default(),
             programs,
             test: Test {
                 bundles: HashMap::from([(
