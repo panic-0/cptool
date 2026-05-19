@@ -28,6 +28,7 @@ CP Tool is a command line tool for competitive programming.
 
 # run stress plans declared in problem.yaml
 ./cptool stress-plan -w ./example/a_plus_b --name small
+./cptool stress-plan -w ./example/a_plus_b --summary-only
 
 # check common package structure and generated data issues
 ./cptool check -w ./example/a_plus_b
@@ -100,7 +101,8 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.
 + `gen` warns when a non-empty input produces an empty answer. Set `output.allow_empty: true` in `problem.yaml` for tasks where empty output is valid.
-+ `check` reports common structure, program path, generated data, sample generation, and sample output issues. It exits non-zero when errors are found.
++ `check` reports common structure, program path, generated data, sample generation, and sample output issues. It exits non-zero when errors are found, and reports `data_generation_in_progress` instead of inspecting data during a concurrent `gen`.
 + `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data. Multiple `cptool stress` processes can run against the same package concurrently; compile cache hits are reused and failure files are created atomically.
-+ `stress-plan` runs `stress.plans` from `problem.yaml`. Plan args are passed literally; seed and case placeholders are intentionally not part of this command yet.
++ `stress-plan` runs `stress.plans` from `problem.yaml`. Plan args are passed literally; seed and case placeholders are intentionally not part of this command yet. Use `--summary-only` to print one compact line per plan.
++ C++ compile failures include compiler path/version, flags, static-link status, cache key, and cache exe path. Windows runtime errors for common NTSTATUS exit codes include a diagnostic hint in failure reports.
 + `run`, `gen`, `stress`, and `stress-plan` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it where supported.

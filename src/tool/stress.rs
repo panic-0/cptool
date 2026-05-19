@@ -4,6 +4,7 @@ use super::schema::RunResult;
 use anyhow::Result;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 pub fn stress(
     work_dir: &Path,
@@ -23,6 +24,7 @@ pub fn stress(
         failure_dir,
         output_limit_bytes,
         plan_name: None,
+        print_progress: true,
     })?;
     Ok(())
 }
@@ -31,6 +33,20 @@ pub fn stress(
 pub struct StressSummary {
     pub plan_name: Option<String>,
     pub cases: usize,
+    pub elapsed_ms: u128,
+    pub against: Vec<String>,
+}
+
+impl StressSummary {
+    pub fn summary_line(&self) -> String {
+        let name = self.plan_name.as_deref().unwrap_or("stress");
+        format!(
+            "{name}: ok cases={} against={} elapsed={}ms",
+            self.cases,
+            self.against.join(","),
+            self.elapsed_ms
+        )
+    }
 }
 
 pub(crate) struct StressRunOptions<'a> {
@@ -41,6 +57,7 @@ pub(crate) struct StressRunOptions<'a> {
     pub(crate) failure_dir: Option<&'a Path>,
     pub(crate) output_limit_bytes: usize,
     pub(crate) plan_name: Option<&'a str>,
+    pub(crate) print_progress: bool,
 }
 
 pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary> {
@@ -52,6 +69,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         failure_dir,
         output_limit_bytes,
         plan_name,
+        print_progress,
     } = options;
     let cases = args_by_case.len();
     if against.len() < 2 {
@@ -68,6 +86,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         .map(|path| resolve_path(&work_dir, path))
         .unwrap_or_else(|| work_dir.join("tests").join("failures"));
 
+    let start = Instant::now();
     for (case0, args) in args_by_case.iter().enumerate() {
         let index = case0 + 1;
         if let Some(failure) = run_stress_case(
@@ -81,15 +100,19 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             save_stress_failure(&failure_dir, plan_name, failure)?;
             unreachable!("save_stress_failure always returns an error");
         }
-        if let Some(plan_name) = plan_name {
-            println!("plan `{plan_name}` case {index} ok");
-        } else {
-            println!("case {index} ok");
+        if print_progress {
+            if let Some(plan_name) = plan_name {
+                println!("plan `{plan_name}` case {index} ok");
+            } else {
+                println!("case {index} ok");
+            }
         }
     }
     Ok(StressSummary {
         plan_name: plan_name.map(str::to_string),
         cases,
+        elapsed_ms: start.elapsed().as_millis(),
+        against: against.to_vec(),
     })
 }
 
@@ -326,5 +349,20 @@ mod tests {
         let report = render_stress_failure(Some("random"), 2, &[], &[]);
 
         assert!(report.starts_with("stress plan `random` failed on case 2"));
+    }
+
+    #[test]
+    fn stress_summary_line_includes_plan_cases_against_and_elapsed() {
+        let summary = StressSummary {
+            plan_name: Some("small".to_string()),
+            cases: 300,
+            elapsed_ms: 1240,
+            against: vec!["std".to_string(), "brute".to_string()],
+        };
+
+        assert_eq!(
+            summary.summary_line(),
+            "small: ok cases=300 against=std,brute elapsed=1240ms"
+        );
     }
 }

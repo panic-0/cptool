@@ -129,6 +129,11 @@ enum Commands {
         output_limit_bytes: usize,
         #[arg(long, help = "Directory for failed inputs and per-program outputs")]
         failure_dir: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Print one compact summary line per plan instead of per-case progress"
+        )]
+        summary_only: bool,
     },
     #[command(about = "Check common package structure, config, data, and sample issues")]
     Check {
@@ -243,13 +248,15 @@ fn main() -> anyhow::Result<()> {
             name,
             output_limit_bytes,
             failure_dir,
+            summary_only,
         } => {
-            tool::stress_plan(
-                &work_dir,
-                name.as_deref(),
-                failure_dir.as_deref(),
+            tool::stress_plan_with_options(tool::StressPlanOptions {
+                work_dir: &work_dir,
+                name: name.as_deref(),
+                failure_dir: failure_dir.as_deref(),
                 output_limit_bytes,
-            )?;
+                summary_only,
+            })?;
         }
         Commands::Check { work_dir } => {
             let report = tool::check_problem_package(&work_dir);

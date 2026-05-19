@@ -162,6 +162,7 @@ pub(crate) fn run_spec(
             ok: false,
             kind: "timeout".to_string(),
             exit_code: None,
+            diagnostic: None,
             elapsed_ms,
             stdout_bytes: Vec::new(),
             stderr_bytes: Vec::new(),
@@ -177,6 +178,7 @@ pub(crate) fn run_spec(
     let stderr_bytes = stderr.bytes;
     let stdout_text = decode_output(&stdout_bytes);
     let stderr_text = decode_output(&stderr_bytes);
+    let exit_code = status.code().map(|code| code as i32);
     Ok(RunResult {
         label: spec.label.clone(),
         ok: status.success(),
@@ -186,7 +188,12 @@ pub(crate) fn run_spec(
             "runtime_error"
         }
         .to_string(),
-        exit_code: status.code().map(|code| code as i32),
+        exit_code,
+        diagnostic: if status.success() {
+            None
+        } else {
+            runtime_exit_diagnostic(exit_code)
+        },
         elapsed_ms,
         stdout_bytes,
         stderr_bytes,
@@ -205,18 +212,12 @@ pub(crate) fn compile_cpp(
     let source = resolve_path(work_dir, source);
     let code =
         std::fs::read(&source).with_context(|| format!("failed to read {}", source.display()))?;
-    let mut hasher = Sha256::new();
-    hasher.update(&code);
-    for arg in compile_args {
-        hasher.update([0]);
-        hasher.update(arg.as_bytes());
-    }
-    let digest = format!("{:x}", hasher.finalize());
+    let digest = cpp_cache_key(&code, compile_args);
     let cache_dir = work_dir
         .join(".cptool")
         .join("cache")
         .join("cpp")
-        .join(digest);
+        .join(&digest);
     std::fs::create_dir_all(&cache_dir)?;
     let exe = cache_dir.join(if cfg!(windows) { "main.exe" } else { "main" });
     if exe.exists() {
@@ -236,6 +237,7 @@ pub(crate) fn compile_cpp(
     if temp_exe.exists() {
         std::fs::remove_file(&temp_exe)?;
     }
+    let diagnostics = cpp_compile_diagnostics(&digest, &exe, compile_args);
     let output = std::process::Command::new("g++")
         .current_dir(work_dir)
         .arg(&cached_source)
@@ -243,17 +245,126 @@ pub(crate) fn compile_cpp(
         .arg(&temp_exe)
         .args(compile_args)
         .output()
-        .context("failed to run g++")?;
+        .with_context(|| format!("failed to run g++\n{}", diagnostics.render()))?;
     if !output.status.success() {
         let _ = std::fs::remove_file(&temp_exe);
         anyhow::bail!(
-            "compile failed for {}:\n{}",
+            "compile failed for {}:\n{}\n{}",
             source.display(),
+            diagnostics.render(),
             String::from_utf8_lossy(&output.stderr)
         );
     }
     std::fs::rename(&temp_exe, &exe)?;
     Ok(exe)
+}
+
+fn cpp_cache_key(code: &[u8], compile_args: &[String]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(code);
+    for arg in compile_args {
+        hasher.update([0]);
+        hasher.update(arg.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+#[derive(Clone, Debug)]
+struct CppCompileDiagnostics {
+    gpp_path: String,
+    gpp_version_first_line: Option<String>,
+    compile_args: Vec<String>,
+    has_static: bool,
+    cache_key: String,
+    exe_path: PathBuf,
+}
+
+impl CppCompileDiagnostics {
+    fn render(&self) -> String {
+        let version = self
+            .gpp_version_first_line
+            .as_deref()
+            .unwrap_or("<unavailable>");
+        format!(
+            "g++ path: {}\ng++ version: {}\ncompile args: {}\ncontains -static: {}\ncache key: {}\ncache exe: {}",
+            self.gpp_path,
+            version,
+            render_args(&self.compile_args),
+            self.has_static,
+            self.cache_key,
+            self.exe_path.display()
+        )
+    }
+}
+
+fn cpp_compile_diagnostics(
+    cache_key: &str,
+    exe_path: &Path,
+    compile_args: &[String],
+) -> CppCompileDiagnostics {
+    CppCompileDiagnostics {
+        gpp_path: resolve_command_path("g++").unwrap_or_else(|| "g++".to_string()),
+        gpp_version_first_line: command_version_first_line("g++"),
+        compile_args: compile_args.to_vec(),
+        has_static: compile_args.iter().any(|arg| arg == "-static"),
+        cache_key: cache_key.to_string(),
+        exe_path: exe_path.to_path_buf(),
+    }
+}
+
+fn command_version_first_line(command: &str) -> Option<String> {
+    let output = std::process::Command::new(command)
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    decode_output(&output.stdout)
+        .lines()
+        .next()
+        .map(str::to_string)
+}
+
+fn resolve_command_path(command: &str) -> Option<String> {
+    let finder = if cfg!(windows) { "where" } else { "which" };
+    let output = std::process::Command::new(finder)
+        .arg(command)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    decode_output(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_string)
+}
+
+fn render_args(args: &[String]) -> String {
+    if args.is_empty() {
+        "<none>".to_string()
+    } else {
+        args.join(" ")
+    }
+}
+
+fn runtime_exit_diagnostic(exit_code: Option<i32>) -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    match exit_code? {
+        -1073741511 => Some(
+            "Windows NTSTATUS 0xC0000139: entry point or DLL load failure. Check that required runtime/DLL files are on PATH and match the compiled architecture."
+                .to_string(),
+        ),
+        -1073741819 => Some(
+            "Windows NTSTATUS 0xC0000005: access violation. The program tried to read, write, or execute invalid memory."
+                .to_string(),
+        ),
+        _ => None,
+    }
 }
 
 struct CompileLock {
@@ -473,6 +584,46 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
         assert!(!result.truncated_stderr);
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cpp_compile_diagnostics_render_key_toolchain_and_cache_context() {
+        let args = vec![
+            "-O2".to_string(),
+            "-std=c++20".to_string(),
+            "-static".to_string(),
+        ];
+        let diagnostics = CppCompileDiagnostics {
+            gpp_path: "C:\\tools\\mingw\\bin\\g++.exe".to_string(),
+            gpp_version_first_line: Some("g++ (Rev1) 13.2.0".to_string()),
+            compile_args: args.clone(),
+            has_static: args.iter().any(|arg| arg == "-static"),
+            cache_key: cpp_cache_key(b"int main(){}", &args),
+            exe_path: PathBuf::from("D:\\work\\.cptool\\cache\\cpp\\abc\\main.exe"),
+        };
+
+        let rendered = diagnostics.render();
+
+        assert!(rendered.contains("g++ path: C:\\tools\\mingw\\bin\\g++.exe"));
+        assert!(rendered.contains("g++ version: g++ (Rev1) 13.2.0"));
+        assert!(rendered.contains("compile args: -O2 -std=c++20 -static"));
+        assert!(rendered.contains("contains -static: true"));
+        assert!(rendered.contains("cache key: "));
+        assert!(rendered.contains("cache exe: "));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn runtime_exit_diagnostic_names_common_windows_ntstatus_codes() {
+        let dll_hint = runtime_exit_diagnostic(Some(-1073741511)).unwrap();
+        assert!(dll_hint.contains("0xC0000139"));
+        assert!(dll_hint.contains("DLL"));
+
+        let access_violation_hint = runtime_exit_diagnostic(Some(-1073741819)).unwrap();
+        assert!(access_violation_hint.contains("0xC0000005"));
+        assert!(access_violation_hint.contains("access violation"));
+
+        assert!(runtime_exit_diagnostic(Some(1)).is_none());
     }
 
     fn python_available() -> bool {

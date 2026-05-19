@@ -1,4 +1,4 @@
-use super::data::generate_data;
+use super::data::{data_generation_status, generate_data};
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
 use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo};
 use std::fmt::Write as _;
@@ -150,6 +150,15 @@ pub fn check_problem_package(work_dir: &Path) -> CheckReport {
     };
 
     check_program_paths(&mut report, &work_dir, &problem);
+    if let Some(status) = data_generation_status(&work_dir.join("data")) {
+        report.error(
+            "data_generation_in_progress",
+            "data generation is in progress; skipped data consistency checks to avoid reading partial output",
+            Some(status.marker_path),
+        );
+        return report;
+    }
+
     check_empty_answers(&mut report, &work_dir, &problem);
 
     let generated_sample_answer = check_sample_generation(&mut report, &work_dir, &problem);
@@ -523,6 +532,30 @@ mod tests {
 
         assert!(
             report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "sample_generation_failed")
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_reports_generation_in_progress_and_skips_data_checks() {
+        let root = temp_test_dir("cptool-check-in-progress");
+        let problem_dir = init_package(&root, "Check In Progress").unwrap();
+        let data_dir = problem_dir.join("data");
+        let lock_dir = data_dir.join(".cptool-gen.lock");
+        std::fs::create_dir_all(&lock_dir).unwrap();
+
+        let report = check_problem_package(&problem_dir);
+
+        assert!(report.has_errors());
+        assert!(report.issues.iter().any(|issue| {
+            issue.code == "data_generation_in_progress" && issue.path == Some(lock_dir.clone())
+        }));
+        assert!(
+            !report
                 .issues
                 .iter()
                 .any(|issue| issue.code == "sample_generation_failed")

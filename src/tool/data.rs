@@ -8,6 +8,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const GENERATION_LOCK_DIR: &str = ".cptool-gen.lock";
+const GENERATION_STAGING_PREFIX: &str = ".cptool-gen-";
+
 #[derive(Clone, Debug)]
 pub struct GenerateOptions {
     pub work_dir: PathBuf,
@@ -32,6 +35,16 @@ struct GenerateContext<'a> {
 struct GeneratedFile {
     staging_path: PathBuf,
     final_path: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DataGenerationStatus {
+    pub marker_path: PathBuf,
+}
+
+#[derive(Debug)]
+struct DataGenerationLock {
+    path: PathBuf,
 }
 
 enum CleanScope {
@@ -73,6 +86,7 @@ pub fn generate_data_with_options(options: GenerateOptions) -> Result<Vec<PathBu
         .map(|path| resolve_path(&work_dir, path))
         .unwrap_or_else(|| work_dir.join("data"));
     std::fs::create_dir_all(&output_dir)?;
+    let _generation_lock = DataGenerationLock::acquire(&output_dir)?;
     let selected_cases = select_cases(&problem, bundle.as_deref(), selector.as_deref())?;
     let clean_scope =
         clean.then(|| clean_scope_for(&problem, bundle.as_deref(), selector.as_deref()));
@@ -120,6 +134,61 @@ pub fn generate_data_with_options(options: GenerateOptions) -> Result<Vec<PathBu
         (Err(err), _) => Err(err),
     }
 }
+
+pub fn data_generation_status(output_dir: &Path) -> Option<DataGenerationStatus> {
+    let lock_dir = output_dir.join(GENERATION_LOCK_DIR);
+    if lock_dir.is_dir() {
+        return Some(DataGenerationStatus {
+            marker_path: lock_dir,
+        });
+    }
+
+    let entries = std::fs::read_dir(output_dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir()
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(GENERATION_STAGING_PREFIX))
+        {
+            return Some(DataGenerationStatus { marker_path: path });
+        }
+    }
+    None
+}
+
+impl DataGenerationLock {
+    fn acquire(output_dir: &Path) -> Result<Self> {
+        let path = output_dir.join(GENERATION_LOCK_DIR);
+        match std::fs::create_dir(&path) {
+            Ok(()) => {
+                let metadata = format!(
+                    "pid={}\nstarted_nanos={}\n",
+                    std::process::id(),
+                    unique_nanos()
+                );
+                std::fs::write(path.join("owner"), metadata).with_context(|| {
+                    format!("failed to write data generation lock {}", path.display())
+                })?;
+                Ok(Self { path })
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                anyhow::bail!("data generation is already in progress: {}", path.display())
+            }
+            Err(err) => Err(err).with_context(|| {
+                format!("failed to create data generation lock {}", path.display())
+            }),
+        }
+    }
+}
+
+impl Drop for DataGenerationLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
 fn compile_programs(work_dir: &Path, problem: &Problem) -> Result<HashMap<String, ProgramSpec>> {
     problem
         .programs
@@ -328,7 +397,7 @@ fn create_staging_dir(output_dir: &Path) -> Result<PathBuf> {
             .context("system clock is before UNIX_EPOCH")?
             .as_nanos();
         let dir = output_dir.join(format!(
-            ".cptool-gen-{}-{nanos}-{attempt}",
+            "{GENERATION_STAGING_PREFIX}{}-{nanos}-{attempt}",
             std::process::id()
         ));
         match std::fs::create_dir(&dir) {
@@ -433,6 +502,13 @@ fn remove_file_if_exists(path: &Path) -> Result<()> {
     }
 }
 
+fn unique_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -515,14 +591,43 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn generation_lock_marks_output_dir_and_blocks_second_writer() {
+        let root = temp_dir("generation-lock");
+        std::fs::create_dir_all(&root).unwrap();
+
+        let lock = DataGenerationLock::acquire(&root).unwrap();
+        let status = data_generation_status(&root).unwrap();
+
+        assert_eq!(status.marker_path, root.join(GENERATION_LOCK_DIR));
+        assert!(
+            DataGenerationLock::acquire(&root)
+                .unwrap_err()
+                .to_string()
+                .contains("data generation is already in progress")
+        );
+
+        drop(lock);
+        assert!(data_generation_status(&root).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn generation_status_detects_existing_staging_dir() {
+        let root = temp_dir("generation-staging");
+        let staging = root.join(format!("{GENERATION_STAGING_PREFIX}123-456-0"));
+        std::fs::create_dir_all(&staging).unwrap();
+
+        assert_eq!(data_generation_status(&root).unwrap().marker_path, staging);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     fn temp_dir(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "cptool-data-{label}-{}-{}",
             std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            unique_nanos()
         ))
     }
 

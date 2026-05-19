@@ -107,6 +107,7 @@ fn cli_help_describes_new_workflow_commands() {
     let stress_plan_stdout = String::from_utf8_lossy(&stress_plan.stdout);
     assert!(stress_plan_stdout.contains("--name"));
     assert!(stress_plan_stdout.contains("Run only the named stress plan"));
+    assert!(stress_plan_stdout.contains("--summary-only"));
 }
 
 #[test]
@@ -346,6 +347,36 @@ fn stress_plan_runs_named_plan_without_seed_config() {
     assert!(stdout.contains("plan `tiny` case 1 ok"));
     assert!(stdout.contains("plan `tiny` case 2 ok"));
     assert!(stdout.contains("stress plan `tiny` passed: 2 cases"));
+}
+
+#[test]
+fn stress_plan_summary_only_suppresses_case_progress() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-plan-summary");
+    run_cptool(["init", "stress_plan_summary", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("stress_plan_summary");
+    configure_python_problem(&problem_dir);
+    append_stress_plan(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "tiny",
+            "--summary-only",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("tiny: ok cases=2 against=std,brute elapsed="));
+    assert!(!stdout.contains("plan `tiny` case 1 ok"));
+    assert!(!stdout.contains("stress plan `tiny` passed"));
 }
 
 fn configure_python_problem(problem_dir: &Path) {

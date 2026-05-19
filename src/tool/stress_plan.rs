@@ -4,12 +4,38 @@ use super::stress::{StressRunOptions, StressSummary, run_stress};
 use anyhow::{Context, Result};
 use std::path::Path;
 
+#[derive(Clone, Copy, Debug)]
+pub struct StressPlanOptions<'a> {
+    pub work_dir: &'a Path,
+    pub name: Option<&'a str>,
+    pub failure_dir: Option<&'a Path>,
+    pub output_limit_bytes: usize,
+    pub summary_only: bool,
+}
+
 pub fn stress_plan(
     work_dir: &Path,
     name: Option<&str>,
     failure_dir: Option<&Path>,
     output_limit_bytes: usize,
 ) -> Result<Vec<StressSummary>> {
+    stress_plan_with_options(StressPlanOptions {
+        work_dir,
+        name,
+        failure_dir,
+        output_limit_bytes,
+        summary_only: false,
+    })
+}
+
+pub fn stress_plan_with_options(options: StressPlanOptions<'_>) -> Result<Vec<StressSummary>> {
+    let StressPlanOptions {
+        work_dir,
+        name,
+        failure_dir,
+        output_limit_bytes,
+        summary_only,
+    } = options;
     let problem = load_problem(work_dir)?;
     let plans = select_plans(&problem.stress.plans, name)?;
     let mut summaries = Vec::with_capacity(plans.len());
@@ -23,12 +49,17 @@ pub fn stress_plan(
             failure_dir,
             output_limit_bytes,
             plan_name: Some(&plan.name),
+            print_progress: !summary_only,
         })
         .with_context(|| format!("stress plan `{}` failed", plan.name))?;
-        println!(
-            "stress plan `{}` passed: {} cases",
-            plan.name, summary.cases
-        );
+        if summary_only {
+            println!("{}", summary.summary_line());
+        } else {
+            println!(
+                "stress plan `{}` passed: {} cases",
+                plan.name, summary.cases
+            );
+        }
         summaries.push(summary);
     }
 

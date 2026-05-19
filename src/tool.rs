@@ -19,7 +19,7 @@ pub use schema::{
     TestTaskType,
 };
 pub use stress::{StressSummary, stress};
-pub use stress_plan::stress_plan;
+pub use stress_plan::{StressPlanOptions, stress_plan, stress_plan_with_options};
 #[cfg(test)]
 mod tests {
     use super::program::{is_stale_compile_lock, parse_lock_pid};
@@ -121,6 +121,7 @@ mod tests {
             ok: false,
             kind: "timeout".to_string(),
             exit_code: None,
+            diagnostic: None,
             elapsed_ms: 1001,
             stdout_bytes: Vec::new(),
             stderr_bytes: Vec::new(),
@@ -162,6 +163,7 @@ mod tests {
             ok,
             kind: kind.to_string(),
             exit_code: None,
+            diagnostic: None,
             elapsed_ms: 1,
             stdout_bytes: stdout.as_bytes().to_vec(),
             stderr_bytes: stderr.as_bytes().to_vec(),

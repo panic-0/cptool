@@ -32,6 +32,7 @@ pub struct RunResult {
     pub ok: bool,
     pub kind: String,
     pub exit_code: Option<i32>,
+    pub diagnostic: Option<String>,
     pub elapsed_ms: u128,
     pub stdout_bytes: Vec<u8>,
     pub stderr_bytes: Vec<u8>,
@@ -63,6 +64,10 @@ impl RunResult {
 
     pub fn failure_report(&self, context: &str) -> String {
         let mut report = format!("{context}: {}", self.status_line());
+        if let Some(diagnostic) = &self.diagnostic {
+            report.push_str("\ndiagnostic:\n");
+            report.push_str(diagnostic);
+        }
         if !self.stderr.is_empty() {
             report.push_str("\nstderr:\n");
             report.push_str(&self.stderr);
@@ -231,6 +236,7 @@ mod tests {
             ok: true,
             kind: "ok".to_string(),
             exit_code: Some(0),
+            diagnostic: None,
             elapsed_ms: 12,
             stdout_bytes: b"a\nb".to_vec(),
             stderr_bytes: b"warn".to_vec(),
@@ -253,6 +259,7 @@ mod tests {
             ok: true,
             kind: "ok".to_string(),
             exit_code: Some(0),
+            diagnostic: None,
             elapsed_ms: 1,
             stdout_bytes: Vec::new(),
             stderr_bytes: Vec::new(),
@@ -264,5 +271,32 @@ mod tests {
 
         assert!(result.summary_line().contains("stdout_lines=0"));
         assert!(result.summary_line().contains("stderr_nonempty=false"));
+    }
+
+    #[test]
+    fn failure_report_includes_optional_diagnostic_only_on_failure_path() {
+        let result = RunResult {
+            label: "std".to_string(),
+            ok: false,
+            kind: "runtime_error".to_string(),
+            exit_code: Some(-1073741819),
+            diagnostic: Some("hint: access violation".to_string()),
+            elapsed_ms: 1,
+            stdout_bytes: Vec::new(),
+            stderr_bytes: Vec::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+            truncated_stdout: false,
+            truncated_stderr: false,
+        };
+
+        assert_eq!(
+            result.status_line(),
+            "std: runtime_error exit=-1073741819 elapsed=1ms"
+        );
+        assert_eq!(
+            result.failure_report("solution failed"),
+            "solution failed: std: runtime_error exit=-1073741819 elapsed=1ms\ndiagnostic:\nhint: access violation"
+        );
     }
 }
