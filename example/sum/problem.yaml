@@ -2,18 +2,18 @@ name: sum
 programs:
   gen:
     info: !cpp
-      path: ./gen.cpp
+      path: ./src/gen.cpp
     time_limit_secs: 1.0
     memory_limit_mb: 512.0
   std:
     info: !cpp
-      path: ./std.cpp
+      path: ./src/std.cpp
       compile_args: [-O2, -std=c++14]
     time_limit_secs: 1.0
     memory_limit_mb: 512.0
   val:
     info: !cpp
-      path: ./val.cpp
+      path: ./src/val.cpp
       compile_args: [-O2, -I../assets/testlib/]
     time_limit_secs: 1.0
     memory_limit_mb: 512.0

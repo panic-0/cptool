@@ -1,0 +1,8 @@
+.cptool/
+data/
+export/
+output/
+tmp/
+tests/failures/
+*.exe
+*.tmp
