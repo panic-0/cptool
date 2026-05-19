@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 pub(crate) const DEFAULT_TIME_LIMIT_SECS: f64 = 1.0;
 pub(crate) const DEFAULT_MEMORY_LIMIT_MB: f64 = 512.0;
-pub(crate) const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 33_554_432;
+pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 33_554_432;
 #[derive(Clone, Debug)]
 pub struct CaseSelector {
     pub bundle: String,
@@ -38,6 +38,39 @@ pub struct RunResult {
     pub stderr: String,
     pub truncated_stdout: bool,
     pub truncated_stderr: bool,
+}
+
+impl RunResult {
+    pub fn status_line(&self) -> String {
+        let mut line = format!(
+            "{}: {} exit={} elapsed={}ms",
+            self.label,
+            self.kind,
+            self.exit_code
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            self.elapsed_ms
+        );
+        if self.truncated_stdout {
+            line.push_str(" stdout=truncated");
+        }
+        if self.truncated_stderr {
+            line.push_str(" stderr=truncated");
+        }
+        line
+    }
+
+    pub fn failure_report(&self, context: &str) -> String {
+        let mut report = format!("{context}: {}", self.status_line());
+        if !self.stderr.is_empty() {
+            report.push_str("\nstderr:\n");
+            report.push_str(&self.stderr);
+        } else if !self.stdout.is_empty() {
+            report.push_str("\nstdout:\n");
+            report.push_str(&self.stdout);
+        }
+        report
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

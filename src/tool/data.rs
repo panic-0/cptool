@@ -135,10 +135,11 @@ fn generate_one_case(
     )?;
     if !generated.ok {
         anyhow::bail!(
-            "generator failed for {}[{}]:\n{}",
-            selector.bundle,
-            selector.index,
-            generated.stderr
+            "{}",
+            generated.failure_report(&format!(
+                "generator failed for {}[{}]",
+                selector.bundle, selector.index
+            ))
         );
     }
     if generated.truncated_stdout {
@@ -160,9 +161,9 @@ fn generate_one_case(
         )?;
         if !validation.ok {
             anyhow::bail!(
-                "validator failed for {}:\n{}",
-                input_path.display(),
-                validation.stderr
+                "{}",
+                validation
+                    .failure_report(&format!("validator failed for {}", input_path.display()))
             );
         }
     }
@@ -175,9 +176,8 @@ fn generate_one_case(
     )?;
     if !answer.ok {
         anyhow::bail!(
-            "solution failed for {}:\n{}",
-            input_path.display(),
-            answer.stderr
+            "{}",
+            answer.failure_report(&format!("solution failed for {}", input_path.display()))
         );
     }
     if answer.truncated_stdout {

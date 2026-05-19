@@ -11,14 +11,14 @@ pub use package::{init_package, slugify};
 pub use problem::{load_problem, parse_case_selector};
 pub use run::run;
 pub use schema::{
-    CommandProgram, CppProgram, Problem, Program, ProgramInfo, RunOptions, RunResult, Test,
-    TestBundle, TestCase, TestTask, TestTaskType,
+    CommandProgram, CppProgram, DEFAULT_OUTPUT_LIMIT_BYTES, Problem, Program, ProgramInfo,
+    RunOptions, RunResult, Test, TestBundle, TestCase, TestTask, TestTaskType,
 };
 pub use stress::stress;
 #[cfg(test)]
 mod tests {
     use super::program::{is_stale_compile_lock, parse_lock_pid};
-    use super::stress::normalize_output;
+    use super::stress::{classify_stress_failure, normalize_output};
     use super::*;
 
     #[test]
@@ -88,5 +88,63 @@ mod tests {
         assert!(is_stale_compile_lock(&lock_path).unwrap());
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn run_result_reports_timeout_without_stderr() {
+        let result = RunResult {
+            label: "slow".to_string(),
+            ok: false,
+            kind: "timeout".to_string(),
+            exit_code: None,
+            elapsed_ms: 1001,
+            stdout_bytes: Vec::new(),
+            stderr_bytes: Vec::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+            truncated_stdout: false,
+            truncated_stderr: false,
+        };
+
+        assert_eq!(
+            result.status_line(),
+            "slow: timeout exit=none elapsed=1001ms"
+        );
+        assert_eq!(
+            result.failure_report("generator failed"),
+            "generator failed: slow: timeout exit=none elapsed=1001ms"
+        );
+    }
+
+    #[test]
+    fn stress_failure_classification_names_wa_and_program_failure() {
+        let ok_a = test_run_result("std", true, "ok", "1\n", "");
+        let ok_b = test_run_result("brute", true, "ok", "2\n", "");
+        let timeout = test_run_result("slow", false, "timeout", "", "");
+
+        assert_eq!(
+            classify_stress_failure(&[ok_a.clone(), ok_b]).unwrap(),
+            "wrong_answer: output mismatch between `std` and `brute`"
+        );
+        assert_eq!(
+            classify_stress_failure(&[ok_a, timeout]).unwrap(),
+            "program_failed: slow: timeout exit=none elapsed=1ms"
+        );
+    }
+
+    fn test_run_result(label: &str, ok: bool, kind: &str, stdout: &str, stderr: &str) -> RunResult {
+        RunResult {
+            label: label.to_string(),
+            ok,
+            kind: kind.to_string(),
+            exit_code: None,
+            elapsed_ms: 1,
+            stdout_bytes: stdout.as_bytes().to_vec(),
+            stderr_bytes: stderr.as_bytes().to_vec(),
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+            truncated_stdout: false,
+            truncated_stderr: false,
+        }
     }
 }

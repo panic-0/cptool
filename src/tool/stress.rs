@@ -45,6 +45,7 @@ pub fn stress(
 
 struct StressFailure {
     case_index: usize,
+    reason: String,
     input: Vec<u8>,
     results: Vec<RunResult>,
 }
@@ -59,7 +60,10 @@ fn run_stress_case(
 ) -> Result<Option<StressFailure>> {
     let gen_result = run_spec(work_dir, generator, args, None, output_limit_bytes)?;
     if !gen_result.ok {
-        anyhow::bail!("generator failed on case {}:\n{}", index, gen_result.stderr);
+        anyhow::bail!(
+            "{}",
+            gen_result.failure_report(&format!("generator failed on stress case {index}"))
+        );
     }
     if gen_result.truncated_stdout {
         anyhow::bail!(
@@ -78,15 +82,14 @@ fn run_stress_case(
         }
         results.push(result);
     }
-    let baseline = normalize_output(&results[0].stdout);
-    let failed = results
-        .iter()
-        .any(|result| !result.ok || normalize_output(&result.stdout) != baseline);
-    Ok(failed.then_some(StressFailure {
-        case_index: index,
-        input,
-        results,
-    }))
+    Ok(
+        classify_stress_failure(&results).map(|reason| StressFailure {
+            case_index: index,
+            reason,
+            input,
+            results,
+        }),
+    )
 }
 
 fn save_stress_failure(failure_dir: &Path, failure: StressFailure) -> Result<()> {
@@ -96,8 +99,9 @@ fn save_stress_failure(failure_dir: &Path, failure: StressFailure) -> Result<()>
     let report = render_stress_failure(failure.case_index, &failure.results);
     std::fs::write(stem.with_extension("txt"), report.as_bytes())?;
     anyhow::bail!(
-        "stress failed on case {}; saved {}.in and {}.txt",
+        "stress failed on case {}; {}; saved {}.in and {}.txt",
         failure.case_index,
+        failure.reason,
         stem.display(),
         stem.display()
     );
@@ -136,16 +140,30 @@ pub(crate) fn normalize_output(text: &str) -> String {
 
 fn render_stress_failure(case_index: usize, results: &[RunResult]) -> String {
     let mut report = format!("stress failed on case {case_index}\n\n");
+    if let Some(reason) = classify_stress_failure(results) {
+        report.push_str(&format!("reason: {reason}\n\n"));
+    }
     for result in results {
-        report.push_str(&format!(
-            "[{}] kind={} exit={:?} elapsed={}ms\nstdout:\n{}\nstderr:\n{}\n\n",
-            result.label,
-            result.kind,
-            result.exit_code,
-            result.elapsed_ms,
-            result.stdout,
-            result.stderr
-        ));
+        report.push_str(&format!("{}\n", result.status_line()));
+        report.push_str(&format!("stdout:\n{}\n", result.stdout));
+        report.push_str(&format!("stderr:\n{}\n\n", result.stderr));
     }
     report
+}
+
+pub(crate) fn classify_stress_failure(results: &[RunResult]) -> Option<String> {
+    if let Some(result) = results.iter().find(|result| !result.ok) {
+        return Some(format!("program_failed: {}", result.status_line()));
+    }
+
+    let baseline = results.first()?;
+    let baseline_output = normalize_output(&baseline.stdout);
+    results.iter().skip(1).find_map(|result| {
+        (normalize_output(&result.stdout) != baseline_output).then(|| {
+            format!(
+                "wrong_answer: output mismatch between `{}` and `{}`",
+                baseline.label, result.label
+            )
+        })
+    })
 }

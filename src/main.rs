@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use cptool::export::{Exporter, OnlineJudge, syzoj};
-use cptool::tool::{self, RunOptions};
+use cptool::tool::{self, DEFAULT_OUTPUT_LIMIT_BYTES, RunOptions};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -33,7 +33,7 @@ enum Commands {
         stdout_path: Option<PathBuf>,
         #[arg(long)]
         stderr_path: Option<PathBuf>,
-        #[arg(long, default_value_t = 33_554_432)]
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
         output_limit_bytes: usize,
         #[arg(last = true)]
         args: Vec<String>,
@@ -47,7 +47,7 @@ enum Commands {
         case: Option<String>,
         #[arg(short, long)]
         output_dir: Option<PathBuf>,
-        #[arg(long, default_value_t = 33_554_432)]
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
         output_limit_bytes: usize,
     },
     Stress {
@@ -59,7 +59,7 @@ enum Commands {
         against: Vec<String>,
         #[arg(long, default_value_t = 100)]
         cases: usize,
-        #[arg(long, default_value_t = 33_554_432)]
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
         output_limit_bytes: usize,
         #[arg(long)]
         failure_dir: Option<PathBuf>,
@@ -106,16 +106,7 @@ fn main() -> anyhow::Result<()> {
                 args,
                 output_limit_bytes,
             })?;
-            println!(
-                "{}: {} exit={:?} elapsed={}ms",
-                result.label, result.kind, result.exit_code, result.elapsed_ms
-            );
-            if result.truncated_stdout {
-                println!("stdout truncated");
-            }
-            if result.truncated_stderr {
-                println!("stderr truncated");
-            }
+            println!("{}", result.status_line());
             if stdout_path.is_none() && !result.stdout.is_empty() {
                 print!("{}", result.stdout);
             }
@@ -173,7 +164,13 @@ fn main() -> anyhow::Result<()> {
             };
             let data_dir = work_dir.join("data");
             let problem = tool::load_problem(&work_dir)?;
-            tool::generate_data(&work_dir, None, None, Some(&data_dir), 33_554_432)?;
+            tool::generate_data(
+                &work_dir,
+                None,
+                None,
+                Some(&data_dir),
+                DEFAULT_OUTPUT_LIMIT_BYTES,
+            )?;
 
             match oj {
                 OnlineJudge::Syzoj => {
