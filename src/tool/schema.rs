@@ -176,11 +176,34 @@ pub struct Test {
     pub tasks: Vec<TestTask>,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Stress {
+    #[serde(default)]
+    pub plans: Vec<StressPlan>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StressPlan {
+    pub name: String,
+    pub generator: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub against: Vec<String>,
+    #[serde(default = "default_stress_cases")]
+    pub cases: usize,
+}
+
+fn default_stress_cases() -> usize {
+    100
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Problem {
     pub name: String,
     #[serde(default)]
     pub output: OutputConfig,
+    #[serde(default)]
+    pub stress: Stress,
     pub programs: HashMap<String, Program>,
     pub test: Test,
     #[serde(rename = "solution")]

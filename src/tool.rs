@@ -1,3 +1,4 @@
+mod check;
 mod data;
 mod package;
 mod problem;
@@ -5,16 +6,20 @@ mod program;
 mod run;
 mod schema;
 mod stress;
+mod stress_plan;
 
-pub use data::generate_data;
+pub use check::{CheckIssue, CheckReport, CheckSeverity, check_problem_package};
+pub use data::{GenerateOptions, generate_data, generate_data_with_options};
 pub use package::{init_package, slugify};
 pub use problem::{load_problem, parse_case_selector};
 pub use run::run;
 pub use schema::{
     CommandProgram, CppProgram, DEFAULT_OUTPUT_LIMIT_BYTES, OutputConfig, Problem, Program,
-    ProgramInfo, RunOptions, RunResult, Test, TestBundle, TestCase, TestTask, TestTaskType,
+    ProgramInfo, RunOptions, RunResult, Stress, StressPlan, Test, TestBundle, TestCase, TestTask,
+    TestTaskType,
 };
-pub use stress::stress;
+pub use stress::{StressSummary, stress};
+pub use stress_plan::stress_plan;
 #[cfg(test)]
 mod tests {
     use super::program::{is_stale_compile_lock, parse_lock_pid};

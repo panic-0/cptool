@@ -11,6 +11,9 @@ CP Tool is a command line tool for competitive programming.
 # generate official data into ./example/a_plus_b/data
 ./cptool gen -w ./example/a_plus_b
 
+# clean selected stale data before publishing newly generated data
+./cptool gen -w ./example/a_plus_b --bundle main --clean
+
 # generate with a custom per-program stdout/stderr limit; default is 32 MiB
 ./cptool gen -w ./example/a_plus_b --output-limit-bytes 67108864
 
@@ -22,6 +25,12 @@ CP Tool is a command line tool for competitive programming.
 
 # stress test programs with generated temporary inputs
 ./cptool stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10
+
+# run stress plans declared in problem.yaml
+./cptool stress-plan -w ./example/a_plus_b --name small
+
+# check common package structure and generated data issues
+./cptool check -w ./example/a_plus_b
 
 # export problem to online judge format; currently only support syzoj
 ./cptool export -w ./example/a_plus_b --oj syzoj
@@ -73,6 +82,13 @@ test:
     type: min
     bundles: [main]
     dependencies: [sample]
+stress:
+  plans:
+  - name: small
+    generator: gen
+    args: ["{case}", "10"]
+    against: [std, brute]
+    cases: 100
 ```
 
 Programs can also use `!command` or `!python`; omitted C++ compile args default to C++20 with warnings.
@@ -81,7 +97,10 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 
 + Syzoj export is not fully supported yet.
 + `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`.
-+ `gen` writes data to `data/` by default. `run`, `gen`, and `stress` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it.
++ `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.
 + `gen` warns when a non-empty input produces an empty answer. Set `output.allow_empty: true` in `problem.yaml` for tasks where empty output is valid.
++ `check` reports common structure, program path, generated data, sample generation, and sample output issues. It exits non-zero when errors are found.
 + `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data. Multiple `cptool stress` processes can run against the same package concurrently; compile cache hits are reused and failure files are created atomically.
++ `stress-plan` runs `stress.plans` from `problem.yaml`. Plan args support `{case}` and `{case0}` placeholders; seed configuration is intentionally not part of this command yet.
++ `run`, `gen`, `stress`, and `stress-plan` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it where supported.

@@ -236,6 +236,7 @@ mod tests {
         Problem {
             name: "sample".to_string(),
             output: Default::default(),
+            stress: Default::default(),
             programs,
             test: Test {
                 bundles: HashMap::from([(

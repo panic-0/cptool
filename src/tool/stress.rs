@@ -4,6 +4,7 @@ use super::schema::RunResult;
 use anyhow::Result;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
 pub fn stress(
     work_dir: &Path,
     generator: &str,
@@ -13,6 +14,46 @@ pub fn stress(
     failure_dir: Option<&Path>,
     output_limit_bytes: usize,
 ) -> Result<()> {
+    let args_by_case = (0..cases).map(|_| args.to_vec()).collect();
+    run_stress(StressRunOptions {
+        work_dir,
+        generator,
+        against,
+        args_by_case,
+        failure_dir,
+        output_limit_bytes,
+        plan_name: None,
+    })?;
+    Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StressSummary {
+    pub plan_name: Option<String>,
+    pub cases: usize,
+}
+
+pub(crate) struct StressRunOptions<'a> {
+    pub(crate) work_dir: &'a Path,
+    pub(crate) generator: &'a str,
+    pub(crate) against: &'a [String],
+    pub(crate) args_by_case: Vec<Vec<String>>,
+    pub(crate) failure_dir: Option<&'a Path>,
+    pub(crate) output_limit_bytes: usize,
+    pub(crate) plan_name: Option<&'a str>,
+}
+
+pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary> {
+    let StressRunOptions {
+        work_dir,
+        generator,
+        against,
+        args_by_case,
+        failure_dir,
+        output_limit_bytes,
+        plan_name,
+    } = options;
+    let cases = args_by_case.len();
     if against.len() < 2 {
         anyhow::bail!("stress requires at least two --against programs or sources");
     }
@@ -27,7 +68,8 @@ pub fn stress(
         .map(|path| resolve_path(&work_dir, path))
         .unwrap_or_else(|| work_dir.join("tests").join("failures"));
 
-    for index in 1..=cases {
+    for (case0, args) in args_by_case.iter().enumerate() {
+        let index = case0 + 1;
         if let Some(failure) = run_stress_case(
             &work_dir,
             &generator,
@@ -36,11 +78,19 @@ pub fn stress(
             index,
             output_limit_bytes,
         )? {
-            return save_stress_failure(&failure_dir, failure);
+            save_stress_failure(&failure_dir, plan_name, failure)?;
+            unreachable!("save_stress_failure always returns an error");
         }
-        println!("case {index} ok");
+        if let Some(plan_name) = plan_name {
+            println!("plan `{plan_name}` case {index} ok");
+        } else {
+            println!("case {index} ok");
+        }
     }
-    Ok(())
+    Ok(StressSummary {
+        plan_name: plan_name.map(str::to_string),
+        cases,
+    })
 }
 
 struct StressFailure {
@@ -99,15 +149,22 @@ fn run_stress_case(
     )
 }
 
-fn save_stress_failure(failure_dir: &Path, failure: StressFailure) -> Result<()> {
+fn save_stress_failure(
+    failure_dir: &Path,
+    plan_name: Option<&str>,
+    failure: StressFailure,
+) -> Result<()> {
     std::fs::create_dir_all(failure_dir)?;
-    let (stem, mut input_file) = create_failure_input(failure_dir)?;
+    let (stem, mut input_file) = create_failure_input(failure_dir, plan_name)?;
     input_file.write_all(&failure.input)?;
     let artifacts = write_stress_outputs(&stem, &failure.results)?;
-    let report = render_stress_failure(failure.case_index, &failure.results, &artifacts);
+    let report = render_stress_failure(plan_name, failure.case_index, &failure.results, &artifacts);
     std::fs::write(stem.with_extension("txt"), report.as_bytes())?;
+    let plan = plan_name
+        .map(|name| format!(" plan `{name}`"))
+        .unwrap_or_default();
     anyhow::bail!(
-        "stress failed on case {}; {}; saved {}.in, {}.txt, and per-program .out/.err files",
+        "stress{plan} failed on case {}; {}; saved {}.in, {}.txt, and per-program .out/.err files",
         failure.case_index,
         failure.reason,
         stem.display(),
@@ -115,9 +172,15 @@ fn save_stress_failure(failure_dir: &Path, failure: StressFailure) -> Result<()>
     );
 }
 
-fn create_failure_input(failure_dir: &Path) -> Result<(PathBuf, std::fs::File)> {
+fn create_failure_input(
+    failure_dir: &Path,
+    plan_name: Option<&str>,
+) -> Result<(PathBuf, std::fs::File)> {
+    let prefix = plan_name
+        .map(|name| format!("stress-{}", sanitize_artifact_label(name)))
+        .unwrap_or_else(|| "stress".to_string());
     for id in 1.. {
-        let stem = failure_dir.join(format!("stress-{id:03}"));
+        let stem = failure_dir.join(format!("{prefix}-{id:03}"));
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -200,11 +263,15 @@ pub(crate) fn normalize_output(text: &str) -> String {
 }
 
 fn render_stress_failure(
+    plan_name: Option<&str>,
     case_index: usize,
     results: &[RunResult],
     artifacts: &[StressOutputArtifact],
 ) -> String {
-    let mut report = format!("stress failed on case {case_index}\n\n");
+    let mut report = match plan_name {
+        Some(plan_name) => format!("stress plan `{plan_name}` failed on case {case_index}\n\n"),
+        None => format!("stress failed on case {case_index}\n\n"),
+    };
     if let Some(reason) = classify_stress_failure(results) {
         report.push_str(&format!("reason: {reason}\n\n"));
     }
@@ -231,4 +298,33 @@ pub(crate) fn classify_stress_failure(results: &[RunResult]) -> Option<String> {
             )
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failure_input_stem_includes_sanitized_plan_name() {
+        let root = std::env::temp_dir().join(format!(
+            "cptool-stress-plan-failure-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+
+        let (stem, _file) = create_failure_input(&root, Some("small cases")).unwrap();
+
+        assert_eq!(stem.file_name().unwrap(), "stress-small-cases-001");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failure_report_mentions_plan_name() {
+        let report = render_stress_failure(Some("random"), 2, &[], &[]);
+
+        assert!(report.starts_with("stress plan `random` failed on case 2"));
+    }
 }

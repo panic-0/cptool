@@ -53,6 +53,8 @@ enum Commands {
         output_dir: Option<PathBuf>,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
         output_limit_bytes: usize,
+        #[arg(long)]
+        clean: bool,
     },
     Stress {
         #[arg(short, long, default_value = ".")]
@@ -69,6 +71,20 @@ enum Commands {
         failure_dir: Option<PathBuf>,
         #[arg(last = true)]
         args: Vec<String>,
+    },
+    StressPlan {
+        #[arg(short, long, default_value = ".")]
+        work_dir: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
+        output_limit_bytes: usize,
+        #[arg(long)]
+        failure_dir: Option<PathBuf>,
+    },
+    Check {
+        #[arg(short, long, default_value = ".")]
+        work_dir: PathBuf,
     },
     Export {
         #[arg(short, long, default_value = ".")]
@@ -138,14 +154,16 @@ fn main() -> anyhow::Result<()> {
             case,
             output_dir,
             output_limit_bytes,
+            clean,
         } => {
-            let generated = tool::generate_data(
-                &work_dir,
-                bundle.as_deref(),
-                case.as_deref(),
-                output_dir.as_deref(),
+            let generated = tool::generate_data_with_options(tool::GenerateOptions {
+                work_dir,
+                bundle,
+                selector: case,
+                output_dir,
                 output_limit_bytes,
-            )?;
+                clean,
+            })?;
             for path in generated {
                 println!("generated {}", path.display());
             }
@@ -169,6 +187,26 @@ fn main() -> anyhow::Result<()> {
                 output_limit_bytes,
             )?;
             println!("stress passed: {cases} cases");
+        }
+        Commands::StressPlan {
+            work_dir,
+            name,
+            output_limit_bytes,
+            failure_dir,
+        } => {
+            tool::stress_plan(
+                &work_dir,
+                name.as_deref(),
+                failure_dir.as_deref(),
+                output_limit_bytes,
+            )?;
+        }
+        Commands::Check { work_dir } => {
+            let report = tool::check_problem_package(&work_dir);
+            print!("{}", report.render_text());
+            if report.has_errors() {
+                std::process::exit(2);
+            }
         }
         Commands::Export { work_dir, oj } => {
             let start = Instant::now();
