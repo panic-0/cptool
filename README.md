@@ -5,57 +5,48 @@ CP Tool is a command line tool for competitive programming.
 ## Usage
 
 ```bash
-# generate problem in ./example/a_plus_b
-./cptool -w ./example/a_plus_b
+# create a cptool/autocpp problem package
+./cptool init a_plus_b
 
-# export problem to online judge format
-# currently only support syzoj
-./cptool -w ./example/a_plus_b --export-oj=syzoj
-# export to ./output/syzoj
-./cptool -w ./example/a_plus_b -e=syzoj --export-dir=./output
+# generate official data into ./example/a_plus_b/data
+./cptool gen -w ./example/a_plus_b
+
+# run a configured program on a generated bundle case
+./cptool run std sample[0] -w ./example/a_plus_b
+
+# stress test programs with generated temporary inputs
+./cptool stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10
+
+# export problem to online judge format; currently only support syzoj
+./cptool export -w ./example/a_plus_b --oj syzoj
 
 # for more information
 ./cptool --help
 ```
 
-`problem.yaml` is the problem description file.
+`problem.yaml` is the problem description file. The `a_plus_b` example uses:
 
 ```yaml
-name: a_plus_b # problem name
+name: a_plus_b
 programs:
-  gen: # program name
-    info: !command
-      path: ./gen # command path
-      extra_args: [] # extra arguments, optional
+  gen:
+    info: !cpp
+      path: ./gen.cpp
     time_limit_secs: 1.0
     memory_limit_mb: 512.0
   std:
     info: !cpp
       path: ./std.cpp
-      compile_args: [-O2, -std=c++14] # compile arguments, default to [-O2]
-    time_limit_secs: 1.0
-    memory_limit_mb: 512.0
-  val:
-    info: !cpp
-      path: ./val.cpp
-      compile_args: [-O2, -I../assets/testlib/]
-    time_limit_secs: 1.0
-    memory_limit_mb: 512.0
-  chk:
-    info: !cpp
-      path: ../assets/testlib/checkers/lcmp.cpp
-      compile_args: [-O2, -I../assets/testlib/]
+      compile_args: [-O2, -std=c++14]
     time_limit_secs: 1.0
     memory_limit_mb: 512.0
 solution: std
-validator: val # optional
-checker: chk # optional
 test:
-  bundles: # data bundles
-    sample: # bundle name
+  bundles:
+    sample:
       cases:
-      - generator: gen # program name
-        args: [20] # arguments to program
+      - generator: gen
+        args: [20]
     main:
       cases:
       - generator: gen
@@ -64,19 +55,23 @@ test:
         args: [10000000]
       - generator: gen
         args: [1000000000]
-  tasks: # subtasks
+  tasks:
   - name: sample
     score: 1.0
     type: min
-    bundles: [sample] # bundle names
+    bundles: [sample]
   - name: main
     score: 99.0
-    type: sum
+    type: min
     bundles: [main]
-    dependencies: [sample] # task names
+    dependencies: [sample]
 ```
+
+Programs can also use `!command` or `!python`; omitted C++ compile args default to C++20 with warnings.
 
 ## Notes
 
 + Syzoj export is not fully supported yet.
-+ Generator use multiple threads to generate data, so it may be slower than single thread generator.
++ `gen` writes data to `data/` by default.
++ `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`.
++ `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data.
