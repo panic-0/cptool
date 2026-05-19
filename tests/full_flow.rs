@@ -775,14 +775,7 @@ struct TempWorkspace {
 
 impl TempWorkspace {
     fn new(prefix: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "{}-{}",
-            prefix,
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let path = std::env::temp_dir().join(format!("{prefix}-{}", temp_suffix()));
         std::fs::create_dir_all(&path).unwrap();
         Self { path }
     }
@@ -796,4 +789,14 @@ impl Drop for TempWorkspace {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.path);
     }
+}
+
+fn temp_suffix() -> String {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("{}-{nanos}-{counter}", std::process::id())
 }

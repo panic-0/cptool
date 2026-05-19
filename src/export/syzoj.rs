@@ -1,5 +1,5 @@
 use super::Exporter;
-use crate::tool::{ProgramInfo, TestTaskType};
+use crate::tool::{ProgramInfo, TestTaskType, resolve_path};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum ProgramType {
-    // TOOD: cpp11, cpp14, cpp17
+    // TODO: cpp11, cpp14, cpp17
     #[serde(rename = "cpp")]
     Cpp,
     // TODO: add more
@@ -175,13 +175,5 @@ impl Exporter for SyzojExporter {
         std::fs::write(export_dir.join("data.yml"), yaml)?;
 
         Ok(())
-    }
-}
-
-fn resolve_path(work_dir: &std::path::Path, path: &std::path::Path) -> std::path::PathBuf {
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        work_dir.join(path)
     }
 }

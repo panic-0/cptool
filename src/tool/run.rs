@@ -46,16 +46,11 @@ fn write_optional(path: &Option<PathBuf>, content: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool::temp_test_dir;
 
     #[test]
     fn write_optional_preserves_raw_bytes() {
-        let root = std::env::temp_dir().join(format!(
-            "cptool-run-write-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let root = temp_test_dir("cptool-run-write-test");
         let output_path = root.join("nested").join("stdout.bin");
         let bytes = [0, 0xff, b'\r', b'\n', b'x'];
 

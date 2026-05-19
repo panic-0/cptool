@@ -3,6 +3,7 @@ use super::problem::{
 };
 use super::program::{ProgramSpec, absolutize_program_info, run_spec};
 use super::schema::{CaseSelector, Problem};
+use super::unix_epoch_nanos;
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -262,7 +263,7 @@ impl DataGenerationLock {
                 let metadata = format!(
                     "pid={}\nstarted_nanos={}\n",
                     std::process::id(),
-                    unique_nanos()
+                    unix_epoch_nanos()
                 );
                 std::fs::write(path.join("owner"), metadata).with_context(|| {
                     format!("failed to write data generation lock {}", path.display())
@@ -658,13 +659,6 @@ fn remove_file_if_exists(path: &Path) -> Result<()> {
     }
 }
 
-fn unique_nanos() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -780,11 +774,7 @@ mod tests {
     }
 
     fn temp_dir(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "cptool-data-{label}-{}-{}",
-            std::process::id(),
-            unique_nanos()
-        ))
+        super::super::temp_test_dir(&format!("cptool-data-{label}"))
     }
 
     fn write_file(path: &Path, content: &str) {

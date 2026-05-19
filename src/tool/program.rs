@@ -527,6 +527,7 @@ fn decode_output(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool::temp_test_dir;
     use std::io::Cursor;
 
     #[test]
@@ -634,16 +635,5 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success())
-    }
-
-    fn temp_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "{}-{}",
-            prefix,
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
     }
 }

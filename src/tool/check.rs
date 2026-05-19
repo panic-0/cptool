@@ -1,6 +1,7 @@
 use super::data::{data_generation_status, generate_data};
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
 use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo};
+use super::temp_suffix;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -269,11 +270,7 @@ fn check_sample_generation(
         return None;
     }
 
-    let output_dir = std::env::temp_dir().join(format!(
-        "cptool-check-{}-{}",
-        std::process::id(),
-        unique_nanos()
-    ));
+    let output_dir = std::env::temp_dir().join(format!("cptool-check-{}", temp_suffix()));
     let result = generate_data(
         work_dir,
         Some(sample_bundle),
@@ -469,17 +466,10 @@ fn normalize_output_block(value: &str) -> String {
     lines.trim_matches('\n').to_string()
 }
 
-fn unique_nanos() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool::{init_package, slugify};
+    use crate::tool::{init_package, temp_test_dir};
 
     #[test]
     fn report_render_separates_errors_and_warnings() {
@@ -562,13 +552,5 @@ mod tests {
         );
 
         std::fs::remove_dir_all(root).unwrap();
-    }
-
-    fn temp_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "{}-{}",
-            prefix,
-            slugify(&unique_nanos().to_string()).unwrap()
-        ))
     }
 }

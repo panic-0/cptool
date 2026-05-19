@@ -421,16 +421,11 @@ pub(crate) fn classify_stress_failure(results: &[RunResult]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool::temp_test_dir;
 
     #[test]
     fn failure_input_stem_includes_sanitized_plan_name() {
-        let root = std::env::temp_dir().join(format!(
-            "cptool-stress-plan-failure-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let root = temp_test_dir("cptool-stress-plan-failure");
         std::fs::create_dir_all(&root).unwrap();
 
         let (stem, _file) = create_failure_input(&root, Some("small cases")).unwrap();

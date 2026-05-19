@@ -15,6 +15,7 @@ pub use data::{
     generate_data_report_with_options, generate_data_with_options,
 };
 pub use package::{init_package, slugify};
+pub(crate) use problem::resolve_path;
 pub use problem::{load_problem, parse_case_selector};
 pub use run::run;
 pub use schema::{
@@ -24,6 +25,25 @@ pub use schema::{
 };
 pub use stress::{StressSummary, stress, stress_with_summary};
 pub use stress_plan::{StressPlanOptions, stress_plan, stress_plan_with_options};
+
+fn unix_epoch_nanos() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
+}
+
+fn temp_suffix() -> String {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("{}-{}-{counter}", std::process::id(), unix_epoch_nanos())
+}
+
+#[cfg(test)]
+pub(crate) fn temp_test_dir(prefix: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("{prefix}-{}", temp_suffix()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::program::{is_stale_compile_lock, parse_lock_pid};
@@ -54,13 +74,7 @@ mod tests {
 
     #[test]
     fn init_package_creates_cptool_layout() {
-        let root = std::env::temp_dir().join(format!(
-            "cptool-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let root = temp_test_dir("cptool-test");
         let problem_dir = init_package(&root, "My Problem").unwrap();
         assert_eq!(problem_dir.file_name().unwrap(), "my-problem");
         assert!(problem_dir.join("problem.yaml").exists());
@@ -76,13 +90,7 @@ mod tests {
 
     #[test]
     fn init_package_writes_loadable_yaml_for_special_problem_names() {
-        let root = std::env::temp_dir().join(format!(
-            "cptool-yaml-name-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let root = temp_test_dir("cptool-yaml-name-test");
 
         let problem_dir = init_package(&root, "My Problem: #1").unwrap();
         let problem = load_problem(&problem_dir).unwrap();
@@ -102,13 +110,7 @@ mod tests {
 
     #[test]
     fn stale_compile_lock_detects_dead_process() {
-        let root = std::env::temp_dir().join(format!(
-            "cptool-lock-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let root = temp_test_dir("cptool-lock-test");
         std::fs::create_dir_all(&root).unwrap();
         let lock_path = root.join("compile.lock");
         std::fs::write(&lock_path, "pid=999999\n").unwrap();
