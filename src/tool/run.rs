@@ -29,16 +29,16 @@ pub fn run(options: RunOptions) -> Result<RunResult> {
         input.as_deref(),
         options.output_limit_bytes,
     )?;
-    write_optional(&options.stdout_path, &result.stdout)?;
-    write_optional(&options.stderr_path, &result.stderr)?;
+    write_optional(&options.stdout_path, &result.stdout_bytes)?;
+    write_optional(&options.stderr_path, &result.stderr_bytes)?;
     Ok(result)
 }
-fn write_optional(path: &Option<PathBuf>, content: &str) -> Result<()> {
+fn write_optional(path: &Option<PathBuf>, content: &[u8]) -> Result<()> {
     if let Some(path) = path {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, content.as_bytes())?;
+        std::fs::write(path, content)?;
     }
     Ok(())
 }
