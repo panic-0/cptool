@@ -129,6 +129,9 @@ impl Exporter for SyzojExporter {
                 crate::core::program::ProgramInfo::Command(_) => Err(anyhow::anyhow!(
                     "command program is not supported as special judge in syzoj exporter"
                 )),
+                crate::core::program::ProgramInfo::Python(_) => Err(anyhow::anyhow!(
+                    "python program is not supported as special judge in syzoj exporter"
+                )),
                 crate::core::program::ProgramInfo::Cpp(program) => {
                     let name = "spj.cpp".to_string();
                     let path = export_dir.join(&name);

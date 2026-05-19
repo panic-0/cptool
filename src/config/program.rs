@@ -28,7 +28,13 @@ pub struct CppProgram {
 }
 
 fn default_compile_args() -> Vec<String> {
-    vec!["-O2".to_string()]
+    vec![
+        "-O2".to_string(),
+        "-std=c++20".to_string(),
+        "-Wall".to_string(),
+        "-Wextra".to_string(),
+        "-pedantic".to_string(),
+    ]
 }
 
 impl std::fmt::Display for CppProgram {
@@ -48,6 +54,8 @@ pub enum ProgramInfo {
     Command(CommandProgram),
     #[serde(rename = "cpp")]
     Cpp(CppProgram),
+    #[serde(rename = "python")]
+    Python(CommandProgram),
 }
 
 impl std::fmt::Display for ProgramInfo {
@@ -55,6 +63,7 @@ impl std::fmt::Display for ProgramInfo {
         match self {
             ProgramInfo::Command(program) => write!(f, "Command {}", program),
             ProgramInfo::Cpp(program) => write!(f, "Cpp {}", program),
+            ProgramInfo::Python(program) => write!(f, "Python {}", program),
         }
     }
 }
@@ -68,6 +77,12 @@ impl ProgramInfo {
         match &self {
             ProgramInfo::Command(CommandProgram { path, extra_args }) => Ok(
                 core_problem::ProgramInfo::Command(core_problem::CommandProgram {
+                    path: path.into(),
+                    extra_args: extra_args.clone(),
+                }),
+            ),
+            ProgramInfo::Python(CommandProgram { path, extra_args }) => Ok(
+                core_problem::ProgramInfo::Python(core_problem::CommandProgram {
                     path: path.into(),
                     extra_args: extra_args.clone(),
                 }),

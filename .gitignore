@@ -1,4 +1,6 @@
 /target
+/example/**/.cptool
+/example/**/data
 /example/**/tmp
 /example/**/output
 /example/**/export

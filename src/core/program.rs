@@ -39,6 +39,7 @@ impl std::fmt::Display for CppProgram {
 pub enum ProgramInfo {
     Command(CommandProgram),
     Cpp(CppProgram),
+    Python(CommandProgram),
 }
 
 impl std::fmt::Display for ProgramInfo {
@@ -46,6 +47,7 @@ impl std::fmt::Display for ProgramInfo {
         match self {
             ProgramInfo::Command(program) => write!(f, "Command {}", program),
             ProgramInfo::Cpp(program) => write!(f, "Cpp {}", program),
+            ProgramInfo::Python(program) => write!(f, "Python {}", program),
         }
     }
 }
@@ -112,6 +114,21 @@ impl Program {
                     command.stdout(output);
                 }
                 command.args(args.clone());
+
+                self.execute_command(&mut command)
+            }
+            ProgramInfo::Python(CommandProgram { path, extra_args }) => {
+                let mut command = std::process::Command::new(
+                    std::env::var("PYTHON").unwrap_or_else(|_| "python".to_string()),
+                );
+                command.arg("-I").arg(path);
+                if let Some(input) = input {
+                    command.stdin(input);
+                }
+                if let Some(output) = output {
+                    command.stdout(output);
+                }
+                command.args(extra_args).args(args.clone());
 
                 self.execute_command(&mut command)
             }
