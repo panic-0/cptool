@@ -6,21 +6,15 @@ pub fn load_problem(work_dir: &Path) -> Result<Problem> {
     let path = work_dir.join("problem.yaml");
     let yaml = std::fs::read_to_string(&path)
         .with_context(|| format!("failed to read {}", path.display()))?;
-    serde_yaml::from_str(&yaml).with_context(|| format!("failed to parse {}", path.display()))
+    serde_yml::from_str(&yaml).with_context(|| format!("failed to parse {}", path.display()))
 }
 
 pub fn parse_case_selector(value: &str) -> Result<CaseSelector> {
     let Some(open) = value.rfind('[') else {
-        anyhow::bail!(
-            "case selector must look like bundle[index], got `{}`",
-            value
-        );
+        anyhow::bail!("case selector must look like bundle[index], got `{value}`");
     };
     if !value.ends_with(']') {
-        anyhow::bail!(
-            "case selector must look like bundle[index], got `{}`",
-            value
-        );
+        anyhow::bail!("case selector must look like bundle[index], got `{value}`");
     }
     let bundle = value[..open].to_string();
     let raw_index = &value[open + 1..value.len() - 1];

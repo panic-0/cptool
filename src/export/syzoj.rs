@@ -90,7 +90,7 @@ impl Exporter for SyzojExporter {
                     .map(|bundle_name| {
                         let bundle =
                             problem.test.bundles.get(bundle_name).ok_or_else(|| {
-                                anyhow::anyhow!("bundle `{}` not found", bundle_name)
+                                anyhow::anyhow!("bundle `{bundle_name}` not found")
                             })?;
                         bundle
                             .cases
@@ -124,7 +124,7 @@ impl Exporter for SyzojExporter {
                     .map(|task_name| {
                         task_id
                             .get(task_name)
-                            .ok_or_else(|| anyhow::anyhow!("task `{}` not found", task_name))
+                            .ok_or_else(|| anyhow::anyhow!("task `{task_name}` not found"))
                             .map(|&id| id + 1)
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -171,7 +171,7 @@ impl Exporter for SyzojExporter {
             special_judge,
         };
 
-        let yaml = serde_yaml::to_string(&result)?;
+        let yaml = serde_yml::to_string(&result)?;
         std::fs::write(export_dir.join("data.yml"), yaml)?;
 
         Ok(())
