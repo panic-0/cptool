@@ -54,6 +54,7 @@ pub fn stress_plan_with_options(options: StressPlanOptions<'_>) -> Result<Vec<St
             output_limit_bytes,
             plan_name: Some(&plan.name),
             print_progress: !summary_only,
+            print_warnings: !summary_only,
         })
         .with_context(|| format!("stress plan `{}` failed", plan.name))?;
         if summary_only {

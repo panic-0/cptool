@@ -25,6 +25,7 @@ pub fn stress(
         output_limit_bytes,
         plan_name: None,
         print_progress: true,
+        print_warnings: true,
     })?;
     Ok(())
 }
@@ -35,17 +36,30 @@ pub struct StressSummary {
     pub cases: usize,
     pub elapsed_ms: u128,
     pub against: Vec<String>,
+    pub empty_stdout_cases: usize,
+    pub all_empty_stdout_cases: usize,
 }
 
 impl StressSummary {
     pub fn summary_line(&self) -> String {
         let name = self.plan_name.as_deref().unwrap_or("stress");
         format!(
-            "{name}: ok cases={} against={} elapsed={}ms",
+            "{name}: ok cases={} against={} elapsed={}ms empty_stdout_cases={} all_empty_stdout_cases={} warnings={}",
             self.cases,
             self.against.join(","),
-            self.elapsed_ms
+            self.elapsed_ms,
+            self.empty_stdout_cases,
+            self.all_empty_stdout_cases,
+            self.warning_summary()
         )
+    }
+
+    fn warning_summary(&self) -> String {
+        if self.all_empty_stdout_cases == 0 {
+            "0".to_string()
+        } else {
+            format!("all_empty_output:{}", self.all_empty_stdout_cases)
+        }
     }
 }
 
@@ -58,6 +72,7 @@ pub(crate) struct StressRunOptions<'a> {
     pub(crate) output_limit_bytes: usize,
     pub(crate) plan_name: Option<&'a str>,
     pub(crate) print_progress: bool,
+    pub(crate) print_warnings: bool,
 }
 
 pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary> {
@@ -70,6 +85,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         output_limit_bytes,
         plan_name,
         print_progress,
+        print_warnings,
     } = options;
     let cases = args_by_case.len();
     if against.len() < 2 {
@@ -87,18 +103,35 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         .unwrap_or_else(|| work_dir.join("tests").join("failures"));
 
     let start = Instant::now();
+    let mut empty_stdout_cases = 0;
+    let mut all_empty_stdout_cases = 0;
     for (case0, args) in args_by_case.iter().enumerate() {
         let index = case0 + 1;
-        if let Some(failure) = run_stress_case(
+        let outcome = run_stress_case(
             &work_dir,
             &generator,
             &targets,
             args,
             index,
             output_limit_bytes,
-        )? {
+        )?;
+        if let Some(failure) = outcome.failure {
             save_stress_failure(&failure_dir, plan_name, failure)?;
             unreachable!("save_stress_failure always returns an error");
+        }
+        if outcome.empty_stdout {
+            empty_stdout_cases += 1;
+        }
+        if outcome.all_empty_stdout {
+            all_empty_stdout_cases += 1;
+            if print_warnings {
+                eprintln!(
+                    "warning: all_empty_output case={} against={} input_bytes={}",
+                    index,
+                    against.join(","),
+                    outcome.input_bytes
+                );
+            }
         }
         if print_progress {
             if let Some(plan_name) = plan_name {
@@ -113,7 +146,16 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         cases,
         elapsed_ms: start.elapsed().as_millis(),
         against: against.to_vec(),
+        empty_stdout_cases,
+        all_empty_stdout_cases,
     })
+}
+
+struct StressCaseOutcome {
+    failure: Option<StressFailure>,
+    input_bytes: usize,
+    empty_stdout: bool,
+    all_empty_stdout: bool,
 }
 
 struct StressFailure {
@@ -137,7 +179,7 @@ fn run_stress_case(
     args: &[String],
     index: usize,
     output_limit_bytes: usize,
-) -> Result<Option<StressFailure>> {
+) -> Result<StressCaseOutcome> {
     let gen_result = run_spec(work_dir, generator, args, None, output_limit_bytes)?;
     if !gen_result.ok {
         anyhow::bail!(
@@ -162,14 +204,35 @@ fn run_stress_case(
         }
         results.push(result);
     }
-    Ok(
-        classify_stress_failure(&results).map(|reason| StressFailure {
-            case_index: index,
-            reason,
-            input,
-            results,
-        }),
-    )
+    let input_bytes = input.len();
+    if let Some(reason) = classify_stress_failure(&results) {
+        return Ok(StressCaseOutcome {
+            failure: Some(StressFailure {
+                case_index: index,
+                reason,
+                input,
+                results,
+            }),
+            input_bytes,
+            empty_stdout: false,
+            all_empty_stdout: false,
+        });
+    }
+    let successful_non_empty_input = input_bytes > 0;
+    let empty_stdout = successful_non_empty_input
+        && results
+            .iter()
+            .any(|result| result.ok && result.stdout_bytes.is_empty());
+    let all_empty_stdout = successful_non_empty_input
+        && results
+            .iter()
+            .all(|result| result.ok && result.stdout_bytes.is_empty());
+    Ok(StressCaseOutcome {
+        failure: None,
+        input_bytes,
+        empty_stdout,
+        all_empty_stdout,
+    })
 }
 
 fn save_stress_failure(
@@ -358,11 +421,30 @@ mod tests {
             cases: 300,
             elapsed_ms: 1240,
             against: vec!["std".to_string(), "brute".to_string()],
+            empty_stdout_cases: 0,
+            all_empty_stdout_cases: 0,
         };
 
         assert_eq!(
             summary.summary_line(),
-            "small: ok cases=300 against=std,brute elapsed=1240ms"
+            "small: ok cases=300 against=std,brute elapsed=1240ms empty_stdout_cases=0 all_empty_stdout_cases=0 warnings=0"
+        );
+    }
+
+    #[test]
+    fn stress_summary_line_reports_all_empty_output_warning_count() {
+        let summary = StressSummary {
+            plan_name: Some("small".to_string()),
+            cases: 3,
+            elapsed_ms: 7,
+            against: vec!["std".to_string(), "brute".to_string()],
+            empty_stdout_cases: 3,
+            all_empty_stdout_cases: 3,
+        };
+
+        assert_eq!(
+            summary.summary_line(),
+            "small: ok cases=3 against=std,brute elapsed=7ms empty_stdout_cases=3 all_empty_stdout_cases=3 warnings=all_empty_output:3"
         );
     }
 }
