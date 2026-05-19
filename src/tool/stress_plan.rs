@@ -1,12 +1,9 @@
 use super::problem::load_problem;
 use super::schema::StressPlan;
 use super::stress::{StressRunOptions, StressSummary, run_stress};
+use super::stress_args::plan_args_by_case;
 use anyhow::{Context, Result};
 use std::path::Path;
-
-const DEFAULT_SEED_BASE: u64 = 0xc2b2_ae3d_27d4_eb4f;
-const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct StressPlanOptions<'a> {
@@ -49,7 +46,7 @@ pub fn stress_plan_with_options(options: StressPlanOptions<'_>) -> Result<Vec<St
             work_dir,
             generator: &plan.generator,
             against: &plan.against,
-            args_by_case: args_by_case(plan),
+            args_by_case: plan_args_by_case(plan),
             failure_dir,
             output_limit_bytes,
             plan_name: Some(&plan.name),
@@ -85,44 +82,6 @@ fn select_plans<'a>(plans: &'a [StressPlan], name: Option<&str>) -> Result<Vec<&
     Ok(plans.iter().collect())
 }
 
-fn args_by_case(plan: &StressPlan) -> Vec<Vec<String>> {
-    (0..plan.cases)
-        .map(|case0| {
-            let case = case0 + 1;
-            let seed = derive_seed(plan, case0);
-            plan.args
-                .iter()
-                .map(|arg| expand_arg(arg, case, case0, seed))
-                .collect()
-        })
-        .collect()
-}
-
-fn expand_arg(arg: &str, case: usize, case0: usize, seed: u64) -> String {
-    arg.replace("{seed}", &seed.to_string())
-        .replace("{case0}", &case0.to_string())
-        .replace("{case}", &case.to_string())
-}
-
-fn derive_seed(plan: &StressPlan, case0: usize) -> u64 {
-    let mut state = FNV_OFFSET_BASIS ^ plan.seed_base.unwrap_or(DEFAULT_SEED_BASE);
-    for byte in plan.name.as_bytes() {
-        state ^= u64::from(*byte);
-        state = state.wrapping_mul(FNV_PRIME);
-    }
-    state ^= (case0 as u64)
-        .wrapping_add(1)
-        .wrapping_mul(0x9e37_79b9_7f4a_7c15);
-    splitmix64(state)
-}
-
-fn splitmix64(mut value: u64) -> u64 {
-    value = value.wrapping_add(0x9e37_79b9_7f4a_7c15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-    value ^ (value >> 31)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,7 +102,7 @@ mod tests {
             seed_base: Some(42),
         };
 
-        let args = args_by_case(&plan);
+        let args = plan_args_by_case(&plan);
 
         assert_eq!(args.len(), 3);
         assert_eq!(args[0][1], "--case=1");
@@ -169,8 +128,8 @@ mod tests {
         let mut second = first.clone();
         second.seed_base = Some(2);
 
-        assert_eq!(args_by_case(&first), args_by_case(&first));
-        assert_ne!(args_by_case(&first), args_by_case(&second));
+        assert_eq!(plan_args_by_case(&first), plan_args_by_case(&first));
+        assert_ne!(plan_args_by_case(&first), plan_args_by_case(&second));
     }
 
     #[test]

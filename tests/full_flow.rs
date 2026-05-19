@@ -110,6 +110,12 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(stress_plan_stdout.contains("--name"));
     assert!(stress_plan_stdout.contains("Run only the named stress plan"));
     assert!(stress_plan_stdout.contains("--summary-only"));
+
+    let stress = run_cptool(["stress", "--help"], None);
+    let stress_stdout = String::from_utf8_lossy(&stress.stdout);
+    assert!(stress_stdout.contains("{seed}"));
+    assert!(stress_stdout.contains("{case}"));
+    assert!(stress_stdout.contains("{case0}"));
 }
 
 #[test]
@@ -414,7 +420,8 @@ fn stress_plan_summary_only_suppresses_case_progress() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    assert!(stdout.contains("tiny: ok cases=2 against=std,brute elapsed="));
+    assert!(stdout.contains("tiny: ok cases=2 unique_input_hashes=1 against=std,brute elapsed="));
+    assert!(stdout.contains("unique_input_hashes=1"));
     assert!(stdout.contains("empty_stdout_cases=0"));
     assert!(stdout.contains("all_empty_stdout_cases=0"));
     assert!(stdout.contains("warnings=0"));
@@ -463,6 +470,83 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
 }
 
 #[test]
+fn stress_reports_single_unique_input_hash_for_fixed_args() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-fixed-args");
+    run_cptool(["init", "stress_fixed_args", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("stress_fixed_args");
+    configure_python_problem(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "stress",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--generator",
+            "gen",
+            "--against",
+            "std",
+            "--against",
+            "brute",
+            "--cases",
+            "3",
+            "--",
+            "5",
+            "8",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("stress passed: 3 cases"));
+    assert!(stdout.contains("unique_input_hashes=1"));
+}
+
+#[test]
+fn stress_expands_case_placeholder_and_reports_unique_inputs() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-case-placeholder");
+    run_cptool(
+        ["init", "stress_case_placeholder", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("stress_case_placeholder");
+    configure_python_problem(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "stress",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--generator",
+            "gen",
+            "--against",
+            "std",
+            "--against",
+            "brute",
+            "--cases",
+            "3",
+            "--",
+            "{case}",
+            "10",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("case 1 ok"));
+    assert!(stdout.contains("case 2 ok"));
+    assert!(stdout.contains("case 3 ok"));
+    assert!(stdout.contains("unique_input_hashes=3"));
+}
+
+#[test]
 fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
     if !python_available() {
         return;
@@ -499,7 +583,8 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert!(stdout.contains("tiny: ok cases=2 against=std,brute elapsed="));
+    assert!(stdout.contains("tiny: ok cases=2 unique_input_hashes=1 against=std,brute elapsed="));
+    assert!(stdout.contains("unique_input_hashes=1"));
     assert!(stdout.contains("empty_stdout_cases=2"));
     assert!(stdout.contains("all_empty_stdout_cases=2"));
     assert!(stdout.contains("warnings=all_empty_output:2"));

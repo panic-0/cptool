@@ -6,6 +6,7 @@ mod program;
 mod run;
 mod schema;
 mod stress;
+mod stress_args;
 mod stress_plan;
 
 pub use check::{CheckIssue, CheckReport, CheckSeverity, check_problem_package};
@@ -21,7 +22,7 @@ pub use schema::{
     ProgramInfo, RunOptions, RunResult, Stress, StressPlan, Test, TestBundle, TestCase, TestTask,
     TestTaskType,
 };
-pub use stress::{StressSummary, stress};
+pub use stress::{StressSummary, stress, stress_with_summary};
 pub use stress_plan::{StressPlanOptions, stress_plan, stress_plan_with_options};
 #[cfg(test)]
 mod tests {

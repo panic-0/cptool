@@ -1,7 +1,10 @@
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
 use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
 use super::schema::RunResult;
+use super::stress_args::direct_stress_args_by_case;
 use anyhow::Result;
+use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -15,7 +18,28 @@ pub fn stress(
     failure_dir: Option<&Path>,
     output_limit_bytes: usize,
 ) -> Result<()> {
-    let args_by_case = (0..cases).map(|_| args.to_vec()).collect();
+    stress_with_summary(
+        work_dir,
+        generator,
+        against,
+        cases,
+        args,
+        failure_dir,
+        output_limit_bytes,
+    )?;
+    Ok(())
+}
+
+pub fn stress_with_summary(
+    work_dir: &Path,
+    generator: &str,
+    against: &[String],
+    cases: usize,
+    args: &[String],
+    failure_dir: Option<&Path>,
+    output_limit_bytes: usize,
+) -> Result<StressSummary> {
+    let args_by_case = direct_stress_args_by_case(args, cases);
     run_stress(StressRunOptions {
         work_dir,
         generator,
@@ -26,8 +50,7 @@ pub fn stress(
         plan_name: None,
         print_progress: true,
         print_warnings: true,
-    })?;
-    Ok(())
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,14 +61,16 @@ pub struct StressSummary {
     pub against: Vec<String>,
     pub empty_stdout_cases: usize,
     pub all_empty_stdout_cases: usize,
+    pub unique_input_hashes: usize,
 }
 
 impl StressSummary {
     pub fn summary_line(&self) -> String {
         let name = self.plan_name.as_deref().unwrap_or("stress");
         format!(
-            "{name}: ok cases={} against={} elapsed={}ms empty_stdout_cases={} all_empty_stdout_cases={} warnings={}",
+            "{name}: ok cases={} unique_input_hashes={} against={} elapsed={}ms empty_stdout_cases={} all_empty_stdout_cases={} warnings={}",
             self.cases,
+            self.unique_input_hashes,
             self.against.join(","),
             self.elapsed_ms,
             self.empty_stdout_cases,
@@ -103,6 +128,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         .unwrap_or_else(|| work_dir.join("tests").join("failures"));
 
     let start = Instant::now();
+    let mut input_hashes = HashSet::new();
     let mut empty_stdout_cases = 0;
     let mut all_empty_stdout_cases = 0;
     for (case0, args) in args_by_case.iter().enumerate() {
@@ -119,6 +145,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             save_stress_failure(&failure_dir, plan_name, failure)?;
             unreachable!("save_stress_failure always returns an error");
         }
+        input_hashes.insert(outcome.input_hash);
         if outcome.empty_stdout {
             empty_stdout_cases += 1;
         }
@@ -148,11 +175,13 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         against: against.to_vec(),
         empty_stdout_cases,
         all_empty_stdout_cases,
+        unique_input_hashes: input_hashes.len(),
     })
 }
 
 struct StressCaseOutcome {
     failure: Option<StressFailure>,
+    input_hash: Vec<u8>,
     input_bytes: usize,
     empty_stdout: bool,
     all_empty_stdout: bool,
@@ -193,6 +222,7 @@ fn run_stress_case(
         );
     }
     let input = gen_result.stdout_bytes;
+    let input_hash = Sha256::digest(&input).to_vec();
     let mut results = Vec::new();
     for target in targets {
         let result = run_spec(work_dir, target, &[], Some(&input), output_limit_bytes)?;
@@ -213,6 +243,7 @@ fn run_stress_case(
                 input,
                 results,
             }),
+            input_hash,
             input_bytes,
             empty_stdout: false,
             all_empty_stdout: false,
@@ -229,6 +260,7 @@ fn run_stress_case(
             .all(|result| result.ok && result.stdout_bytes.is_empty());
     Ok(StressCaseOutcome {
         failure: None,
+        input_hash,
         input_bytes,
         empty_stdout,
         all_empty_stdout,
@@ -423,11 +455,12 @@ mod tests {
             against: vec!["std".to_string(), "brute".to_string()],
             empty_stdout_cases: 0,
             all_empty_stdout_cases: 0,
+            unique_input_hashes: 300,
         };
 
         assert_eq!(
             summary.summary_line(),
-            "small: ok cases=300 against=std,brute elapsed=1240ms empty_stdout_cases=0 all_empty_stdout_cases=0 warnings=0"
+            "small: ok cases=300 unique_input_hashes=300 against=std,brute elapsed=1240ms empty_stdout_cases=0 all_empty_stdout_cases=0 warnings=0"
         );
     }
 
@@ -440,11 +473,12 @@ mod tests {
             against: vec!["std".to_string(), "brute".to_string()],
             empty_stdout_cases: 3,
             all_empty_stdout_cases: 3,
+            unique_input_hashes: 1,
         };
 
         assert_eq!(
             summary.summary_line(),
-            "small: ok cases=3 against=std,brute elapsed=7ms empty_stdout_cases=3 all_empty_stdout_cases=3 warnings=all_empty_output:3"
+            "small: ok cases=3 unique_input_hashes=1 against=std,brute elapsed=7ms empty_stdout_cases=3 all_empty_stdout_cases=3 warnings=all_empty_output:3"
         );
     }
 }

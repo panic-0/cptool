@@ -99,7 +99,10 @@ enum Commands {
         )]
         summary_only: bool,
     },
-    #[command(about = "Stress test several programs on temporary generated inputs")]
+    #[command(
+        about = "Stress test several programs on temporary generated inputs",
+        long_about = "Stress test several programs on temporary generated inputs. Generator args after -- support {seed}, {case}, and {case0}; {case} is 1-based, {case0} is 0-based, and {seed} is deterministic."
+    )]
     Stress {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
@@ -121,7 +124,10 @@ enum Commands {
         output_limit_bytes: usize,
         #[arg(long, help = "Directory for failed inputs and per-program outputs")]
         failure_dir: Option<PathBuf>,
-        #[arg(last = true, help = "Arguments passed to the generator after --")]
+        #[arg(
+            last = true,
+            help = "Arguments passed to the generator after --; supports {seed}, {case}, and {case0}"
+        )]
         args: Vec<String>,
     },
     #[command(
@@ -247,7 +253,7 @@ fn main() -> anyhow::Result<()> {
             failure_dir,
             args,
         } => {
-            tool::stress(
+            let summary = tool::stress_with_summary(
                 &work_dir,
                 &generator,
                 &against,
@@ -256,7 +262,10 @@ fn main() -> anyhow::Result<()> {
                 failure_dir.as_deref(),
                 output_limit_bytes,
             )?;
-            println!("stress passed: {cases} cases");
+            println!(
+                "stress passed: {} cases unique_input_hashes={}",
+                summary.cases, summary.unique_input_hashes
+            );
         }
         Commands::StressPlan {
             work_dir,
