@@ -9,6 +9,7 @@ mod stress;
 mod stress_args;
 mod stress_plan;
 
+pub(crate) use crate::support::{temp_suffix, unix_epoch_nanos};
 pub use check::{CheckIssue, CheckReport, CheckSeverity, check_problem_package};
 pub use data::{
     GenerateOptions, GenerateReport, GenerateWarning, GenerateWarningKind, generate_data,
@@ -25,19 +26,6 @@ pub use schema::{
 };
 pub use stress::{StressSummary, stress, stress_with_summary};
 pub use stress_plan::{StressPlanOptions, stress_plan, stress_plan_with_options};
-
-fn unix_epoch_nanos() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0)
-}
-
-fn temp_suffix() -> String {
-    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    format!("{}-{}-{counter}", std::process::id(), unix_epoch_nanos())
-}
 
 #[cfg(test)]
 pub(crate) fn temp_test_dir(prefix: &str) -> std::path::PathBuf {

@@ -521,6 +521,7 @@ fn decode_output(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::support::python_available;
     use crate::tool::temp_test_dir;
     use std::io::Cursor;
 
@@ -619,15 +620,5 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
         assert!(access_violation_hint.contains("access violation"));
 
         assert!(runtime_exit_diagnostic(Some(1)).is_none());
-    }
-
-    fn python_available() -> bool {
-        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python".to_string());
-        std::process::Command::new(python)
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
     }
 }

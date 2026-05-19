@@ -1,3 +1,4 @@
+use cptool::test_support::{python_available, temp_suffix};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -761,14 +762,6 @@ fn run_cptool_allow_failure<const N: usize>(
     command.output().unwrap()
 }
 
-fn python_available() -> bool {
-    let python = std::env::var("PYTHON").unwrap_or_else(|_| "python".to_string());
-    Command::new(python)
-        .arg("--version")
-        .status()
-        .is_ok_and(|status| status.success())
-}
-
 struct TempWorkspace {
     path: PathBuf,
 }
@@ -789,14 +782,4 @@ impl Drop for TempWorkspace {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.path);
     }
-}
-
-fn temp_suffix() -> String {
-    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    format!("{}-{nanos}-{counter}", std::process::id())
 }
