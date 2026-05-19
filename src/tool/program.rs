@@ -1,7 +1,7 @@
 use super::problem::resolve_path;
 use super::schema::{
     CommandProgram, CppProgram, DEFAULT_MEMORY_LIMIT_MB, DEFAULT_TIME_LIMIT_SECS, Problem,
-    ProgramInfo, RunResult,
+    ProgramInfo, RunResult, default_compile_args,
 };
 use anyhow::{Context, Result};
 use process_control::{ChildExt, Control};
@@ -61,13 +61,7 @@ fn spec_from_source(label: &str, source: &Path) -> Result<ProgramSpec> {
     let info = match source.extension().and_then(|ext| ext.to_str()) {
         Some("cpp") | Some("cc") | Some("cxx") => ProgramInfo::Cpp(CppProgram {
             path: source.to_path_buf(),
-            compile_args: vec![
-                "-O2".to_string(),
-                "-std=c++20".to_string(),
-                "-Wall".to_string(),
-                "-Wextra".to_string(),
-                "-pedantic".to_string(),
-            ],
+            compile_args: default_compile_args(),
         }),
         Some("py") => ProgramInfo::Python(CommandProgram {
             path: source.to_path_buf(),

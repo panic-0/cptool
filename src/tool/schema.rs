@@ -117,7 +117,7 @@ pub struct CppProgram {
     pub compile_args: Vec<String>,
 }
 
-fn default_compile_args() -> Vec<String> {
+pub(crate) fn default_compile_args() -> Vec<String> {
     vec![
         "-O2".to_string(),
         "-std=c++20".to_string(),
