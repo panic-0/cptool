@@ -1,5 +1,5 @@
 use super::Exporter;
-use crate::core::problem::test::TestTaskType;
+use crate::tool::{ProgramInfo, TestTaskType};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -66,7 +66,12 @@ pub struct Problem {
 pub struct SyzojExporter;
 
 impl Exporter for SyzojExporter {
-    fn export(problem: &crate::core::problem::Problem, export_dir: &std::path::Path) -> Result<()> {
+    fn export(
+        problem: &crate::tool::Problem,
+        work_dir: &std::path::Path,
+        data_dir: &std::path::Path,
+        export_dir: &std::path::Path,
+    ) -> Result<()> {
         use std::collections::HashMap;
         let mut task_id = HashMap::new();
         problem.test.tasks.iter().enumerate().for_each(|(i, task)| {
@@ -90,13 +95,21 @@ impl Exporter for SyzojExporter {
                         bundle
                             .cases
                             .iter()
-                            .map(|case| {
+                            .enumerate()
+                            .map(|(case_index, _case)| {
                                 let name = format!("{counter}");
                                 let input_path = export_dir.join(format!("{name}.in"));
                                 let answer_path = export_dir.join(format!("{name}.ans"));
+                                let case_name = format!("{bundle_name}-{case_index}");
                                 counter += 1;
-                                std::fs::copy(&case.input_path, input_path)?;
-                                std::fs::copy(&case.answer_path, answer_path)?;
+                                std::fs::copy(
+                                    data_dir.join(format!("{case_name}.in")),
+                                    input_path,
+                                )?;
+                                std::fs::copy(
+                                    data_dir.join(format!("{case_name}.ans")),
+                                    answer_path,
+                                )?;
                                 Ok(name)
                             })
                             .collect::<Result<Vec<_>>>()
@@ -124,18 +137,22 @@ impl Exporter for SyzojExporter {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let special_judge = if let Some(checker) = &problem.checker {
+        let special_judge = if let Some(checker_name) = &problem.checker_name {
+            let checker = problem
+                .programs
+                .get(checker_name)
+                .ok_or_else(|| anyhow::anyhow!("checker `{checker_name}` not found"))?;
             match &checker.info {
-                crate::core::program::ProgramInfo::Command(_) => Err(anyhow::anyhow!(
+                ProgramInfo::Command(_) => Err(anyhow::anyhow!(
                     "command program is not supported as special judge in syzoj exporter"
                 )),
-                crate::core::program::ProgramInfo::Python(_) => Err(anyhow::anyhow!(
+                ProgramInfo::Python(_) => Err(anyhow::anyhow!(
                     "python program is not supported as special judge in syzoj exporter"
                 )),
-                crate::core::program::ProgramInfo::Cpp(program) => {
+                ProgramInfo::Cpp(program) => {
                     let name = "spj.cpp".to_string();
                     let path = export_dir.join(&name);
-                    std::fs::copy(&program.source_path, path)?;
+                    std::fs::copy(resolve_path(work_dir, &program.path), path)?;
                     Ok(Some(Program {
                         language: ProgramType::Cpp,
                         file_name: name,
@@ -158,5 +175,13 @@ impl Exporter for SyzojExporter {
         std::fs::write(export_dir.join("data.yml"), yaml)?;
 
         Ok(())
+    }
+}
+
+fn resolve_path(work_dir: &std::path::Path, path: &std::path::Path) -> std::path::PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        work_dir.join(path)
     }
 }

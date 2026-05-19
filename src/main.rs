@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use cptool::config::problem as config_problem;
 use cptool::export::{Exporter, OnlineJudge, syzoj};
 use cptool::tool::{self, RunOptions};
 use std::path::PathBuf;
@@ -75,7 +74,7 @@ enum Commands {
     },
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Init { id, root } => {
@@ -172,11 +171,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 std::env::current_dir()?.join(work_dir)
             };
-            std::env::set_current_dir(&work_dir)?;
-            let problem_yaml = std::fs::read_to_string("problem.yaml")?;
-            let problem_config: config_problem::Problem = serde_yaml::from_str(&problem_yaml)?;
             let data_dir = work_dir.join("data");
-            let problem = problem_config.generate(&data_dir)?;
+            let problem = tool::load_problem(&work_dir)?;
+            tool::generate_data(&work_dir, None, None, Some(&data_dir), 33_554_432)?;
 
             match oj {
                 OnlineJudge::Syzoj => {
@@ -185,7 +182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         std::fs::remove_dir_all(&export_dir)?;
                     }
                     std::fs::create_dir_all(&export_dir)?;
-                    syzoj::SyzojExporter::export(&problem, &export_dir)?;
+                    syzoj::SyzojExporter::export(&problem, &work_dir, &data_dir, &export_dir)?;
                     println!("exported {}", export_dir.display());
                 }
             }

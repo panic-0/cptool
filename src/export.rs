@@ -9,5 +9,10 @@ pub enum OnlineJudge {
 }
 
 pub trait Exporter {
-    fn export(problem: &crate::core::problem::Problem, output_dir: &std::path::Path) -> Result<()>;
+    fn export(
+        problem: &crate::tool::Problem,
+        work_dir: &std::path::Path,
+        data_dir: &std::path::Path,
+        output_dir: &std::path::Path,
+    ) -> Result<()>;
 }

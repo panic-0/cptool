@@ -1,0 +1,102 @@
+use super::data::generate_data;
+use super::schema::{CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem};
+use anyhow::{Context, Result};
+use std::path::{Path, PathBuf};
+pub fn load_problem(work_dir: &Path) -> Result<Problem> {
+    let path = work_dir.join("problem.yaml");
+    let yaml = std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    serde_yaml::from_str(&yaml).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub fn parse_case_selector(value: &str) -> Result<CaseSelector> {
+    let Some(open) = value.rfind('[') else {
+        anyhow::bail!(
+            "case selector must look like bundle[index], got `{}`",
+            value
+        );
+    };
+    if !value.ends_with(']') {
+        anyhow::bail!(
+            "case selector must look like bundle[index], got `{}`",
+            value
+        );
+    }
+    let bundle = value[..open].to_string();
+    let raw_index = &value[open + 1..value.len() - 1];
+    if bundle.is_empty() {
+        anyhow::bail!("case selector bundle cannot be empty");
+    }
+    let index = raw_index
+        .parse::<usize>()
+        .with_context(|| format!("invalid case selector index `{raw_index}`"))?;
+    Ok(CaseSelector { bundle, index })
+}
+pub(crate) fn resolve_run_input(
+    work_dir: &Path,
+    problem: &Problem,
+    selector: Option<&str>,
+    stdin_text: Option<String>,
+    stdin_path: Option<PathBuf>,
+) -> Result<Option<Vec<u8>>> {
+    if let Some(text) = stdin_text {
+        return Ok(Some(text.into_bytes()));
+    }
+    if let Some(path) = stdin_path {
+        return Ok(Some(std::fs::read(resolve_path(work_dir, &path))?));
+    }
+    let selector = match selector {
+        Some(selector) => parse_case_selector(selector)?,
+        None => default_selector(problem)?,
+    };
+    let input_path = work_dir
+        .join("data")
+        .join(case_file_stem(&selector))
+        .with_extension("in");
+    if !input_path.exists() {
+        generate_data(
+            work_dir,
+            Some(&selector.bundle),
+            Some(&format!("{}[{}]", selector.bundle, selector.index)),
+            None,
+            DEFAULT_OUTPUT_LIMIT_BYTES,
+        )?;
+    }
+    Ok(Some(std::fs::read(&input_path).with_context(|| {
+        format!("failed to read {}", input_path.display())
+    })?))
+}
+
+fn default_selector(problem: &Problem) -> Result<CaseSelector> {
+    if let Some(task) = problem.test.tasks.first() {
+        if let Some(bundle) = task.bundles.first() {
+            return Ok(CaseSelector {
+                bundle: bundle.clone(),
+                index: 0,
+            });
+        }
+    }
+    let Some(bundle) = problem.test.bundles.keys().min().cloned() else {
+        anyhow::bail!("problem.yaml has no test bundles");
+    };
+    Ok(CaseSelector { bundle, index: 0 })
+}
+pub(crate) fn resolve_path(work_dir: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        work_dir.join(path)
+    }
+}
+
+pub(crate) fn normalize_work_dir(work_dir: &Path) -> Result<PathBuf> {
+    if work_dir.is_absolute() {
+        Ok(work_dir.to_path_buf())
+    } else {
+        Ok(std::env::current_dir()?.join(work_dir))
+    }
+}
+
+pub(crate) fn case_file_stem(selector: &CaseSelector) -> String {
+    format!("{}-{}", selector.bundle, selector.index)
+}
