@@ -1,4 +1,5 @@
 /target
+/dist
 /example/**/.cptool
 /example/**/data
 /example/**/tmp
