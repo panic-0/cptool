@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use cptool::config::problem as config_problem;
-use cptool::export::{syzoj, Exporter, OnlineJudge};
+use cptool::export::{Exporter, OnlineJudge, syzoj};
 use cptool::tool::{self, RunOptions};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &args,
                 failure_dir.as_deref(),
             )?;
-            println!("stress passed: {} cases", cases);
+            println!("stress passed: {cases} cases");
         }
         Commands::Export { work_dir, oj } => {
             let start = Instant::now();

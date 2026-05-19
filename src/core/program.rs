@@ -45,9 +45,9 @@ pub enum ProgramInfo {
 impl std::fmt::Display for ProgramInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProgramInfo::Command(program) => write!(f, "Command {}", program),
-            ProgramInfo::Cpp(program) => write!(f, "Cpp {}", program),
-            ProgramInfo::Python(program) => write!(f, "Python {}", program),
+            ProgramInfo::Command(program) => write!(f, "Command {program}"),
+            ProgramInfo::Cpp(program) => write!(f, "Cpp {program}"),
+            ProgramInfo::Python(program) => write!(f, "Python {program}"),
         }
     }
 }

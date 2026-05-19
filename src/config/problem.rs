@@ -80,7 +80,7 @@ impl Problem {
         let mut used_bundles = std::collections::HashSet::new();
         for task in self.test.tasks.iter() {
             for bundle_name in task.bundles.iter() {
-                if self.test.bundles.get(bundle_name).is_none() {
+                if !self.test.bundles.contains_key(bundle_name) {
                     return Err(anyhow::anyhow!("test bundle `{}` not found", bundle_name));
                 }
                 used_bundles.insert(bundle_name);
@@ -88,7 +88,7 @@ impl Problem {
         }
         for bundle_name in self.test.bundles.keys() {
             if !used_bundles.contains(bundle_name) {
-                println!("warning: unused test bundle `{}`", bundle_name);
+                println!("warning: unused test bundle `{bundle_name}`");
             }
         }
 

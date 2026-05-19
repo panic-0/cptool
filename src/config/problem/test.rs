@@ -42,19 +42,19 @@ impl TestCase {
         })?;
         generator
             .execute(self.args.clone(), None, Some(input))
-            .with_context(|| format!("failed to generate data for test case `{}`", self))?;
+            .with_context(|| format!("failed to generate data for test case `{self}`"))?;
 
         let input = std::fs::File::open(input_path)?;
         let answer = std::fs::File::create(answer_path)?;
         solution
             .execute(vec![], Some(input), Some(answer))
-            .with_context(|| format!("failed to generate answer for test case `{}`", self))?;
+            .with_context(|| format!("failed to generate answer for test case `{self}`"))?;
 
         if let Some(validator) = validator {
             let input = std::fs::File::open(input_path)?;
             validator
                 .execute(vec![], Some(input), None)
-                .with_context(|| format!("failed to validate test case `{}`", self))?;
+                .with_context(|| format!("failed to validate test case `{self}`"))?;
         }
 
         Ok(core_problem::test::TestCase {
@@ -134,9 +134,9 @@ impl Test {
                     .enumerate()
                     .map(|(index, case)| {
                         let case = case.clone();
-                        let case_name = format!("{}-{}", bundle_name, index);
-                        let input_path = output_dir.join(format!("{}.in", case_name));
-                        let answer_path = output_dir.join(format!("{}.ans", case_name));
+                        let case_name = format!("{bundle_name}-{index}");
+                        let input_path = output_dir.join(format!("{case_name}.in"));
+                        let answer_path = output_dir.join(format!("{case_name}.ans"));
                         let programs = programs.clone();
                         let solution = solution.clone();
                         let validator = validator.cloned();

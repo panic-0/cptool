@@ -72,8 +72,7 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     std::fs::write(
         problem_dir.join("problem.yaml"),
         format!(
-            "name: {}\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\nsolution: std\ntest:\n  bundles:\n    sample:\n      cases:\n      - generator: gen\n        args: []\n  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n",
-            id
+            "name: {id}\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\nsolution: std\ntest:\n  bundles:\n    sample:\n      cases:\n      - generator: gen\n        args: []\n  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n",
         ),
     )?;
     Ok(problem_dir)
@@ -125,7 +124,7 @@ pub fn parse_case_selector(value: &str) -> Result<CaseSelector> {
     }
     let index = raw_index
         .parse::<usize>()
-        .with_context(|| format!("invalid case selector index `{}`", raw_index))?;
+        .with_context(|| format!("invalid case selector index `{raw_index}`"))?;
     Ok(CaseSelector { bundle, index })
 }
 
@@ -182,7 +181,7 @@ pub fn generate_data(
         .map(|name| {
             programs
                 .get(name)
-                .with_context(|| format!("validator `{}` not found", name))
+                .with_context(|| format!("validator `{name}` not found"))
         })
         .transpose()?;
 
@@ -203,7 +202,7 @@ pub fn generate_data(
             .test
             .bundles
             .get(bundle)
-            .with_context(|| format!("bundle `{}` not found", bundle))?;
+            .with_context(|| format!("bundle `{bundle}` not found"))?;
         for index in 0..bundle_cases.cases.len() {
             generated.extend(generate_one_case(
                 &work_dir,
@@ -300,7 +299,7 @@ pub fn stress(
                 stem.display()
             );
         }
-        println!("case {} ok", index);
+        println!("case {index} ok");
     }
     Ok(())
 }
@@ -318,7 +317,7 @@ fn resolve_run_spec(
     let program = problem
         .programs
         .get(name)
-        .with_context(|| format!("program `{}` not found in problem.yaml", name))?;
+        .with_context(|| format!("program `{name}` not found in problem.yaml"))?;
     Ok(ProgramSpec {
         label: name.to_string(),
         info: absolutize_program_info(work_dir, &program.info),
@@ -730,7 +729,7 @@ fn normalize_output(text: &str) -> String {
 fn next_failure_id(failure_dir: &Path) -> Result<usize> {
     let mut id = 1;
     loop {
-        if !failure_dir.join(format!("stress-{:03}.in", id)).exists() {
+        if !failure_dir.join(format!("stress-{id:03}.in")).exists() {
             return Ok(id);
         }
         id += 1;
@@ -738,7 +737,7 @@ fn next_failure_id(failure_dir: &Path) -> Result<usize> {
 }
 
 fn render_stress_failure(case_index: usize, results: &[RunResult]) -> String {
-    let mut report = format!("stress failed on case {}\n\n", case_index);
+    let mut report = format!("stress failed on case {case_index}\n\n");
     for result in results {
         report.push_str(&format!(
             "[{}] kind={} exit={:?} elapsed={}ms\nstdout:\n{}\nstderr:\n{}\n\n",

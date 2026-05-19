@@ -91,9 +91,9 @@ impl Exporter for SyzojExporter {
                             .cases
                             .iter()
                             .map(|case| {
-                                let name = format!("{}", counter);
-                                let input_path = export_dir.join(format!("{}.in", name));
-                                let answer_path = export_dir.join(format!("{}.ans", name));
+                                let name = format!("{counter}");
+                                let input_path = export_dir.join(format!("{name}.in"));
+                                let answer_path = export_dir.join(format!("{name}.ans"));
                                 counter += 1;
                                 std::fs::copy(&case.input_path, input_path)?;
                                 std::fs::copy(&case.answer_path, answer_path)?;
