@@ -86,7 +86,7 @@ stress:
   plans:
   - name: small
     generator: gen
-    args: ["{case}", "10"]
+    args: ["10"]
     against: [std, brute]
     cases: 100
 ```
@@ -102,5 +102,5 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 + `gen` warns when a non-empty input produces an empty answer. Set `output.allow_empty: true` in `problem.yaml` for tasks where empty output is valid.
 + `check` reports common structure, program path, generated data, sample generation, and sample output issues. It exits non-zero when errors are found.
 + `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data. Multiple `cptool stress` processes can run against the same package concurrently; compile cache hits are reused and failure files are created atomically.
-+ `stress-plan` runs `stress.plans` from `problem.yaml`. Plan args support `{case}` and `{case0}` placeholders; seed configuration is intentionally not part of this command yet.
++ `stress-plan` runs `stress.plans` from `problem.yaml`. Plan args are passed literally; seed and case placeholders are intentionally not part of this command yet.
 + `run`, `gen`, `stress`, and `stress-plan` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it where supported.

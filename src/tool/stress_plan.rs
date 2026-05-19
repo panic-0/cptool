@@ -19,7 +19,7 @@ pub fn stress_plan(
             work_dir,
             generator: &plan.generator,
             against: &plan.against,
-            args_by_case: expand_args_by_case(plan),
+            args_by_case: args_by_case(plan),
             failure_dir,
             output_limit_bytes,
             plan_name: Some(&plan.name),
@@ -49,15 +49,8 @@ fn select_plans<'a>(plans: &'a [StressPlan], name: Option<&str>) -> Result<Vec<&
     Ok(plans.iter().collect())
 }
 
-fn expand_args_by_case(plan: &StressPlan) -> Vec<Vec<String>> {
-    (0..plan.cases)
-        .map(|case0| plan.args.iter().map(|arg| expand_arg(arg, case0)).collect())
-        .collect()
-}
-
-fn expand_arg(arg: &str, case0: usize) -> String {
-    arg.replace("{case0}", &case0.to_string())
-        .replace("{case}", &(case0 + 1).to_string())
+fn args_by_case(plan: &StressPlan) -> Vec<Vec<String>> {
+    (0..plan.cases).map(|_| plan.args.clone()).collect()
 }
 
 #[cfg(test)]
@@ -65,7 +58,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn expands_case_placeholders_and_leaves_seed_literal() {
+    fn plan_args_are_passed_literally_for_each_case() {
         let plan = StressPlan {
             name: "small".to_string(),
             generator: "gen".to_string(),
@@ -79,22 +72,22 @@ mod tests {
         };
 
         assert_eq!(
-            expand_args_by_case(&plan),
+            args_by_case(&plan),
             vec![
                 vec![
                     "--seed={seed}".to_string(),
-                    "--case=1".to_string(),
-                    "--case0=0".to_string()
+                    "--case={case}".to_string(),
+                    "--case0={case0}".to_string()
                 ],
                 vec![
                     "--seed={seed}".to_string(),
-                    "--case=2".to_string(),
-                    "--case0=1".to_string()
+                    "--case={case}".to_string(),
+                    "--case0={case0}".to_string()
                 ],
                 vec![
                     "--seed={seed}".to_string(),
-                    "--case=3".to_string(),
-                    "--case0=2".to_string()
+                    "--case={case}".to_string(),
+                    "--case0={case0}".to_string()
                 ],
             ]
         );

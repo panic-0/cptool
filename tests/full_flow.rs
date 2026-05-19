@@ -412,7 +412,7 @@ fn append_stress_plan(problem_dir: &Path) {
   plans:
   - name: tiny
     generator: gen
-    args: ["{case}", "4"]
+    args: ["3", "4"]
     against: [std, brute]
     cases: 2
 "#,
