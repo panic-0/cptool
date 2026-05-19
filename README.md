@@ -11,6 +11,9 @@ CP Tool is a command line tool for competitive programming.
 # generate official data into ./example/a_plus_b/data
 ./cptool gen -w ./example/a_plus_b
 
+# generate with a custom per-program stdout/stderr limit; default is 32 MiB
+./cptool gen -w ./example/a_plus_b --output-limit-bytes 67108864
+
 # run a configured program on a generated bundle case
 ./cptool run std sample[0] -w ./example/a_plus_b
 
@@ -31,12 +34,12 @@ name: a_plus_b
 programs:
   gen:
     info: !cpp
-      path: ./gen.cpp
+      path: ./src/gen.cpp
     time_limit_secs: 1.0
     memory_limit_mb: 512.0
   std:
     info: !cpp
-      path: ./std.cpp
+      path: ./src/std.cpp
       compile_args: [-O2, -std=c++14]
     time_limit_secs: 1.0
     memory_limit_mb: 512.0
@@ -72,6 +75,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 ## Notes
 
 + Syzoj export is not fully supported yet.
-+ `gen` writes data to `data/` by default.
++ `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`.
++ `gen` writes data to `data/` by default. `run`, `gen`, and `stress` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`.
-+ `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data.
++ `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data. Multiple `cptool stress` processes can run against the same package concurrently; compile cache hits are reused and failure files are created atomically.

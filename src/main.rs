@@ -34,7 +34,7 @@ enum Commands {
         stdout_path: Option<PathBuf>,
         #[arg(long)]
         stderr_path: Option<PathBuf>,
-        #[arg(long, default_value_t = 1_048_576)]
+        #[arg(long, default_value_t = 33_554_432)]
         output_limit_bytes: usize,
         #[arg(last = true)]
         args: Vec<String>,
@@ -48,6 +48,8 @@ enum Commands {
         case: Option<String>,
         #[arg(short, long)]
         output_dir: Option<PathBuf>,
+        #[arg(long, default_value_t = 33_554_432)]
+        output_limit_bytes: usize,
     },
     Stress {
         #[arg(short, long, default_value = ".")]
@@ -58,6 +60,8 @@ enum Commands {
         against: Vec<String>,
         #[arg(long, default_value_t = 100)]
         cases: usize,
+        #[arg(long, default_value_t = 33_554_432)]
+        output_limit_bytes: usize,
         #[arg(long)]
         failure_dir: Option<PathBuf>,
         #[arg(last = true)]
@@ -128,12 +132,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             bundle,
             case,
             output_dir,
+            output_limit_bytes,
         } => {
             let generated = tool::generate_data(
                 &work_dir,
                 bundle.as_deref(),
                 case.as_deref(),
                 output_dir.as_deref(),
+                output_limit_bytes,
             )?;
             for path in generated {
                 println!("generated {}", path.display());
@@ -144,6 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             generator,
             against,
             cases,
+            output_limit_bytes,
             failure_dir,
             args,
         } => {
@@ -154,6 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cases,
                 &args,
                 failure_dir.as_deref(),
+                output_limit_bytes,
             )?;
             println!("stress passed: {cases} cases");
         }

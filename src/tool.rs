@@ -6,11 +6,11 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const DEFAULT_TIME_LIMIT_SECS: f64 = 1.0;
 const DEFAULT_MEMORY_LIMIT_MB: f64 = 512.0;
-const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1_048_576;
+const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 33_554_432;
 
 #[derive(Clone, Debug)]
 pub struct CaseSelector {
@@ -39,6 +39,8 @@ pub struct RunResult {
     pub kind: String,
     pub exit_code: Option<i32>,
     pub elapsed_ms: u128,
+    pub stdout_bytes: Vec<u8>,
+    pub stderr_bytes: Vec<u8>,
     pub stdout: String,
     pub stderr: String,
     pub truncated_stdout: bool,
@@ -65,7 +67,10 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     std::fs::create_dir_all(problem_dir.join("tests").join("failures"))?;
     std::fs::write(problem_dir.join("statement.md"), "# 题面\n\n")?;
     std::fs::write(problem_dir.join("editorial.md"), "# 题解\n\n")?;
-    std::fs::write(problem_dir.join("quality_report.md"), "# 质量报告\n\n")?;
+    std::fs::write(
+        problem_dir.join(".gitignore"),
+        ".cptool/\ndata/\nexport/\noutput/\ntmp/\ntests/failures/\n*.exe\n*.tmp\n",
+    )?;
     std::fs::write(problem_dir.join("src").join("std.cpp"), "")?;
     std::fs::write(problem_dir.join("src").join("brute.cpp"), "")?;
     std::fs::write(problem_dir.join("src").join("gen.cpp"), "")?;
@@ -164,6 +169,7 @@ pub fn generate_data(
     bundle: Option<&str>,
     selector: Option<&str>,
     output_dir: Option<&Path>,
+    output_limit_bytes: usize,
 ) -> Result<Vec<PathBuf>> {
     let work_dir = normalize_work_dir(work_dir)?;
     let problem = load_problem(&work_dir)?;
@@ -196,6 +202,7 @@ pub fn generate_data(
             validator,
             &output_dir,
             &selector,
+            output_limit_bytes,
         )?);
     } else if let Some(bundle) = bundle {
         let bundle_cases = problem
@@ -215,6 +222,7 @@ pub fn generate_data(
                     bundle: bundle.to_string(),
                     index,
                 },
+                output_limit_bytes,
             )?);
         }
     } else {
@@ -231,6 +239,7 @@ pub fn generate_data(
                         bundle: bundle.clone(),
                         index,
                     },
+                    output_limit_bytes,
                 )?);
             }
         }
@@ -245,6 +254,7 @@ pub fn stress(
     cases: usize,
     args: &[String],
     failure_dir: Option<&Path>,
+    output_limit_bytes: usize,
 ) -> Result<()> {
     if against.len() < 2 {
         anyhow::bail!("stress requires at least two --against programs or sources");
@@ -261,47 +271,95 @@ pub fn stress(
         .unwrap_or_else(|| work_dir.join("tests").join("failures"));
 
     for index in 1..=cases {
-        let gen_result = run_spec(
+        if let Some(failure) = run_stress_case(
             &work_dir,
             &generator,
+            &targets,
             args,
-            None,
-            DEFAULT_OUTPUT_LIMIT_BYTES,
-        )?;
-        if !gen_result.ok {
-            anyhow::bail!("generator failed on case {}:\n{}", index, gen_result.stderr);
-        }
-        let input = gen_result.stdout.into_bytes();
-        let mut results = Vec::new();
-        for target in &targets {
-            results.push(run_spec(
-                &work_dir,
-                target,
-                &[],
-                Some(&input),
-                DEFAULT_OUTPUT_LIMIT_BYTES,
-            )?);
-        }
-        let baseline = normalize_output(&results[0].stdout);
-        let failed = results
-            .iter()
-            .any(|result| !result.ok || normalize_output(&result.stdout) != baseline);
-        if failed {
-            std::fs::create_dir_all(&failure_dir)?;
-            let stem = failure_dir.join(format!("stress-{:03}", next_failure_id(&failure_dir)?));
-            std::fs::write(stem.with_extension("in"), &input)?;
-            let report = render_stress_failure(index, &results);
-            std::fs::write(stem.with_extension("txt"), report.as_bytes())?;
-            anyhow::bail!(
-                "stress failed on case {}; saved {}.in and {}.txt",
-                index,
-                stem.display(),
-                stem.display()
-            );
+            index,
+            output_limit_bytes,
+        )? {
+            return save_stress_failure(&failure_dir, failure);
         }
         println!("case {index} ok");
     }
     Ok(())
+}
+
+struct StressFailure {
+    case_index: usize,
+    input: Vec<u8>,
+    results: Vec<RunResult>,
+}
+
+fn run_stress_case(
+    work_dir: &Path,
+    generator: &ProgramSpec,
+    targets: &[ProgramSpec],
+    args: &[String],
+    index: usize,
+    output_limit_bytes: usize,
+) -> Result<Option<StressFailure>> {
+    let gen_result = run_spec(work_dir, generator, args, None, output_limit_bytes)?;
+    if !gen_result.ok {
+        anyhow::bail!("generator failed on case {}:\n{}", index, gen_result.stderr);
+    }
+    if gen_result.truncated_stdout {
+        anyhow::bail!(
+            "generator output on stress case {index} exceeded --output-limit-bytes ({output_limit_bytes})"
+        );
+    }
+    let input = gen_result.stdout_bytes;
+    let mut results = Vec::new();
+    for target in targets {
+        let result = run_spec(work_dir, target, &[], Some(&input), output_limit_bytes)?;
+        if result.truncated_stdout {
+            anyhow::bail!(
+                "program `{}` output on stress case {index} exceeded --output-limit-bytes ({output_limit_bytes})",
+                result.label
+            );
+        }
+        results.push(result);
+    }
+    let baseline = normalize_output(&results[0].stdout);
+    let failed = results
+        .iter()
+        .any(|result| !result.ok || normalize_output(&result.stdout) != baseline);
+    Ok(failed.then_some(StressFailure {
+        case_index: index,
+        input,
+        results,
+    }))
+}
+
+fn save_stress_failure(failure_dir: &Path, failure: StressFailure) -> Result<()> {
+    std::fs::create_dir_all(failure_dir)?;
+    let (stem, mut input_file) = create_failure_input(failure_dir)?;
+    input_file.write_all(&failure.input)?;
+    let report = render_stress_failure(failure.case_index, &failure.results);
+    std::fs::write(stem.with_extension("txt"), report.as_bytes())?;
+    anyhow::bail!(
+        "stress failed on case {}; saved {}.in and {}.txt",
+        failure.case_index,
+        stem.display(),
+        stem.display()
+    );
+}
+
+fn create_failure_input(failure_dir: &Path) -> Result<(PathBuf, std::fs::File)> {
+    for id in 1.. {
+        let stem = failure_dir.join(format!("stress-{id:03}"));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(stem.with_extension("in"))
+        {
+            Ok(file) => return Ok((stem, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(err) => return Err(err.into()),
+        }
+    }
+    unreachable!()
 }
 
 fn resolve_run_spec(
@@ -400,6 +458,7 @@ fn resolve_run_input(
             Some(&selector.bundle),
             Some(&format!("{}[{}]", selector.bundle, selector.index)),
             None,
+            DEFAULT_OUTPUT_LIMIT_BYTES,
         )?;
     }
     Ok(Some(std::fs::read(&input_path).with_context(|| {
@@ -451,6 +510,7 @@ fn generate_one_case(
     validator: Option<&ProgramSpec>,
     output_dir: &Path,
     selector: &CaseSelector,
+    output_limit_bytes: usize,
 ) -> Result<Vec<PathBuf>> {
     let bundle = problem
         .test
@@ -467,13 +527,7 @@ fn generate_one_case(
     let stem = output_dir.join(case_file_stem(selector));
     let input_path = stem.with_extension("in");
     let answer_path = stem.with_extension("ans");
-    let generated = run_spec(
-        work_dir,
-        generator,
-        &case.args,
-        None,
-        DEFAULT_OUTPUT_LIMIT_BYTES,
-    )?;
+    let generated = run_spec(work_dir, generator, &case.args, None, output_limit_bytes)?;
     if !generated.ok {
         anyhow::bail!(
             "generator failed for {}[{}]:\n{}",
@@ -482,14 +536,21 @@ fn generate_one_case(
             generated.stderr
         );
     }
-    std::fs::write(&input_path, generated.stdout.as_bytes())?;
+    if generated.truncated_stdout {
+        anyhow::bail!(
+            "generator output for {}[{}] exceeded --output-limit-bytes ({output_limit_bytes})",
+            selector.bundle,
+            selector.index
+        );
+    }
+    std::fs::write(&input_path, &generated.stdout_bytes)?;
     if let Some(validator) = validator {
         let validation = run_spec(
             work_dir,
             validator,
             &[],
-            Some(generated.stdout.as_bytes()),
-            DEFAULT_OUTPUT_LIMIT_BYTES,
+            Some(&generated.stdout_bytes),
+            output_limit_bytes,
         )?;
         if !validation.ok {
             anyhow::bail!(
@@ -503,8 +564,8 @@ fn generate_one_case(
         work_dir,
         solution,
         &[],
-        Some(generated.stdout.as_bytes()),
-        DEFAULT_OUTPUT_LIMIT_BYTES,
+        Some(&generated.stdout_bytes),
+        output_limit_bytes,
     )?;
     if !answer.ok {
         anyhow::bail!(
@@ -513,7 +574,14 @@ fn generate_one_case(
             answer.stderr
         );
     }
-    std::fs::write(&answer_path, answer.stdout.as_bytes())?;
+    if answer.truncated_stdout {
+        anyhow::bail!(
+            "solution output for {}[{}] exceeded --output-limit-bytes ({output_limit_bytes})",
+            selector.bundle,
+            selector.index
+        );
+    }
+    std::fs::write(&answer_path, &answer.stdout_bytes)?;
     Ok(vec![input_path, answer_path])
 }
 
@@ -577,14 +645,18 @@ fn run_spec(
             kind: "timeout".to_string(),
             exit_code: None,
             elapsed_ms,
+            stdout_bytes: Vec::new(),
+            stderr_bytes: Vec::new(),
             stdout: String::new(),
             stderr: String::new(),
             truncated_stdout: false,
             truncated_stderr: false,
         });
     };
-    let (stdout, truncated_stdout) = decode_limited(&output.stdout, output_limit_bytes);
-    let (stderr, truncated_stderr) = decode_limited(&output.stderr, output_limit_bytes);
+    let (stdout_bytes, truncated_stdout) = limit_bytes(&output.stdout, output_limit_bytes);
+    let (stderr_bytes, truncated_stderr) = limit_bytes(&output.stderr, output_limit_bytes);
+    let stdout = decode_output(&stdout_bytes);
+    let stderr = decode_output(&stderr_bytes);
     Ok(RunResult {
         label: spec.label.clone(),
         ok: output.status.success(),
@@ -596,6 +668,8 @@ fn run_spec(
         .to_string(),
         exit_code: output.status.code().map(|code| code as i32),
         elapsed_ms,
+        stdout_bytes,
+        stderr_bytes,
         stdout,
         stderr,
         truncated_stdout,
@@ -624,23 +698,75 @@ fn compile_cpp(work_dir: &Path, source: &Path, compile_args: &[String]) -> Resul
     if exe.exists() {
         return Ok(exe);
     }
+    let _lock = acquire_compile_lock(&cache_dir, &exe)?;
+    if exe.exists() {
+        return Ok(exe);
+    }
     let cached_source = cache_dir.join("main.cpp");
     std::fs::write(&cached_source, code)?;
+    let temp_exe = cache_dir.join(if cfg!(windows) {
+        format!("main-{}.tmp.exe", std::process::id())
+    } else {
+        format!("main-{}.tmp", std::process::id())
+    });
+    if temp_exe.exists() {
+        std::fs::remove_file(&temp_exe)?;
+    }
     let output = std::process::Command::new("g++")
+        .current_dir(work_dir)
         .arg(&cached_source)
         .arg("-o")
-        .arg(&exe)
+        .arg(&temp_exe)
         .args(compile_args)
         .output()
         .context("failed to run g++")?;
     if !output.status.success() {
+        let _ = std::fs::remove_file(&temp_exe);
         anyhow::bail!(
             "compile failed for {}:\n{}",
             source.display(),
             String::from_utf8_lossy(&output.stderr)
         );
     }
+    std::fs::rename(&temp_exe, &exe)?;
     Ok(exe)
+}
+
+struct CompileLock {
+    path: Option<PathBuf>,
+}
+
+impl Drop for CompileLock {
+    fn drop(&mut self) {
+        if let Some(path) = &self.path {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+fn acquire_compile_lock(cache_dir: &Path, exe: &Path) -> Result<CompileLock> {
+    let lock_path = cache_dir.join("compile.lock");
+    loop {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(mut file) => {
+                writeln!(file, "pid={}", std::process::id())?;
+                return Ok(CompileLock {
+                    path: Some(lock_path),
+                });
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                if exe.exists() {
+                    return Ok(CompileLock { path: None });
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
 }
 
 fn absolutize_program_info(
@@ -689,15 +815,16 @@ fn case_file_stem(selector: &CaseSelector) -> String {
     format!("{}-{}", selector.bundle, selector.index)
 }
 
-fn decode_limited(data: &[u8], limit: usize) -> (String, bool) {
+fn limit_bytes(data: &[u8], limit: usize) -> (Vec<u8>, bool) {
     let truncated = data.len() > limit;
     let data = if truncated { &data[..limit] } else { data };
-    (
-        String::from_utf8_lossy(data)
-            .replace("\r\n", "\n")
-            .replace('\r', "\n"),
-        truncated,
-    )
+    (data.to_vec(), truncated)
+}
+
+fn decode_output(data: &[u8]) -> String {
+    String::from_utf8_lossy(data)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
 }
 
 fn write_optional(path: &Option<PathBuf>, content: &str) -> Result<()> {
@@ -723,16 +850,6 @@ fn normalize_output(text: &str) -> String {
                 .collect::<Vec<_>>()
                 .join("\n")
         )
-    }
-}
-
-fn next_failure_id(failure_dir: &Path) -> Result<usize> {
-    let mut id = 1;
-    loop {
-        if !failure_dir.join(format!("stress-{id:03}.in")).exists() {
-            return Ok(id);
-        }
-        id += 1;
     }
 }
 
@@ -794,6 +911,9 @@ mod tests {
         assert!(problem_dir.join("src").join("brute.cpp").exists());
         assert!(problem_dir.join("src").join("gen.cpp").exists());
         assert!(problem_dir.join("tests").join("failures").is_dir());
+        assert!(problem_dir.join(".gitignore").exists());
+        assert!(!problem_dir.join("quality_report.md").exists());
+        assert!(!problem_dir.join("problem.md").exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 }
