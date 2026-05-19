@@ -11,6 +11,9 @@ CP Tool is a command line tool for competitive programming.
 # generate official data into ./example/a_plus_b/data
 ./cptool gen -w ./example/a_plus_b
 
+# generate official data and print one compact audit summary
+./cptool gen -w ./example/a_plus_b --summary-only
+
 # clean selected stale data before publishing newly generated data
 ./cptool gen -w ./example/a_plus_b --bundle main --clean
 
@@ -99,11 +102,11 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 
 + Syzoj export is not fully supported yet.
 + `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`.
-+ `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files.
++ `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.
-+ `gen` warns when a non-empty input produces an empty answer. Set `output.allow_empty: true` in `problem.yaml` for tasks where empty output is valid.
++ `gen` warns when a non-empty input produces an empty answer. Set `output.allow_empty: true` in `problem.yaml` for tasks where empty output is valid. In `--summary-only` mode, `empty_answer` and generator-output warnings are counted in the summary.
 + `check` reports common structure, program path, generated data, sample generation, and sample output issues. It exits non-zero when errors are found, and reports `data_generation_in_progress` instead of inspecting data during a concurrent `gen`.
-+ `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data. Multiple `cptool stress` processes can run against the same package concurrently; compile cache hits are reused and failure files are created atomically.
-+ `stress-plan` runs `stress.plans` from `problem.yaml`. Plan args support `{seed}`, `{case}` (1-based), and `{case0}` (0-based); `{seed}` is derived deterministically from the plan name, case number, and optional `seed_base`. Use `--summary-only` to print one compact line per plan.
++ `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data. Multiple `cptool stress` processes can run against the same package concurrently; compile cache hits are reused and failure files are created atomically. If all compared programs succeed but all stdout streams are empty on a non-empty generated input, `stress` still passes but prints `warning: all_empty_output`.
++ `stress-plan` runs `stress.plans` from `problem.yaml`. Plan args support `{seed}`, `{case}` (1-based), and `{case0}` (0-based); `{seed}` is derived deterministically from the plan name, case number, and optional `seed_base`. Use `--summary-only` to print one compact line per plan, including empty stdout case counts and warning counts.
 + C++ compile failures include compiler path/version, flags, static-link status, cache key, and cache exe path. Windows runtime errors for common NTSTATUS exit codes include a diagnostic hint in failure reports.
 + `run`, `gen`, `stress`, and `stress-plan` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it where supported.

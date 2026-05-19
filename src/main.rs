@@ -93,6 +93,11 @@ enum Commands {
             help = "Remove stale .in/.ans files for the selected case, bundle, or known bundles before publishing new data"
         )]
         clean: bool,
+        #[arg(
+            long,
+            help = "Print one compact generation summary instead of each generated path"
+        )]
+        summary_only: bool,
     },
     #[command(about = "Stress test several programs on temporary generated inputs")]
     Stress {
@@ -213,17 +218,24 @@ fn main() -> anyhow::Result<()> {
             output_dir,
             output_limit_bytes,
             clean,
+            summary_only,
         } => {
-            let generated = tool::generate_data_with_options(tool::GenerateOptions {
+            let options = tool::GenerateOptions {
                 work_dir,
                 bundle,
                 selector: case,
                 output_dir,
                 output_limit_bytes,
                 clean,
-            })?;
-            for path in generated {
-                println!("generated {}", path.display());
+            };
+            if summary_only {
+                let report = tool::generate_data_report_with_options(options)?;
+                println!("{}", report.summary_line());
+            } else {
+                let generated = tool::generate_data_with_options(options)?;
+                for path in generated {
+                    println!("generated {}", path.display());
+                }
             }
         }
         Commands::Stress {

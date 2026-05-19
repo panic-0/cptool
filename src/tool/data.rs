@@ -4,9 +4,9 @@ use super::problem::{
 use super::program::{ProgramSpec, absolutize_program_info, run_spec};
 use super::schema::{CaseSelector, Problem};
 use anyhow::{Context, Result};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const GENERATION_LOCK_DIR: &str = ".cptool-gen.lock";
 const GENERATION_STAGING_PREFIX: &str = ".cptool-gen-";
@@ -32,9 +32,83 @@ struct GenerateContext<'a> {
     output_limit_bytes: usize,
 }
 
+#[derive(Clone, Debug)]
 struct GeneratedFile {
     staging_path: PathBuf,
     final_path: PathBuf,
+}
+
+struct GeneratedCase {
+    files: Vec<GeneratedFile>,
+    selector: CaseSelector,
+    input_bytes: usize,
+    answer_bytes: usize,
+    warnings: Vec<GenerateWarning>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GenerateReport {
+    pub paths: Vec<PathBuf>,
+    pub cases: usize,
+    pub bundles: Vec<String>,
+    pub elapsed_ms: u128,
+    pub input_bytes: usize,
+    pub answer_bytes: usize,
+    pub warnings: Vec<GenerateWarning>,
+}
+
+impl GenerateReport {
+    pub fn summary_line(&self) -> String {
+        format!(
+            "gen: ok cases={} bundles={} elapsed={}ms in_bytes={} ans_bytes={} warnings={}",
+            self.cases,
+            self.bundles.join(","),
+            self.elapsed_ms,
+            self.input_bytes,
+            self.answer_bytes,
+            summarize_generate_warnings(&self.warnings)
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GenerateWarning {
+    pub kind: GenerateWarningKind,
+    pub bundle: String,
+    pub case_index: usize,
+    pub program: String,
+    pub stdout_bytes: usize,
+    pub stderr_bytes: usize,
+}
+
+impl GenerateWarning {
+    fn render(&self) -> String {
+        match self.kind {
+            GenerateWarningKind::GeneratorOutputSuspicious => format!(
+                "warning: generator_output_suspicious case={}[{}] generator={} stdout_bytes={} stderr_bytes={}",
+                self.bundle, self.case_index, self.program, self.stdout_bytes, self.stderr_bytes
+            ),
+            GenerateWarningKind::EmptyAnswer => format!(
+                "warning: empty_answer case={}[{}] solution={} stdout_bytes={} stderr_bytes={}",
+                self.bundle, self.case_index, self.program, self.stdout_bytes, self.stderr_bytes
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GenerateWarningKind {
+    GeneratorOutputSuspicious,
+    EmptyAnswer,
+}
+
+impl GenerateWarningKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            GenerateWarningKind::GeneratorOutputSuspicious => "generator_output_suspicious",
+            GenerateWarningKind::EmptyAnswer => "empty_answer",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -71,6 +145,17 @@ pub fn generate_data(
 }
 
 pub fn generate_data_with_options(options: GenerateOptions) -> Result<Vec<PathBuf>> {
+    generate_data_report_impl(options, true).map(|report| report.paths)
+}
+
+pub fn generate_data_report_with_options(options: GenerateOptions) -> Result<GenerateReport> {
+    generate_data_report_impl(options, false)
+}
+
+fn generate_data_report_impl(
+    options: GenerateOptions,
+    emit_warnings: bool,
+) -> Result<GenerateReport> {
     let GenerateOptions {
         work_dir,
         bundle,
@@ -115,16 +200,27 @@ pub fn generate_data_with_options(options: GenerateOptions) -> Result<Vec<PathBu
         output_limit_bytes,
     };
 
+    let start = Instant::now();
     let generated = (|| {
-        let mut generated = Vec::new();
+        let mut cases = Vec::new();
         for selector in &selected_cases {
-            generated.extend(generate_one_case(&context, selector)?);
+            cases.push(generate_one_case(&context, selector, emit_warnings)?);
         }
-        commit_generated_files(&output_dir, clean_scope.as_ref(), &generated)
+        let files = cases
+            .iter()
+            .flat_map(|case| case.files.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        let paths = commit_generated_files(&output_dir, clean_scope.as_ref(), &files)?;
+        Ok(build_generate_report(
+            cases,
+            paths,
+            start.elapsed().as_millis(),
+        ))
     })();
     let cleanup_result = std::fs::remove_dir_all(&staging_dir);
     match (generated, cleanup_result) {
-        (Ok(paths), Ok(())) => Ok(paths),
+        (Ok(report), Ok(())) => Ok(report),
         (Ok(_), Err(err)) => Err(err).with_context(|| {
             format!(
                 "generated data but failed to remove staging dir {}",
@@ -210,7 +306,8 @@ fn compile_programs(work_dir: &Path, problem: &Problem) -> Result<HashMap<String
 fn generate_one_case(
     context: &GenerateContext<'_>,
     selector: &CaseSelector,
-) -> Result<Vec<GeneratedFile>> {
+    emit_warnings: bool,
+) -> Result<GeneratedCase> {
     let bundle = context
         .problem
         .test
@@ -256,14 +353,16 @@ fn generate_one_case(
             context.output_limit_bytes
         );
     }
+    let mut warnings = Vec::new();
     if generated.stdout_bytes.is_empty() {
-        eprintln!(
-            "warning: generator_output_suspicious case={}[{}] generator={} stdout_bytes=0 stderr_bytes={}",
-            selector.bundle,
-            selector.index,
-            generator.label,
-            generated.stderr_bytes.len()
-        );
+        warnings.push(GenerateWarning {
+            kind: GenerateWarningKind::GeneratorOutputSuspicious,
+            bundle: selector.bundle.clone(),
+            case_index: selector.index,
+            program: generator.label.clone(),
+            stdout_bytes: 0,
+            stderr_bytes: generated.stderr_bytes.len(),
+        });
     }
     std::fs::write(&input_path, &generated.stdout_bytes)?;
     if let Some(validator) = context.validator {
@@ -307,25 +406,82 @@ fn generate_one_case(
         && !generated.stdout_bytes.is_empty()
         && answer.stdout_bytes.is_empty()
     {
-        eprintln!(
-            "warning: empty_answer case={}[{}] solution={} stdout_bytes=0 stderr_bytes={}",
-            selector.bundle,
-            selector.index,
-            context.solution.label,
-            answer.stderr_bytes.len()
-        );
+        warnings.push(GenerateWarning {
+            kind: GenerateWarningKind::EmptyAnswer,
+            bundle: selector.bundle.clone(),
+            case_index: selector.index,
+            program: context.solution.label.clone(),
+            stdout_bytes: 0,
+            stderr_bytes: answer.stderr_bytes.len(),
+        });
     }
     std::fs::write(&answer_path, &answer.stdout_bytes)?;
-    Ok(vec![
-        GeneratedFile {
-            staging_path: input_path,
-            final_path: final_input_path,
-        },
-        GeneratedFile {
-            staging_path: answer_path,
-            final_path: final_answer_path,
-        },
-    ])
+    if emit_warnings {
+        for warning in &warnings {
+            eprintln!("{}", warning.render());
+        }
+    }
+    Ok(GeneratedCase {
+        files: vec![
+            GeneratedFile {
+                staging_path: input_path,
+                final_path: final_input_path,
+            },
+            GeneratedFile {
+                staging_path: answer_path,
+                final_path: final_answer_path,
+            },
+        ],
+        selector: selector.clone(),
+        input_bytes: generated.stdout_bytes.len(),
+        answer_bytes: answer.stdout_bytes.len(),
+        warnings,
+    })
+}
+
+fn build_generate_report(
+    cases: Vec<GeneratedCase>,
+    paths: Vec<PathBuf>,
+    elapsed_ms: u128,
+) -> GenerateReport {
+    let mut bundles = BTreeSet::new();
+    let mut input_bytes = 0;
+    let mut answer_bytes = 0;
+    let mut warnings = Vec::new();
+    let case_count = cases.len();
+
+    for case in cases {
+        bundles.insert(case.selector.bundle);
+        input_bytes += case.input_bytes;
+        answer_bytes += case.answer_bytes;
+        warnings.extend(case.warnings);
+    }
+
+    GenerateReport {
+        paths,
+        cases: case_count,
+        bundles: bundles.into_iter().collect(),
+        elapsed_ms,
+        input_bytes,
+        answer_bytes,
+        warnings,
+    }
+}
+
+fn summarize_generate_warnings(warnings: &[GenerateWarning]) -> String {
+    if warnings.is_empty() {
+        return "0".to_string();
+    }
+
+    let mut counts = BTreeMap::new();
+    for warning in warnings {
+        *counts.entry(warning.kind.as_str()).or_insert(0usize) += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(kind, count)| format!("{kind}:{count}"))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn select_cases(

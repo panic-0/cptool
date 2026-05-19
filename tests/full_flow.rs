@@ -93,6 +93,8 @@ fn cli_help_describes_new_workflow_commands() {
     let gen_stdout = String::from_utf8_lossy(&gen_help.stdout);
     assert!(gen_stdout.contains("--clean"));
     assert!(gen_stdout.contains("Remove stale .in/.ans files"));
+    assert!(gen_stdout.contains("--summary-only"));
+    assert!(gen_stdout.contains("compact generation summary"));
 
     let run = run_cptool(["run", "--help"], None);
     let run_stdout = String::from_utf8_lossy(&run.stdout);
@@ -184,6 +186,20 @@ fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
     assert!(stderr.contains("stdout_bytes=0"));
     assert!(stderr.contains("stderr_bytes=0"));
 
+    let summary = run_cptool(
+        ["gen", "-w", problem_dir.to_str().unwrap(), "--summary-only"],
+        None,
+    );
+    let summary_stdout = String::from_utf8_lossy(&summary.stdout);
+    let summary_stderr = String::from_utf8_lossy(&summary.stderr);
+
+    assert!(summary_stdout.contains("gen: ok cases=1 bundles=sample elapsed="));
+    assert!(summary_stdout.contains("in_bytes=4"));
+    assert!(summary_stdout.contains("ans_bytes=0"));
+    assert!(summary_stdout.contains("warnings=empty_answer:1"));
+    assert!(!summary_stdout.contains("generated "));
+    assert!(!summary_stderr.contains("warning: empty_answer"));
+
     let yaml_path = problem_dir.join("problem.yaml");
     let yaml = std::fs::read_to_string(&yaml_path).unwrap();
     std::fs::write(
@@ -200,6 +216,30 @@ fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
     let allowed_stderr = String::from_utf8_lossy(&allowed.stderr);
 
     assert!(!allowed_stderr.contains("warning: empty_answer"));
+}
+
+#[test]
+fn gen_summary_only_prints_compact_success_totals() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-summary");
+    run_cptool(["init", "gen_summary", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("gen_summary");
+    configure_python_problem(&problem_dir);
+
+    let output = run_cptool(
+        ["gen", "-w", problem_dir.to_str().unwrap(), "--summary-only"],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("gen: ok cases=1 bundles=sample elapsed="));
+    assert!(stdout.contains("in_bytes=4"));
+    assert!(stdout.contains("ans_bytes=2"));
+    assert!(stdout.contains("warnings=0"));
+    assert!(!stdout.contains("generated "));
 }
 
 #[test]
@@ -375,8 +415,95 @@ fn stress_plan_summary_only_suppresses_case_progress() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(stdout.contains("tiny: ok cases=2 against=std,brute elapsed="));
+    assert!(stdout.contains("empty_stdout_cases=0"));
+    assert!(stdout.contains("all_empty_stdout_cases=0"));
+    assert!(stdout.contains("warnings=0"));
     assert!(!stdout.contains("plan `tiny` case 1 ok"));
     assert!(!stdout.contains("stress plan `tiny` passed"));
+}
+
+#[test]
+fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-empty-output");
+    run_cptool(["init", "stress_empty_output", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("stress_empty_output");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("solve.py"),
+        "import sys\nsys.stdin.buffer.read()\n",
+    )
+    .unwrap();
+
+    let output = run_cptool(
+        [
+            "stress",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--generator",
+            "gen",
+            "--against",
+            "std",
+            "--against",
+            "brute",
+            "--cases",
+            "2",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(stdout.contains("stress passed: 2 cases"));
+    assert!(stderr.contains("warning: all_empty_output case=1 against=std,brute input_bytes=4"));
+    assert!(stderr.contains("warning: all_empty_output case=2 against=std,brute input_bytes=4"));
+}
+
+#[test]
+fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-plan-empty-summary");
+    run_cptool(
+        ["init", "stress_plan_empty_summary", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp
+        .path()
+        .join("problems")
+        .join("stress_plan_empty_summary");
+    configure_python_problem(&problem_dir);
+    append_stress_plan(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("solve.py"),
+        "import sys\nsys.stdin.buffer.read()\n",
+    )
+    .unwrap();
+
+    let output = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "tiny",
+            "--summary-only",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(stdout.contains("tiny: ok cases=2 against=std,brute elapsed="));
+    assert!(stdout.contains("empty_stdout_cases=2"));
+    assert!(stdout.contains("all_empty_stdout_cases=2"));
+    assert!(stdout.contains("warnings=all_empty_output:2"));
+    assert!(!stderr.contains("warning: all_empty_output"));
 }
 
 #[test]
