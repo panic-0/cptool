@@ -177,7 +177,7 @@ fn generate_data_report_impl(
     let clean_scope =
         clean.then(|| clean_scope_for(&problem, bundle.as_deref(), selector.as_deref()));
     let staging_dir = create_staging_dir(&output_dir)?;
-    let programs = compile_programs(&work_dir, &problem)?;
+    let programs = build_program_specs(&work_dir, &problem)?;
     let solution = programs
         .get(&problem.solution_name)
         .with_context(|| format!("solution `{}` not found", problem.solution_name))?;
@@ -286,7 +286,7 @@ impl Drop for DataGenerationLock {
     }
 }
 
-fn compile_programs(work_dir: &Path, problem: &Problem) -> Result<HashMap<String, ProgramSpec>> {
+fn build_program_specs(work_dir: &Path, problem: &Problem) -> Result<HashMap<String, ProgramSpec>> {
     problem
         .programs
         .iter()
