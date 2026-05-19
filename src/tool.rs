@@ -66,6 +66,25 @@ mod tests {
     }
 
     #[test]
+    fn init_package_writes_loadable_yaml_for_special_problem_names() {
+        let root = std::env::temp_dir().join(format!(
+            "cptool-yaml-name-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        let problem_dir = init_package(&root, "My Problem: #1").unwrap();
+        let problem = load_problem(&problem_dir).unwrap();
+
+        assert_eq!(problem_dir.file_name().unwrap(), "my-problem-1");
+        assert_eq!(problem.name, "My Problem: #1");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn parse_compile_lock_pid_reads_lock_file() {
         assert_eq!(parse_lock_pid("pid=123\n"), Some(123));
         assert_eq!(parse_lock_pid("owner=abc\npid=456\n"), Some(456));

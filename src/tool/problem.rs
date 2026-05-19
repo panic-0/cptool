@@ -208,6 +208,27 @@ mod tests {
         assert!(err.contains("time_limit_secs"));
     }
 
+    #[test]
+    fn validate_problem_rejects_missing_generator_references() {
+        let mut problem = valid_problem();
+        problem.test.bundles.get_mut("sample").unwrap().cases[0].generator_name =
+            "missing".to_string();
+
+        let err = validate_problem(&problem).unwrap_err().to_string();
+
+        assert!(err.contains("generator for sample[0] `missing`"));
+    }
+
+    #[test]
+    fn validate_problem_rejects_missing_bundle_references() {
+        let mut problem = valid_problem();
+        problem.test.tasks[0].bundles = vec!["missing".to_string()];
+
+        let err = validate_problem(&problem).unwrap_err().to_string();
+
+        assert!(err.contains("references missing bundle `missing`"));
+    }
+
     fn valid_problem() -> Problem {
         let mut programs = HashMap::new();
         programs.insert("gen".to_string(), cpp_program());

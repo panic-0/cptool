@@ -42,3 +42,27 @@ fn write_optional(path: &Option<PathBuf>, content: &[u8]) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_optional_preserves_raw_bytes() {
+        let root = std::env::temp_dir().join(format!(
+            "cptool-run-write-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let output_path = root.join("nested").join("stdout.bin");
+        let bytes = [0, 0xff, b'\r', b'\n', b'x'];
+
+        write_optional(&Some(output_path.clone()), &bytes).unwrap();
+
+        assert_eq!(std::fs::read(&output_path).unwrap(), bytes);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
