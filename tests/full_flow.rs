@@ -82,6 +82,34 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
 }
 
 #[test]
+fn cli_help_describes_new_workflow_commands() {
+    let top = run_cptool(["--help"], None);
+    let top_stdout = String::from_utf8_lossy(&top.stdout);
+
+    assert!(top_stdout.contains("check"));
+    assert!(top_stdout.contains("stress-plan"));
+
+    let gen_help = run_cptool(["gen", "--help"], None);
+    let gen_stdout = String::from_utf8_lossy(&gen_help.stdout);
+    assert!(gen_stdout.contains("--clean"));
+    assert!(gen_stdout.contains("Remove stale .in/.ans files"));
+
+    let run = run_cptool(["run", "--help"], None);
+    let run_stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(run_stdout.contains("--summary-only"));
+    assert!(run_stdout.contains("Print only status"));
+
+    let check = run_cptool(["check", "--help"], None);
+    let check_stdout = String::from_utf8_lossy(&check.stdout);
+    assert!(check_stdout.contains("Check common package structure"));
+
+    let stress_plan = run_cptool(["stress-plan", "--help"], None);
+    let stress_plan_stdout = String::from_utf8_lossy(&stress_plan.stdout);
+    assert!(stress_plan_stdout.contains("--name"));
+    assert!(stress_plan_stdout.contains("Run only the named stress plan"));
+}
+
+#[test]
 fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
     if !python_available() {
         return;

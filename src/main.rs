@@ -5,7 +5,11 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 #[derive(Debug, Parser)]
-#[command(version)]
+#[command(
+    version,
+    about = "Deterministic competitive-programming problem package tool",
+    long_about = "cptool initializes problem packages, runs configured programs, generates official data, stress-tests solutions, checks package health, and exports judge data."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -13,83 +17,129 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    #[command(about = "Create a minimal cptool/autocpp problem package")]
     Init {
+        #[arg(help = "Problem id or display name used to create problems/<slug>")]
         id: String,
-        #[arg(short, long, default_value = ".")]
+        #[arg(
+            short,
+            long,
+            default_value = ".",
+            help = "Root directory that receives the problems/ folder"
+        )]
         root: PathBuf,
     },
+    #[command(about = "Run a configured program or source file on package input")]
     Run {
+        #[arg(help = "Program name from problem.yaml, or omit to run the configured solution")]
         program: Option<String>,
+        #[arg(
+            help = "Bundle case selector such as sample[0]; defaults to the first configured case"
+        )]
         case: Option<String>,
-        #[arg(short, long, default_value = ".")]
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Run an explicit .cpp/.py source instead of a configured program"
+        )]
         source: Option<PathBuf>,
-        #[arg(long)]
+        #[arg(long, help = "Use this literal text as stdin")]
         stdin_text: Option<String>,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Read stdin from this path, relative to the package when not absolute"
+        )]
         stdin_path: Option<PathBuf>,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Write raw stdout bytes to this path instead of printing them"
+        )]
         stdout_path: Option<PathBuf>,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Write raw stderr bytes to this path instead of printing them"
+        )]
         stderr_path: Option<PathBuf>,
-        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Print only status, size, line count, hash, and stderr summary"
+        )]
         summary_only: bool,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Hide stdout in the terminal while preserving the status line and stderr"
+        )]
         hide_stdout: bool,
-        #[arg(last = true)]
+        #[arg(last = true, help = "Extra arguments passed to the program after --")]
         args: Vec<String>,
     },
+    #[command(about = "Generate official .in/.ans data from problem.yaml bundles")]
     Gen {
-        #[arg(short, long, default_value = ".")]
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long)]
+        #[arg(long, help = "Generate every case in this bundle")]
         bundle: Option<String>,
-        #[arg(long)]
+        #[arg(long, help = "Generate one case selector such as large[0]")]
         case: Option<String>,
-        #[arg(short, long)]
+        #[arg(short, long, help = "Output directory; defaults to <work-dir>/data")]
         output_dir: Option<PathBuf>,
-        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Remove stale .in/.ans files for the selected case, bundle, or known bundles before publishing new data"
+        )]
         clean: bool,
     },
+    #[command(about = "Stress test several programs on temporary generated inputs")]
     Stress {
-        #[arg(short, long, default_value = ".")]
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long)]
+        #[arg(long, help = "Generator program name from problem.yaml or source path")]
         generator: String,
-        #[arg(long, required = true)]
+        #[arg(
+            long,
+            required = true,
+            help = "Program name or source path to compare; pass at least two"
+        )]
         against: Vec<String>,
-        #[arg(long, default_value_t = 100)]
+        #[arg(
+            long,
+            default_value_t = 100,
+            help = "Number of generated cases to test"
+        )]
         cases: usize,
-        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
-        #[arg(long)]
+        #[arg(long, help = "Directory for failed inputs and per-program outputs")]
         failure_dir: Option<PathBuf>,
-        #[arg(last = true)]
+        #[arg(last = true, help = "Arguments passed to the generator after --")]
         args: Vec<String>,
     },
+    #[command(about = "Run stress plans declared in problem.yaml")]
     StressPlan {
-        #[arg(short, long, default_value = ".")]
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long)]
+        #[arg(long, help = "Run only the named stress plan; omit to run all plans")]
         name: Option<String>,
-        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES)]
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
-        #[arg(long)]
+        #[arg(long, help = "Directory for failed inputs and per-program outputs")]
         failure_dir: Option<PathBuf>,
     },
+    #[command(about = "Check common package structure, config, data, and sample issues")]
     Check {
-        #[arg(short, long, default_value = ".")]
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
     },
+    #[command(about = "Export the package to an online judge format")]
     Export {
-        #[arg(short, long, default_value = ".")]
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, help = "Target online judge format")]
         oj: OnlineJudge,
     },
 }
