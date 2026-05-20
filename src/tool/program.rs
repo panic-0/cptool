@@ -268,6 +268,9 @@ pub(crate) fn compile_cpp(
 
 fn effective_cpp_compile_args(source: &Path, compile_args: &[String]) -> Vec<String> {
     let mut args = compile_args.to_vec();
+    if cfg!(windows) && !args.iter().any(|arg| arg == "-static") {
+        args.push("-static".to_string());
+    }
     if let Some(parent) = source.parent() {
         args.push("-I".to_string());
         args.push(parent.to_string_lossy().into_owned());
@@ -821,6 +824,28 @@ time.sleep(10)
         assert!(rendered.contains("contains -static: true"));
         assert!(rendered.contains("cache key: "));
         assert!(rendered.contains("cache exe: "));
+    }
+
+    #[test]
+    fn effective_cpp_compile_args_adds_windows_static_linking_once() {
+        let source = Path::new("src/main.cpp");
+        let args = effective_cpp_compile_args(source, &["-O2".to_string()]);
+
+        if cfg!(windows) {
+            assert!(args.iter().any(|arg| arg == "-static"));
+        } else {
+            assert!(!args.iter().any(|arg| arg == "-static"));
+        }
+
+        let explicit_static =
+            effective_cpp_compile_args(source, &["-O2".to_string(), "-static".to_string()]);
+        assert_eq!(
+            explicit_static
+                .iter()
+                .filter(|arg| arg.as_str() == "-static")
+                .count(),
+            1
+        );
     }
 
     #[test]
