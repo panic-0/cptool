@@ -1028,6 +1028,11 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     assert!(stdout.contains("bad-is-detected: expected_fail observed=true case=1"));
     assert!(stdout.contains("reason=wrong_answer: output mismatch between `std` and `bad`"));
+    assert!(stdout.contains("failed_cases=3"));
+    assert!(stdout.contains("passed_cases=0"));
+    assert!(stdout.contains("failure_ratio=1.000"));
+    assert!(stdout.contains("cases_run=3"));
+    assert!(stdout.contains("unique_input_hashes=1"));
     assert!(
         problem_dir
             .join("tests")
@@ -1035,6 +1040,31 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
             .join("stress-bad-is-detected-001.txt")
             .exists()
     );
+
+    let json_output = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "bad-is-detected",
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&json_output.stdout).unwrap();
+    let failure = &value["plans"][0]["expected_failure"];
+
+    assert_eq!(value["plans"][0]["cases"], 3);
+    assert_eq!(value["plans"][0]["unique_input_hashes"], 1);
+    assert_eq!(failure["failed_cases"], 3);
+    assert_eq!(failure["passed_cases"], 0);
+    assert_eq!(failure["failure_ratio"], 1.0);
+    assert!(failure["input_sha256"].as_str().unwrap().len() == 64);
+    assert!(Path::new(failure["input_path"].as_str().unwrap()).exists());
+    assert!(Path::new(failure["report_path"].as_str().unwrap()).exists());
+    assert_eq!(failure["outputs"].as_array().unwrap().len(), 2);
 }
 
 fn configure_python_problem(problem_dir: &Path) {

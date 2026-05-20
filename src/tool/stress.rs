@@ -81,7 +81,7 @@ pub fn stress_with_options(options: StressOptions<'_>) -> Result<StressSummary> 
     })
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct StressSummary {
     pub plan_name: Option<String>,
     pub cases: usize,
@@ -98,13 +98,17 @@ impl StressSummary {
         let name = self.plan_name.as_deref().unwrap_or("stress");
         if let Some(failure) = &self.expected_failure {
             return format!(
-                "{name}: expected_fail observed=true case={} reason={} cases_run={} unique_input_hashes={} against={} elapsed={}ms",
+                "{name}: expected_fail observed=true case={} reason={} failed_cases={} passed_cases={} failure_ratio={:.3} cases_run={} unique_input_hashes={} against={} elapsed={}ms warnings={}",
                 failure.case_index,
                 failure.reason,
+                failure.failed_cases,
+                failure.passed_cases,
+                failure.failure_ratio,
                 self.cases,
                 self.unique_input_hashes,
                 self.against.join(","),
                 self.elapsed_ms,
+                self.warning_summary(),
             );
         }
         format!(
@@ -139,10 +143,25 @@ impl StressSummary {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct ExpectedStressFailure {
     pub case_index: usize,
     pub reason: String,
+    pub failed_cases: usize,
+    pub passed_cases: usize,
+    pub failure_ratio: f64,
+    pub input_sha256: String,
+    pub input_path: PathBuf,
+    pub report_path: PathBuf,
+    pub outputs: Vec<ExpectedStressOutput>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ExpectedStressOutput {
+    pub label: String,
+    pub status_line: String,
+    pub stdout_path: PathBuf,
+    pub stderr_path: PathBuf,
 }
 
 pub(crate) struct StressRunOptions<'a> {
@@ -190,6 +209,8 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     let mut input_hashes = HashSet::new();
     let mut empty_stdout_cases = 0;
     let mut all_empty_stdout_cases = 0;
+    let mut failed_cases = 0usize;
+    let mut expected_failure = None;
     for (case0, args) in args_by_case.iter().enumerate() {
         let index = case0 + 1;
         let outcome = run_stress_case(
@@ -200,21 +221,31 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             index,
             output_limit_bytes,
         )?;
+        input_hashes.insert(outcome.input_hash.clone());
         if let Some(failure) = outcome.failure {
             if expect_failure {
                 let case_index = failure.case_index;
                 let reason = failure.reason.clone();
-                save_stress_failure_artifacts(&failure_dir, plan_name, &failure)?;
-                let summary = StressSummary {
-                    plan_name: plan_name.map(str::to_string),
-                    cases: index,
-                    elapsed_ms: start.elapsed().as_millis(),
-                    against: against.to_vec(),
-                    empty_stdout_cases,
-                    all_empty_stdout_cases,
-                    unique_input_hashes: input_hashes.len(),
-                    expected_failure: Some(ExpectedStressFailure { case_index, reason }),
-                };
+                failed_cases += 1;
+                if expected_failure.is_none() {
+                    let artifacts =
+                        save_stress_failure_artifacts(&failure_dir, plan_name, &failure)?;
+                    expected_failure = Some(ExpectedStressFailure {
+                        case_index,
+                        reason,
+                        failed_cases: 0,
+                        passed_cases: 0,
+                        failure_ratio: 0.0,
+                        input_sha256: hex_bytes(&outcome.input_hash),
+                        input_path: artifacts.input_path,
+                        report_path: artifacts.report_path,
+                        outputs: artifacts
+                            .outputs
+                            .into_iter()
+                            .map(ExpectedStressOutput::from)
+                            .collect(),
+                    });
+                }
                 if print_progress {
                     if let Some(plan_name) = plan_name {
                         println!("plan `{plan_name}` case {case_index} expected failure observed");
@@ -222,12 +253,11 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
                         println!("case {case_index} expected failure observed");
                     }
                 }
-                return Ok(summary);
+                continue;
             }
             save_stress_failure(&failure_dir, plan_name, failure)?;
             unreachable!("save_stress_failure always returns an error");
         }
-        input_hashes.insert(outcome.input_hash);
         if outcome.empty_stdout {
             empty_stdout_cases += 1;
         }
@@ -250,7 +280,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             }
         }
     }
-    let summary = StressSummary {
+    let mut summary = StressSummary {
         plan_name: plan_name.map(str::to_string),
         cases,
         elapsed_ms: start.elapsed().as_millis(),
@@ -261,13 +291,24 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         expected_failure: None,
     };
     if expect_failure {
-        let plan = plan_name
-            .map(|name| format!(" plan `{name}`"))
-            .unwrap_or_default();
-        anyhow::bail!(
-            "stress{plan} expected failure but all {} cases passed",
-            summary.cases
-        );
+        let Some(mut failure) = expected_failure else {
+            let plan = plan_name
+                .map(|name| format!(" plan `{name}`"))
+                .unwrap_or_default();
+            anyhow::bail!(
+                "stress{plan} expected failure but all {} cases passed",
+                summary.cases
+            );
+        };
+        failure.failed_cases = failed_cases;
+        failure.passed_cases = cases.saturating_sub(failed_cases);
+        failure.failure_ratio = if cases == 0 {
+            0.0
+        } else {
+            failed_cases as f64 / cases as f64
+        };
+        summary.expected_failure = Some(failure);
+        return Ok(summary);
     }
     if print_warnings && summary.has_repeated_input_warning() {
         eprintln!(
@@ -276,6 +317,10 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         );
     }
     Ok(summary)
+}
+
+fn hex_bytes(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 struct StressCaseOutcome {
@@ -298,6 +343,24 @@ struct StressOutputArtifact {
     status_line: String,
     stdout_path: PathBuf,
     stderr_path: PathBuf,
+}
+
+struct SavedStressFailureArtifacts {
+    stem: PathBuf,
+    input_path: PathBuf,
+    report_path: PathBuf,
+    outputs: Vec<StressOutputArtifact>,
+}
+
+impl From<StressOutputArtifact> for ExpectedStressOutput {
+    fn from(artifact: StressOutputArtifact) -> Self {
+        Self {
+            label: artifact.label,
+            status_line: artifact.status_line,
+            stdout_path: artifact.stdout_path,
+            stderr_path: artifact.stderr_path,
+        }
+    }
 }
 
 fn run_stress_case(
@@ -371,7 +434,7 @@ fn save_stress_failure(
     plan_name: Option<&str>,
     failure: StressFailure,
 ) -> Result<()> {
-    let stem = save_stress_failure_artifacts(failure_dir, plan_name, &failure)?;
+    let artifacts = save_stress_failure_artifacts(failure_dir, plan_name, &failure)?;
     let plan = plan_name
         .map(|name| format!(" plan `{name}`"))
         .unwrap_or_default();
@@ -379,8 +442,8 @@ fn save_stress_failure(
         "stress{plan} failed on case {}; {}; saved {}.in, {}.txt, and per-program .out/.err files",
         failure.case_index,
         failure.reason,
-        stem.display(),
-        stem.display()
+        artifacts.stem.display(),
+        artifacts.stem.display()
     );
 }
 
@@ -388,14 +451,21 @@ fn save_stress_failure_artifacts(
     failure_dir: &Path,
     plan_name: Option<&str>,
     failure: &StressFailure,
-) -> Result<PathBuf> {
+) -> Result<SavedStressFailureArtifacts> {
     std::fs::create_dir_all(failure_dir)?;
     let (stem, mut input_file) = create_failure_input(failure_dir, plan_name)?;
+    let input_path = stem.with_extension("in");
+    let report_path = stem.with_extension("txt");
     input_file.write_all(&failure.input)?;
     let artifacts = write_stress_outputs(&stem, &failure.results)?;
     let report = render_stress_failure(plan_name, failure.case_index, &failure.results, &artifacts);
-    std::fs::write(stem.with_extension("txt"), report.as_bytes())?;
-    Ok(stem)
+    std::fs::write(&report_path, report.as_bytes())?;
+    Ok(SavedStressFailureArtifacts {
+        stem,
+        input_path,
+        report_path,
+        outputs: artifacts,
+    })
 }
 
 fn create_failure_input(
