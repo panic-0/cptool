@@ -312,7 +312,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     }
     if print_warnings && summary.has_repeated_input_warning() {
         eprintln!(
-            "warning: repeated_input cases={} unique_input_hashes=1 hint=generator_args_produced_identical_inputs",
+            "warning: repeated_input cases={} unique_input_hashes=1 random_coverage=false hint=generator_args_produced_identical_inputs",
             summary.cases
         );
     }

@@ -33,7 +33,8 @@ pub use stress::{
     stress_with_summary,
 };
 pub use stress_plan::{
-    StressPlanOptions, stress_plan, stress_plan_collect_with_options, stress_plan_with_options,
+    StressPlanFilter, StressPlanOptions, stress_plan, stress_plan_collect_with_options,
+    stress_plan_with_options,
 };
 
 #[cfg(test)]

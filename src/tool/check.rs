@@ -28,6 +28,12 @@ pub struct CheckIssue {
     pub code: String,
     pub message: String,
     pub path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transient: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_after: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -111,6 +117,26 @@ impl CheckReport {
             code: code.into(),
             message: message.into(),
             path,
+            kind: None,
+            transient: None,
+            retry_after: None,
+        });
+    }
+
+    fn lock_error(
+        &mut self,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        path: Option<PathBuf>,
+    ) {
+        self.issues.push(CheckIssue {
+            severity: CheckSeverity::Error,
+            code: code.into(),
+            message: message.into(),
+            path,
+            kind: Some("lock".to_string()),
+            transient: Some(true),
+            retry_after: Some("wait_for_generation_then_retry".to_string()),
         });
     }
 
@@ -155,7 +181,7 @@ pub fn check_problem_package(work_dir: &Path) -> CheckReport {
     check_program_paths(&mut report, &work_dir, &problem);
     check_validator_declaration(&mut report, &work_dir, &problem);
     if let Some(status) = data_generation_status(&work_dir.join("data")) {
-        report.error(
+        report.lock_error(
             "data_generation_in_progress",
             "data generation is in progress; skipped data consistency checks to avoid reading partial output",
             Some(status.marker_path),
@@ -609,9 +635,18 @@ mod tests {
         let report = check_problem_package(&problem_dir);
 
         assert!(report.has_errors());
-        assert!(report.issues.iter().any(|issue| {
-            issue.code == "data_generation_in_progress" && issue.path == Some(lock_dir.clone())
-        }));
+        let issue = report
+            .issues
+            .iter()
+            .find(|issue| issue.code == "data_generation_in_progress")
+            .expect("expected data generation lock issue");
+        assert_eq!(issue.path, Some(lock_dir.clone()));
+        assert_eq!(issue.kind.as_deref(), Some("lock"));
+        assert_eq!(issue.transient, Some(true));
+        assert_eq!(
+            issue.retry_after.as_deref(),
+            Some("wait_for_generation_then_retry")
+        );
         assert!(
             !report
                 .issues

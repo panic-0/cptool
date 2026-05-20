@@ -159,6 +159,18 @@ enum Commands {
             help = "Print one compact summary line per plan instead of per-case progress"
         )]
         summary_only: bool,
+        #[arg(
+            long,
+            conflicts_with = "negative_only",
+            help = "Run only expect: pass plans"
+        )]
+        positive_only: bool,
+        #[arg(
+            long,
+            conflicts_with = "positive_only",
+            help = "Run only expect: fail plans"
+        )]
+        negative_only: bool,
         #[arg(long, help = "Print stress plan summaries as JSON")]
         json: bool,
     },
@@ -329,6 +341,8 @@ fn main() -> anyhow::Result<()> {
             output_limit_bytes,
             failure_dir,
             summary_only,
+            positive_only,
+            negative_only,
             json,
         } => {
             let options = tool::StressPlanOptions {
@@ -337,6 +351,7 @@ fn main() -> anyhow::Result<()> {
                 failure_dir: failure_dir.as_deref(),
                 output_limit_bytes,
                 summary_only,
+                filter: stress_plan_filter(positive_only, negative_only),
             };
             if json {
                 let summaries = tool::stress_plan_collect_with_options(options)?;
@@ -529,6 +544,8 @@ impl<'a> From<&'a tool::CheckReport> for CheckJsonReport<'a> {
 struct JsonWarning {
     code: &'static str,
     count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    random_coverage: Option<bool>,
 }
 
 fn stress_warnings(summary: &tool::StressSummary) -> Vec<JsonWarning> {
@@ -537,15 +554,27 @@ fn stress_warnings(summary: &tool::StressSummary) -> Vec<JsonWarning> {
         warnings.push(JsonWarning {
             code: "all_empty_output",
             count: summary.all_empty_stdout_cases,
+            random_coverage: None,
         });
     }
     if summary.cases > 1 && summary.unique_input_hashes == 1 {
         warnings.push(JsonWarning {
             code: "repeated_input",
             count: 1,
+            random_coverage: Some(false),
         });
     }
     warnings
+}
+
+fn stress_plan_filter(positive_only: bool, negative_only: bool) -> tool::StressPlanFilter {
+    if positive_only {
+        tool::StressPlanFilter::PositiveOnly
+    } else if negative_only {
+        tool::StressPlanFilter::NegativeOnly
+    } else {
+        tool::StressPlanFilter::All
+    }
 }
 
 fn count_lines(bytes: &[u8]) -> usize {

@@ -12,6 +12,14 @@ pub struct StressPlanOptions<'a> {
     pub failure_dir: Option<&'a Path>,
     pub output_limit_bytes: usize,
     pub summary_only: bool,
+    pub filter: StressPlanFilter,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StressPlanFilter {
+    All,
+    PositiveOnly,
+    NegativeOnly,
 }
 
 pub fn stress_plan(
@@ -26,6 +34,7 @@ pub fn stress_plan(
         failure_dir,
         output_limit_bytes,
         summary_only: false,
+        filter: StressPlanFilter::All,
     })
 }
 
@@ -46,9 +55,10 @@ fn stress_plan_impl(options: StressPlanOptions<'_>, emit_text: bool) -> Result<V
         failure_dir,
         output_limit_bytes,
         summary_only,
+        filter,
     } = options;
     let problem = load_problem(work_dir)?;
-    let plans = select_plans(&problem.stress.plans, name)?;
+    let plans = select_plans(&problem.stress.plans, name, filter)?;
     let mut summaries = Vec::with_capacity(plans.len());
 
     for plan in plans {
@@ -81,7 +91,11 @@ fn stress_plan_impl(options: StressPlanOptions<'_>, emit_text: bool) -> Result<V
     Ok(summaries)
 }
 
-fn select_plans<'a>(plans: &'a [StressPlan], name: Option<&str>) -> Result<Vec<&'a StressPlan>> {
+fn select_plans<'a>(
+    plans: &'a [StressPlan],
+    name: Option<&str>,
+    filter: StressPlanFilter,
+) -> Result<Vec<&'a StressPlan>> {
     if plans.is_empty() {
         anyhow::bail!("problem.yaml has no stress.plans");
     }
@@ -90,9 +104,27 @@ fn select_plans<'a>(plans: &'a [StressPlan], name: Option<&str>) -> Result<Vec<&
             .iter()
             .find(|plan| plan.name == name)
             .with_context(|| format!("stress plan `{name}` not found"))?;
+        if !plan_matches_filter(plan, filter) {
+            anyhow::bail!("stress plan `{name}` does not match selected expectation filter");
+        }
         return Ok(vec![plan]);
     }
-    Ok(plans.iter().collect())
+    let selected = plans
+        .iter()
+        .filter(|plan| plan_matches_filter(plan, filter))
+        .collect::<Vec<_>>();
+    if selected.is_empty() {
+        anyhow::bail!("no stress.plans matched selected expectation filter");
+    }
+    Ok(selected)
+}
+
+fn plan_matches_filter(plan: &StressPlan, filter: StressPlanFilter) -> bool {
+    match filter {
+        StressPlanFilter::All => true,
+        StressPlanFilter::PositiveOnly => plan.expect == StressPlanExpectation::Pass,
+        StressPlanFilter::NegativeOnly => plan.expect == StressPlanExpectation::Fail,
+    }
 }
 
 #[cfg(test)]
@@ -150,12 +182,41 @@ mod tests {
     fn selects_all_or_named_plan() {
         let plans = vec![plan("small"), plan("large")];
 
-        assert_eq!(select_plans(&plans, None).unwrap().len(), 2);
         assert_eq!(
-            select_plans(&plans, Some("large")).unwrap()[0].name,
+            select_plans(&plans, None, StressPlanFilter::All)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            select_plans(&plans, Some("large"), StressPlanFilter::All).unwrap()[0].name,
             "large"
         );
-        assert!(select_plans(&plans, Some("missing")).is_err());
+        assert!(select_plans(&plans, Some("missing"), StressPlanFilter::All).is_err());
+    }
+
+    #[test]
+    fn filters_positive_and_negative_plans() {
+        let mut negative = plan("negative");
+        negative.expect = StressPlanExpectation::Fail;
+        let plans = vec![plan("positive"), negative];
+
+        assert_eq!(
+            select_plans(&plans, None, StressPlanFilter::PositiveOnly)
+                .unwrap()
+                .iter()
+                .map(|plan| plan.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["positive"]
+        );
+        assert_eq!(
+            select_plans(&plans, None, StressPlanFilter::NegativeOnly)
+                .unwrap()
+                .iter()
+                .map(|plan| plan.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["negative"]
+        );
     }
 
     fn plan(name: &str) -> StressPlan {

@@ -193,6 +193,8 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(stress_plan_stdout.contains("--name"));
     assert!(stress_plan_stdout.contains("Run only the named stress plan"));
     assert!(stress_plan_stdout.contains("--summary-only"));
+    assert!(stress_plan_stdout.contains("--positive-only"));
+    assert!(stress_plan_stdout.contains("--negative-only"));
     assert!(stress_plan_stdout.contains("--json"));
 
     let stress = run_cptool(["stress", "--help"], None);
@@ -393,6 +395,8 @@ fn gen_summary_only_json_prints_report() {
     assert_eq!(value["bundles"][0], "sample");
     assert_eq!(value["input_bytes"], 4);
     assert_eq!(value["answer_bytes"], 2);
+    assert_eq!(value["validator_configured"], false);
+    assert_eq!(value["validator_calls"], 0);
     assert_eq!(value["warnings"].as_array().unwrap().len(), 0);
     assert!(
         value["paths"].as_array().unwrap()[0]
@@ -588,6 +592,68 @@ fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
 }
 
 #[test]
+fn gen_json_reports_validator_stats() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-validator-json");
+    run_cptool(["init", "gen_validator_json", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("gen_validator_json");
+    configure_python_problem(&problem_dir);
+    add_validator_program(&problem_dir, "import sys\nsys.stdin.buffer.read()\n");
+
+    let output = run_cptool(
+        [
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(value["cases"], 1);
+    assert_eq!(value["validator_configured"], true);
+    assert_eq!(value["validator_calls"], 1);
+}
+
+#[test]
+fn gen_validator_failure_reports_case_and_generator_args() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-validator-failure");
+    run_cptool(
+        ["init", "gen_validator_failure", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("gen_validator_failure");
+    configure_python_problem(&problem_dir);
+    add_validator_program(&problem_dir, "import sys\nsys.exit(3)\n");
+
+    let output = run_cptool_allow_failure(
+        [
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--case",
+            "sample[0]",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("validator failed for sample[0]"));
+    assert!(stderr.contains("generator=gen"));
+    assert!(stderr.contains("args=[\"3\", \"4\"]"));
+}
+
+#[test]
 fn check_command_reports_valid_and_invalid_packages() {
     if !python_available() {
         return;
@@ -648,6 +714,36 @@ fn check_json_reports_status_and_issue_counts() {
                 issue["code"] == "required_file_missing" && issue["severity"] == "error"
             })
     );
+}
+
+#[test]
+fn check_json_marks_generation_lock_as_transient() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-check-json-lock");
+    run_cptool(["init", "check_json_lock", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("check_json_lock");
+    configure_python_problem(&problem_dir);
+    std::fs::create_dir_all(problem_dir.join("data").join(".cptool-gen.lock")).unwrap();
+
+    let output = run_cptool_allow_failure(
+        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let lock_issue = value["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|issue| issue["code"] == "data_generation_in_progress")
+        .expect("expected generation lock issue");
+
+    assert!(!output.status.success());
+    assert_eq!(lock_issue["kind"], "lock");
+    assert_eq!(lock_issue["transient"], true);
+    assert_eq!(lock_issue["retry_after"], "wait_for_generation_then_retry");
 }
 
 #[test]
@@ -781,6 +877,63 @@ fn stress_plan_summary_only_json_prints_plan_summaries() {
 }
 
 #[test]
+fn stress_plan_can_filter_positive_and_negative_plans() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-plan-filters");
+    run_cptool(["init", "stress_plan_filters", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("stress_plan_filters");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("bad.py"),
+        r#"import sys
+
+a, b = map(int, sys.stdin.read().split())
+sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+    append_mixed_stress_plans(&problem_dir);
+
+    let positive = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+            "--positive-only",
+            "--json",
+        ],
+        None,
+    );
+    let positive_value: Value = serde_json::from_slice(&positive.stdout).unwrap();
+    assert_eq!(positive_value["plans"].as_array().unwrap().len(), 1);
+    assert_eq!(positive_value["plans"][0]["plan_name"], "tiny-pass");
+    assert!(positive_value["plans"][0]["expected_failure"].is_null());
+
+    let negative = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+            "--negative-only",
+            "--json",
+        ],
+        None,
+    );
+    let negative_value: Value = serde_json::from_slice(&negative.stdout).unwrap();
+    assert_eq!(negative_value["plans"].as_array().unwrap().len(), 1);
+    assert_eq!(negative_value["plans"][0]["plan_name"], "bad-is-detected");
+    assert_eq!(
+        negative_value["plans"][0]["expected_failure"]["failed_cases"],
+        2
+    );
+}
+
+#[test]
 fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
     if !python_available() {
         return;
@@ -819,7 +972,7 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
     assert!(stderr.contains("warning: all_empty_output case=1 against=std,brute input_bytes=4"));
     assert!(stderr.contains("warning: all_empty_output case=2 against=std,brute input_bytes=4"));
     assert!(stderr.contains(
-        "warning: repeated_input cases=2 unique_input_hashes=1 hint=generator_args_produced_identical_inputs"
+        "warning: repeated_input cases=2 unique_input_hashes=1 random_coverage=false hint=generator_args_produced_identical_inputs"
     ));
 }
 
@@ -859,7 +1012,7 @@ fn stress_reports_single_unique_input_hash_for_fixed_args() {
     assert!(stdout.contains("stress passed: 3 cases"));
     assert!(stdout.contains("unique_input_hashes=1"));
     assert!(stderr.contains(
-        "warning: repeated_input cases=3 unique_input_hashes=1 hint=generator_args_produced_identical_inputs"
+        "warning: repeated_input cases=3 unique_input_hashes=1 random_coverage=false hint=generator_args_produced_identical_inputs"
     ));
 }
 
@@ -900,6 +1053,7 @@ fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
     assert_eq!(value["cases"], 3);
     assert_eq!(value["unique_input_hashes"], 1);
     assert_eq!(value["warnings"][0]["code"], "repeated_input");
+    assert_eq!(value["warnings"][0]["random_coverage"], false);
     assert!(!stdout.contains("case 1 ok"));
     assert!(output.stderr.is_empty());
 }
@@ -1161,6 +1315,19 @@ sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
     .unwrap();
 }
 
+fn add_validator_program(problem_dir: &Path, source: &str) {
+    let yaml_path = problem_dir.join("problem.yaml");
+    let yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    let yaml = yaml.replacen(
+        "  brute:\n    info: !python\n      path: ./src/solve.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n",
+        "  brute:\n    info: !python\n      path: ./src/solve.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n  val:\n    info: !python\n      path: ./src/val.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n",
+        1,
+    );
+    let yaml = yaml.replacen("solution: std\n", "solution: std\nvalidator: val\n", 1);
+    std::fs::write(yaml_path, yaml).unwrap();
+    std::fs::write(problem_dir.join("src").join("val.py"), source).unwrap();
+}
+
 fn configure_unicode_python_problem(problem_dir: &Path) {
     std::fs::write(
         problem_dir.join("problem.yaml"),
@@ -1349,6 +1516,33 @@ fn append_expect_fail_stress_plan(problem_dir: &Path) {
     args: ["3", "4"]
     against: [std, bad]
     cases: 3
+    expect: fail
+"#,
+    );
+    std::fs::write(yaml_path, yaml).unwrap();
+}
+
+fn append_mixed_stress_plans(problem_dir: &Path) {
+    let yaml_path = problem_dir.join("problem.yaml");
+    let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    yaml = yaml.replacen(
+        "  brute:\n    info: !python\n      path: ./src/solve.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n",
+        "  brute:\n    info: !python\n      path: ./src/solve.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n  bad:\n    info: !python\n      path: ./src/bad.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n",
+        1,
+    );
+    yaml.push_str(
+        r#"stress:
+  plans:
+  - name: tiny-pass
+    generator: gen
+    args: ["3", "4"]
+    against: [std, brute]
+    cases: 2
+  - name: bad-is-detected
+    generator: gen
+    args: ["3", "4"]
+    against: [std, bad]
+    cases: 2
     expect: fail
 "#,
     );

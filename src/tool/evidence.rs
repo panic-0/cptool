@@ -225,6 +225,7 @@ fn collect_stress_plan(
         failure_dir: None,
         output_limit_bytes,
         summary_only: true,
+        filter: super::stress_plan::StressPlanFilter::All,
     }) {
         Ok(report) => EvidenceSection::ok(report),
         Err(err) => EvidenceSection::error(err.to_string()),

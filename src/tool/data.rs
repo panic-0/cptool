@@ -45,6 +45,7 @@ struct GeneratedCase {
     selector: CaseSelector,
     input_bytes: usize,
     answer_bytes: usize,
+    validator_calls: usize,
     warnings: Vec<GenerateWarning>,
 }
 
@@ -56,18 +57,21 @@ pub struct GenerateReport {
     pub elapsed_ms: u128,
     pub input_bytes: usize,
     pub answer_bytes: usize,
+    pub validator_configured: bool,
+    pub validator_calls: usize,
     pub warnings: Vec<GenerateWarning>,
 }
 
 impl GenerateReport {
     pub fn summary_line(&self) -> String {
         format!(
-            "gen: ok cases={} bundles={} elapsed={}ms in_bytes={} ans_bytes={} warnings={}",
+            "gen: ok cases={} bundles={} elapsed={}ms in_bytes={} ans_bytes={} validator_calls={} warnings={}",
             self.cases,
             self.bundles.join(","),
             self.elapsed_ms,
             self.input_bytes,
             self.answer_bytes,
+            self.validator_calls,
             summarize_generate_warnings(&self.warnings)
         )
     }
@@ -219,6 +223,7 @@ fn generate_data_report_impl(
             cases,
             paths,
             start.elapsed().as_millis(),
+            context.validator.is_some(),
         ))
     })();
     let cleanup_result = std::fs::remove_dir_all(&staging_dir);
@@ -368,7 +373,9 @@ fn generate_one_case(
         });
     }
     std::fs::write(&input_path, &generated.stdout_bytes)?;
+    let mut validator_calls = 0;
     if let Some(validator) = context.validator {
+        validator_calls += 1;
         let validation = run_spec(
             context.work_dir,
             validator,
@@ -379,8 +386,14 @@ fn generate_one_case(
         if !validation.ok {
             anyhow::bail!(
                 "{}",
-                validation
-                    .failure_report(&format!("validator failed for {}", input_path.display()))
+                validation.failure_report(&format!(
+                    "validator failed for {}[{}] input={} generator={} args={:?}",
+                    selector.bundle,
+                    selector.index,
+                    input_path.display(),
+                    case.generator_name,
+                    case.args
+                ))
             );
         }
     }
@@ -438,6 +451,7 @@ fn generate_one_case(
         selector: selector.clone(),
         input_bytes: generated.stdout_bytes.len(),
         answer_bytes: answer.stdout_bytes.len(),
+        validator_calls,
         warnings,
     })
 }
@@ -446,10 +460,12 @@ fn build_generate_report(
     cases: Vec<GeneratedCase>,
     paths: Vec<PathBuf>,
     elapsed_ms: u128,
+    validator_configured: bool,
 ) -> GenerateReport {
     let mut bundles = BTreeSet::new();
     let mut input_bytes = 0;
     let mut answer_bytes = 0;
+    let mut validator_calls = 0;
     let mut warnings = Vec::new();
     let case_count = cases.len();
 
@@ -457,6 +473,7 @@ fn build_generate_report(
         bundles.insert(case.selector.bundle);
         input_bytes += case.input_bytes;
         answer_bytes += case.answer_bytes;
+        validator_calls += case.validator_calls;
         warnings.extend(case.warnings);
     }
 
@@ -467,6 +484,8 @@ fn build_generate_report(
         elapsed_ms,
         input_bytes,
         answer_bytes,
+        validator_configured,
+        validator_calls,
         warnings,
     }
 }
