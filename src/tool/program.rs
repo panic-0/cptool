@@ -204,9 +204,10 @@ pub(crate) fn compile_cpp(
     compile_args: &[String],
 ) -> Result<PathBuf> {
     let source = resolve_path(work_dir, source);
+    let effective_compile_args = effective_cpp_compile_args(&source, compile_args);
     let code =
         std::fs::read(&source).with_context(|| format!("failed to read {}", source.display()))?;
-    let digest = cpp_cache_key(&code, compile_args);
+    let digest = cpp_cache_key(&code, &effective_compile_args);
     let cache_dir = work_dir
         .join(".cptool")
         .join("cache")
@@ -231,13 +232,13 @@ pub(crate) fn compile_cpp(
     if temp_exe.exists() {
         std::fs::remove_file(&temp_exe)?;
     }
-    let diagnostics = cpp_compile_diagnostics(&digest, &exe, compile_args);
+    let diagnostics = cpp_compile_diagnostics(&digest, &exe, &effective_compile_args);
     let output = std::process::Command::new("g++")
         .current_dir(work_dir)
         .arg(&cached_source)
         .arg("-o")
         .arg(&temp_exe)
-        .args(compile_args)
+        .args(&effective_compile_args)
         .output()
         .with_context(|| format!("failed to run g++\n{}", diagnostics.render()))?;
     if !output.status.success() {
@@ -251,6 +252,15 @@ pub(crate) fn compile_cpp(
     }
     std::fs::rename(&temp_exe, &exe)?;
     Ok(exe)
+}
+
+fn effective_cpp_compile_args(source: &Path, compile_args: &[String]) -> Vec<String> {
+    let mut args = compile_args.to_vec();
+    if let Some(parent) = source.parent() {
+        args.push("-I".to_string());
+        args.push(parent.to_string_lossy().into_owned());
+    }
+    args
 }
 
 fn cpp_cache_key(code: &[u8], compile_args: &[String]) -> String {
@@ -606,6 +616,34 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
         assert!(rendered.contains("contains -static: true"));
         assert!(rendered.contains("cache key: "));
         assert!(rendered.contains("cache exe: "));
+    }
+
+    #[test]
+    fn cpp_compile_adds_source_directory_to_include_path() {
+        if command_version_first_line("g++").is_none() {
+            return;
+        }
+        let root = temp_test_dir("cptool-cpp-include-path");
+        let src_dir = root.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("common.hpp"), "#define ANSWER 42\n").unwrap();
+        let main = src_dir.join("main.cpp");
+        std::fs::write(
+            &main,
+            "#include \"common.hpp\"\n#include <iostream>\nint main(){ std::cout << ANSWER << '\\n'; }\n",
+        )
+        .unwrap();
+
+        let exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let output = std::process::Command::new(exe).output().unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+            "42\n"
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(windows)]
