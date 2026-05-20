@@ -126,7 +126,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 ## Notes
 
 + Syzoj export is not fully supported yet.
-+ `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.5.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
++ `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.6.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
 + `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, and `brute` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits.
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
 + `gen`, implicit selector generation in `run`, `check`, `stress-plan`, and `evidence` support `--wait-for-generation-lock <SECONDS>`. Pass a positive timeout such as `--wait-for-generation-lock 10` to poll every 250ms while another generation is in progress. The wait mode never deletes stale locks; it times out with a retry/prewarm hint.
@@ -139,3 +139,13 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 + `stress-plan` runs `stress.plans` from `problem.yaml`. Plan args support `{seed}`, `{case}` (1-based), and `{case0}` (0-based); `{seed}` is derived deterministically from the plan name, case number, and optional `seed_base`. Plans default to `expect: pass`; use `expect: fail` for wrong-program evidence. Negative plans run every case, succeed when at least one `wrong_answer` or `program_failed` is observed, save the first failure artifacts, and report `failed_cases`, `passed_cases`, and `failure_ratio`. Use `--positive-only` to run only positive `expect: pass` plans, or `--negative-only` to run only negative `expect: fail` plans. Use `--summary-only` to print one compact line per plan, including unique input hashes, empty stdout case counts, and warning counts.
 + C++ compilation automatically adds the source file's directory to the include path, so `#include "common.hpp"` works for headers beside the source even though cptool compiles a cached copy. On Windows, effective compile args also include `-static` unless already present, avoiding MinGW runtime DLL lookup failures in CI and other clean environments. Compile failures include compiler path/version, flags, static-link status, cache key, and cache exe path. Windows runtime errors for common NTSTATUS exit codes include a diagnostic hint in failure reports.
 + `run`, `gen`, `stress`, and `stress-plan` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it where supported.
+
+## Release
+
+On Windows, publish a GitHub release from a clean checkout with:
+
+```powershell
+.\scripts\release.ps1 -Version 0.6.0
+```
+
+Replace `0.6.0` with the current `Cargo.toml` version. The script checks `fmt`, tests, clippy, builds release artifacts with `scripts/build-release.ps1`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.
