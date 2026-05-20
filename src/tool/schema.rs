@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
 pub(crate) const DEFAULT_TIME_LIMIT_SECS: f64 = 1.0;
 pub(crate) const DEFAULT_MEMORY_LIMIT_MB: f64 = 512.0;
@@ -24,6 +25,7 @@ pub struct RunOptions {
     pub stderr_path: Option<PathBuf>,
     pub args: Vec<String>,
     pub output_limit_bytes: usize,
+    pub generation_lock_timeout: Option<Duration>,
 }
 
 #[derive(Clone, Debug)]

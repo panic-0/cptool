@@ -20,11 +20,15 @@ CP Tool is a command line tool for competitive programming.
 # clean selected stale data before publishing newly generated data
 ./cptool gen -w ./example/a_plus_b --bundle main --clean
 
+# wait up to 10 seconds for an in-progress generation lock
+./cptool gen -w ./example/a_plus_b --wait-for-generation-lock 10
+
 # generate with a custom per-program stdout/stderr limit; default is 32 MiB
 ./cptool gen -w ./example/a_plus_b --output-limit-bytes 67108864
 
 # run a configured program on a generated bundle case
 ./cptool run std sample[0] -w ./example/a_plus_b
+./cptool run std sample[0] -w ./example/a_plus_b --wait-for-generation-lock 10
 
 # print only a compact run summary for large outputs
 ./cptool run std sample[0] -w ./example/a_plus_b --summary-only
@@ -46,6 +50,7 @@ CP Tool is a command line tool for competitive programming.
 # check common package structure and generated data issues
 ./cptool check -w ./example/a_plus_b
 ./cptool check -w ./example/a_plus_b --json
+./cptool check -w ./example/a_plus_b --json --wait-for-generation-lock 10
 
 # collect check, generation, and stress-plan evidence
 ./cptool evidence -w ./example/a_plus_b --json
@@ -118,6 +123,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 + `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.5.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
 + `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`.
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
++ `gen`, implicit selector generation in `run`, and `check` support `--wait-for-generation-lock <SECONDS>`. Pass a positive timeout such as `--wait-for-generation-lock 10` to poll every 250ms while another generation is in progress. The wait mode never deletes stale locks; it times out with a retry/prewarm hint.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.
 + `run`, `gen`, `stress`, `stress-plan`, and `check` support `--json` for machine-readable evidence. `--json` can be combined with `--summary-only` where that flag exists; JSON mode suppresses progress/raw-output text on stdout so the result can be parsed directly.
 + `gen` warns when a non-empty input produces an empty answer. Set `output.allow_empty: true` in `problem.yaml` for tasks where empty output is valid. In `--summary-only` mode, `empty_answer` and generator-output warnings are counted in the summary. JSON reports include `validator_configured` and `validator_calls`; validator failures include the bundle, case, staged input path, generator name, and generator args.

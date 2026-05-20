@@ -1,10 +1,14 @@
-use super::data::{data_generation_status, generate_data};
+use super::data::{
+    GenerateOptions, data_generation_status, format_duration, generate_data_with_options,
+    wait_for_generation_status,
+};
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
 use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo};
 use super::temp_suffix;
 use serde::Serialize;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -40,6 +44,11 @@ pub struct CheckIssue {
 pub struct CheckReport {
     pub work_dir: PathBuf,
     pub issues: Vec<CheckIssue>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CheckOptions {
+    pub generation_lock_timeout: Option<Duration>,
 }
 
 impl CheckReport {
@@ -160,6 +169,10 @@ impl CheckReport {
 }
 
 pub fn check_problem_package(work_dir: &Path) -> CheckReport {
+    check_problem_package_with_options(work_dir, CheckOptions::default())
+}
+
+pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions) -> CheckReport {
     let work_dir = normalize_work_dir(work_dir).unwrap_or_else(|_| work_dir.to_path_buf());
     let mut report = CheckReport::new(work_dir.clone());
 
@@ -180,10 +193,24 @@ pub fn check_problem_package(work_dir: &Path) -> CheckReport {
 
     check_program_paths(&mut report, &work_dir, &problem);
     check_validator_declaration(&mut report, &work_dir, &problem);
-    if let Some(status) = data_generation_status(&work_dir.join("data")) {
+    let data_dir = work_dir.join("data");
+    let generation_status = if let Some(timeout) = options.generation_lock_timeout {
+        wait_for_generation_status(&data_dir, timeout)
+    } else {
+        data_generation_status(&data_dir)
+    };
+    if let Some(status) = generation_status {
+        let message = if let Some(timeout) = options.generation_lock_timeout {
+            format!(
+                "data generation is still in progress after waiting {}; skipped data consistency checks to avoid reading partial output; retry after current generation finishes or prewarm the selector serially",
+                format_duration(timeout)
+            )
+        } else {
+            "data generation is in progress; skipped data consistency checks to avoid reading partial output".to_string()
+        };
         report.lock_error(
             "data_generation_in_progress",
-            "data generation is in progress; skipped data consistency checks to avoid reading partial output",
+            message,
             Some(status.marker_path),
         );
         return report;
@@ -319,13 +346,15 @@ fn check_sample_generation(
     }
 
     let output_dir = std::env::temp_dir().join(format!("cptool-check-{}", temp_suffix()));
-    let result = generate_data(
-        work_dir,
-        Some(sample_bundle),
-        None,
-        Some(&output_dir),
-        DEFAULT_OUTPUT_LIMIT_BYTES,
-    );
+    let result = generate_data_with_options(GenerateOptions {
+        work_dir: work_dir.to_path_buf(),
+        bundle: Some(sample_bundle.to_string()),
+        selector: None,
+        output_dir: Some(output_dir.clone()),
+        output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
+        clean: false,
+        generation_lock_timeout: None,
+    });
     let generated = match result {
         Ok(generated) => generated,
         Err(err) => {

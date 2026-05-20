@@ -8,10 +8,11 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const GENERATION_LOCK_DIR: &str = ".cptool-gen.lock";
 const GENERATION_STAGING_PREFIX: &str = ".cptool-gen-";
+const GENERATION_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Debug)]
 pub struct GenerateOptions {
@@ -21,6 +22,7 @@ pub struct GenerateOptions {
     pub output_dir: Option<PathBuf>,
     pub output_limit_bytes: usize,
     pub clean: bool,
+    pub generation_lock_timeout: Option<Duration>,
 }
 
 struct GenerateContext<'a> {
@@ -148,6 +150,7 @@ pub fn generate_data(
         output_dir: output_dir.map(Path::to_path_buf),
         output_limit_bytes,
         clean: false,
+        generation_lock_timeout: None,
     })
 }
 
@@ -170,6 +173,7 @@ fn generate_data_report_impl(
         output_dir,
         output_limit_bytes,
         clean,
+        generation_lock_timeout,
     } = options;
     let work_dir = normalize_work_dir(&work_dir)?;
     let problem = load_problem(&work_dir)?;
@@ -178,7 +182,7 @@ fn generate_data_report_impl(
         .map(|path| resolve_path(&work_dir, path))
         .unwrap_or_else(|| work_dir.join("data"));
     std::fs::create_dir_all(&output_dir)?;
-    let _generation_lock = DataGenerationLock::acquire(&output_dir)?;
+    let _generation_lock = DataGenerationLock::acquire(&output_dir, generation_lock_timeout)?;
     let selected_cases = select_cases(&problem, bundle.as_deref(), selector.as_deref())?;
     let clean_scope =
         clean.then(|| clean_scope_for(&problem, bundle.as_deref(), selector.as_deref()));
@@ -262,8 +266,43 @@ pub fn data_generation_status(output_dir: &Path) -> Option<DataGenerationStatus>
     None
 }
 
+pub(crate) fn wait_for_generation_status(
+    output_dir: &Path,
+    timeout: Duration,
+) -> Option<DataGenerationStatus> {
+    let initial = data_generation_status(output_dir)?;
+    eprintln!(
+        "waiting for data generation lock: {} timeout={}",
+        initial.marker_path.display(),
+        format_duration(timeout)
+    );
+
+    let start = Instant::now();
+    loop {
+        if let Some(status) = data_generation_status(output_dir) {
+            let elapsed = start.elapsed();
+            if elapsed >= timeout {
+                return Some(status);
+            }
+            let remaining = timeout.saturating_sub(elapsed);
+            std::thread::sleep(remaining.min(GENERATION_LOCK_POLL_INTERVAL));
+            continue;
+        }
+        return None;
+    }
+}
+
 impl DataGenerationLock {
-    fn acquire(output_dir: &Path) -> Result<Self> {
+    fn acquire(output_dir: &Path, timeout: Option<Duration>) -> Result<Self> {
+        if let Some(timeout) = timeout
+            && let Some(status) = wait_for_generation_status(output_dir, timeout)
+        {
+            anyhow::bail!(
+                "data generation is already in progress: {} (waited {}; retry after current generation finishes or prewarm the selector serially)",
+                status.marker_path.display(),
+                format_duration(timeout)
+            );
+        }
         let path = output_dir.join(GENERATION_LOCK_DIR);
         match std::fs::create_dir(&path) {
             Ok(()) => {
@@ -278,12 +317,23 @@ impl DataGenerationLock {
                 Ok(Self { path })
             }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                anyhow::bail!("data generation is already in progress: {}", path.display())
+                anyhow::bail!(
+                    "data generation is already in progress: {} (retry after current generation finishes or prewarm the selector serially)",
+                    path.display()
+                )
             }
             Err(err) => Err(err).with_context(|| {
                 format!("failed to create data generation lock {}", path.display())
             }),
         }
+    }
+}
+
+pub(crate) fn format_duration(duration: Duration) -> String {
+    if duration.subsec_nanos() == 0 {
+        format!("{}s", duration.as_secs())
+    } else {
+        format!("{:.3}s", duration.as_secs_f64())
     }
 }
 
@@ -767,12 +817,12 @@ mod tests {
         let root = temp_dir("generation-lock");
         std::fs::create_dir_all(&root).unwrap();
 
-        let lock = DataGenerationLock::acquire(&root).unwrap();
+        let lock = DataGenerationLock::acquire(&root, None).unwrap();
         let status = data_generation_status(&root).unwrap();
 
         assert_eq!(status.marker_path, root.join(GENERATION_LOCK_DIR));
         assert!(
-            DataGenerationLock::acquire(&root)
+            DataGenerationLock::acquire(&root, None)
                 .unwrap_err()
                 .to_string()
                 .contains("data generation is already in progress")
@@ -780,6 +830,43 @@ mod tests {
 
         drop(lock);
         assert!(data_generation_status(&root).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn generation_lock_waits_until_existing_lock_is_released() {
+        let root = temp_dir("generation-lock-wait");
+        std::fs::create_dir_all(&root).unwrap();
+        let lock_dir = root.join(GENERATION_LOCK_DIR);
+        std::fs::create_dir_all(&lock_dir).unwrap();
+
+        let lock_dir_for_thread = lock_dir.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(25));
+            std::fs::remove_dir_all(lock_dir_for_thread).unwrap();
+        });
+
+        let lock = DataGenerationLock::acquire(&root, Some(Duration::from_secs(1))).unwrap();
+
+        handle.join().unwrap();
+        assert_eq!(lock.path, lock_dir);
+        drop(lock);
+        assert!(data_generation_status(&root).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn generation_lock_wait_reports_timeout() {
+        let root = temp_dir("generation-lock-timeout");
+        std::fs::create_dir_all(root.join(GENERATION_LOCK_DIR)).unwrap();
+
+        let err = DataGenerationLock::acquire(&root, Some(Duration::from_millis(1)))
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("data generation is already in progress"));
+        assert!(err.contains("waited 0.001s"));
+        assert!(err.contains("prewarm the selector serially"));
         std::fs::remove_dir_all(root).unwrap();
     }
 

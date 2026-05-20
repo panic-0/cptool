@@ -209,6 +209,7 @@ fn collect_gen(work_dir: &Path, output_limit_bytes: usize) -> EvidenceSection<Ge
         output_dir: None,
         output_limit_bytes,
         clean: false,
+        generation_lock_timeout: None,
     }) {
         Ok(report) => EvidenceSection::ok(report),
         Err(err) => EvidenceSection::error(err.to_string()),

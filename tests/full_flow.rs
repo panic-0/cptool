@@ -2,6 +2,7 @@ use cptool::test_support::{python_available, temp_suffix};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::Duration;
 
 #[test]
 fn cli_runs_init_generate_run_stress_and_export_flow() {
@@ -170,17 +171,20 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(gen_stdout.contains("--summary-only"));
     assert!(gen_stdout.contains("compact generation summary"));
     assert!(gen_stdout.contains("--json"));
+    assert!(gen_stdout.contains("--wait-for-generation-lock"));
 
     let run = run_cptool(["run", "--help"], None);
     let run_stdout = String::from_utf8_lossy(&run.stdout);
     assert!(run_stdout.contains("--summary-only"));
     assert!(run_stdout.contains("Print only status"));
     assert!(run_stdout.contains("--json"));
+    assert!(run_stdout.contains("--wait-for-generation-lock"));
 
     let check = run_cptool(["check", "--help"], None);
     let check_stdout = String::from_utf8_lossy(&check.stdout);
     assert!(check_stdout.contains("Check common package structure"));
     assert!(check_stdout.contains("--json"));
+    assert!(check_stdout.contains("--wait-for-generation-lock"));
 
     let evidence = run_cptool(["evidence", "--help"], None);
     let evidence_stdout = String::from_utf8_lossy(&evidence.stdout);
@@ -203,6 +207,15 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(stress_stdout.contains("{case}"));
     assert!(stress_stdout.contains("{case0}"));
     assert!(stress_stdout.contains("--json"));
+}
+
+#[test]
+fn wait_for_generation_lock_rejects_zero_seconds() {
+    let output = run_cptool_allow_failure(["gen", "--wait-for-generation-lock", "0"], None);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("value must be at least 1 second"));
 }
 
 #[test]
@@ -592,6 +605,72 @@ fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
 }
 
 #[test]
+fn gen_waits_for_generation_lock_when_requested() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-wait-lock");
+    run_cptool(["init", "gen_wait_lock", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("gen_wait_lock");
+    configure_python_problem(&problem_dir);
+    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+
+    let output = run_cptool(
+        [
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--wait-for-generation-lock",
+            "1",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    handle.join().unwrap();
+    assert!(stderr.contains("waiting for data generation lock:"));
+    assert!(stderr.contains("timeout=1s"));
+    assert_eq!(
+        std::fs::read_to_string(problem_dir.join("data").join("sample-0.in")).unwrap(),
+        "3 4\n"
+    );
+}
+
+#[test]
+fn run_waits_for_generation_lock_before_implicit_case_generation() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-run-wait-lock");
+    run_cptool(["init", "run_wait_lock", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("run_wait_lock");
+    configure_python_problem(&problem_dir);
+    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+
+    let output = run_cptool(
+        [
+            "run",
+            "std",
+            "sample[0]",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--wait-for-generation-lock",
+            "1",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    handle.join().unwrap();
+    assert!(stdout.contains("std: ok"));
+    assert!(stdout.contains("7\n"));
+    assert!(stderr.contains("waiting for data generation lock:"));
+}
+
+#[test]
 fn gen_json_reports_validator_stats() {
     if !python_available() {
         return;
@@ -744,6 +823,47 @@ fn check_json_marks_generation_lock_as_transient() {
     assert_eq!(lock_issue["kind"], "lock");
     assert_eq!(lock_issue["transient"], true);
     assert_eq!(lock_issue["retry_after"], "wait_for_generation_then_retry");
+}
+
+#[test]
+fn check_json_waits_for_generation_lock_and_stays_parseable() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-check-json-wait-lock");
+    run_cptool(
+        ["init", "check_json_wait_lock", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("check_json_wait_lock");
+    configure_python_problem(&problem_dir);
+    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+
+    let output = run_cptool(
+        [
+            "check",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+            "--wait-for-generation-lock",
+            "1",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    handle.join().unwrap();
+    assert_eq!(value["status"], "pass");
+    assert!(
+        !value["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| { issue["code"] == "data_generation_in_progress" })
+    );
+    assert!(stderr.contains("waiting for data generation lock:"));
 }
 
 #[test]
@@ -1547,6 +1667,18 @@ fn append_mixed_stress_plans(problem_dir: &Path) {
 "#,
     );
     std::fs::write(yaml_path, yaml).unwrap();
+}
+
+fn release_generation_lock_after(
+    problem_dir: &Path,
+    delay: Duration,
+) -> std::thread::JoinHandle<()> {
+    let lock_dir = problem_dir.join("data").join(".cptool-gen.lock");
+    std::fs::create_dir_all(&lock_dir).unwrap();
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        let _ = std::fs::remove_dir_all(lock_dir);
+    })
 }
 
 fn run_cptool<const N: usize>(args: [&str; N], trailing_path: Option<&Path>) -> Output {

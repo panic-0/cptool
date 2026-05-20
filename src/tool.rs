@@ -11,7 +11,10 @@ mod stress_args;
 mod stress_plan;
 
 pub(crate) use crate::support::{temp_suffix, unix_epoch_nanos};
-pub use check::{CheckIssue, CheckReport, CheckSeverity, check_problem_package};
+pub use check::{
+    CheckIssue, CheckOptions, CheckReport, CheckSeverity, check_problem_package,
+    check_problem_package_with_options,
+};
 pub use data::{
     GenerateOptions, GenerateReport, GenerateWarning, GenerateWarningKind, generate_data,
     generate_data_report_with_options, generate_data_with_options,

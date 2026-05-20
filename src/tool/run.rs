@@ -21,6 +21,7 @@ pub fn run(options: RunOptions) -> Result<RunResult> {
         options.selector.as_deref(),
         options.stdin_text,
         options.stdin_path,
+        options.generation_lock_timeout,
     )?;
     let result = run_spec(
         &work_dir,

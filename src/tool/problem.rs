@@ -1,8 +1,9 @@
-use super::data::generate_data;
+use super::data::{GenerateOptions, generate_data_with_options};
 use super::schema::{CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem};
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 pub fn load_problem(work_dir: &Path) -> Result<Problem> {
     let path = work_dir.join("problem.yaml");
     let yaml = std::fs::read_to_string(&path)
@@ -36,6 +37,7 @@ pub(crate) fn resolve_run_input(
     selector: Option<&str>,
     stdin_text: Option<String>,
     stdin_path: Option<PathBuf>,
+    generation_lock_timeout: Option<Duration>,
 ) -> Result<Option<Vec<u8>>> {
     if let Some(text) = stdin_text {
         return Ok(Some(text.into_bytes()));
@@ -52,13 +54,15 @@ pub(crate) fn resolve_run_input(
         .join(case_file_stem(&selector))
         .with_extension("in");
     if !input_path.exists() {
-        generate_data(
-            work_dir,
-            Some(&selector.bundle),
-            Some(&format!("{}[{}]", selector.bundle, selector.index)),
-            None,
-            DEFAULT_OUTPUT_LIMIT_BYTES,
-        )?;
+        generate_data_with_options(GenerateOptions {
+            work_dir: work_dir.to_path_buf(),
+            bundle: Some(selector.bundle.clone()),
+            selector: Some(format!("{}[{}]", selector.bundle, selector.index)),
+            output_dir: None,
+            output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
+            clean: false,
+            generation_lock_timeout,
+        })?;
     }
     Ok(Some(std::fs::read(&input_path).with_context(|| {
         format!("failed to read {}", input_path.display())

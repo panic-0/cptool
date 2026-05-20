@@ -4,7 +4,7 @@ use cptool::tool::{self, DEFAULT_OUTPUT_LIMIT_BYTES, RunOptions};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -67,6 +67,13 @@ enum Commands {
         output_limit_bytes: usize,
         #[arg(
             long,
+            value_name = "SECONDS",
+            value_parser = positive_seconds,
+            help = "Wait up to SECONDS for an in-progress data generation lock"
+        )]
+        wait_for_generation_lock: Option<u64>,
+        #[arg(
+            long,
             help = "Print only status, size, line count, hash, and stderr summary"
         )]
         summary_only: bool,
@@ -95,6 +102,13 @@ enum Commands {
         output_dir: Option<PathBuf>,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            value_parser = positive_seconds,
+            help = "Wait up to SECONDS for an in-progress data generation lock"
+        )]
+        wait_for_generation_lock: Option<u64>,
         #[arg(
             long,
             help = "Remove stale .in/.ans files for the selected case, bundle, or known bundles before publishing new data"
@@ -178,6 +192,13 @@ enum Commands {
     Check {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            value_parser = positive_seconds,
+            help = "Wait up to SECONDS for an in-progress data generation lock"
+        )]
+        wait_for_generation_lock: Option<u64>,
         #[arg(long, help = "Print the check report as JSON")]
         json: bool,
     },
@@ -220,6 +241,7 @@ fn main() -> anyhow::Result<()> {
             stdout_path,
             stderr_path,
             output_limit_bytes,
+            wait_for_generation_lock,
             summary_only,
             json,
             hide_stdout,
@@ -237,6 +259,7 @@ fn main() -> anyhow::Result<()> {
                 stderr_path: stderr_path.clone(),
                 args,
                 output_limit_bytes,
+                generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
             })?;
             if json {
                 print_json(&RunJsonSummary::from(&result))?;
@@ -271,6 +294,7 @@ fn main() -> anyhow::Result<()> {
             case,
             output_dir,
             output_limit_bytes,
+            wait_for_generation_lock,
             clean,
             summary_only,
             json,
@@ -282,6 +306,7 @@ fn main() -> anyhow::Result<()> {
                 output_dir,
                 output_limit_bytes,
                 clean,
+                generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
             };
             if json {
                 let report = tool::generate_data_report_with_options(options)?;
@@ -366,8 +391,17 @@ fn main() -> anyhow::Result<()> {
                 tool::stress_plan_with_options(options)?;
             }
         }
-        Commands::Check { work_dir, json } => {
-            let report = tool::check_problem_package(&work_dir);
+        Commands::Check {
+            work_dir,
+            wait_for_generation_lock,
+            json,
+        } => {
+            let report = tool::check_problem_package_with_options(
+                &work_dir,
+                tool::CheckOptions {
+                    generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
+                },
+            );
             if json {
                 print_json(&CheckJsonReport::from(&report))?;
             } else {
@@ -575,6 +609,20 @@ fn stress_plan_filter(positive_only: bool, negative_only: bool) -> tool::StressP
     } else {
         tool::StressPlanFilter::All
     }
+}
+
+fn positive_seconds(value: &str) -> Result<u64, String> {
+    let seconds = value
+        .parse::<u64>()
+        .map_err(|_| format!("`{value}` is not a positive integer number of seconds"))?;
+    if seconds == 0 {
+        return Err("value must be at least 1 second".to_string());
+    }
+    Ok(seconds)
+}
+
+fn generation_lock_timeout(seconds: Option<u64>) -> Option<Duration> {
+    seconds.map(Duration::from_secs)
 }
 
 fn count_lines(bytes: &[u8]) -> usize {
