@@ -21,13 +21,13 @@ struct Cli {
 enum Commands {
     #[command(about = "Create a minimal cptool/autocpp problem package")]
     Init {
-        #[arg(help = "Problem id or display name used to create problems/<slug>")]
+        #[arg(help = "Problem id or display name used to create <problems-dir>/<slug>")]
         id: String,
         #[arg(
             short,
             long,
             default_value = ".",
-            help = "Root directory that receives the problems/ folder"
+            help = "Workspace root that receives problems/, or the problems/ directory itself"
         )]
         root: PathBuf,
     },

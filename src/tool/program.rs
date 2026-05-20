@@ -152,6 +152,12 @@ pub(crate) fn run_spec(
     let stderr = join_output_reader(stderr_reader, "stderr");
 
     let Some(status) = status else {
+        let stdout = stdout?;
+        let stderr = stderr?;
+        let stdout_bytes = stdout.bytes;
+        let stderr_bytes = stderr.bytes;
+        let stdout_text = decode_output(&stdout_bytes);
+        let stderr_text = decode_output(&stderr_bytes);
         return Ok(RunResult {
             label: spec.label.clone(),
             ok: false,
@@ -159,12 +165,12 @@ pub(crate) fn run_spec(
             exit_code: None,
             diagnostic: None,
             elapsed_ms,
-            stdout_bytes: Vec::new(),
-            stderr_bytes: Vec::new(),
-            stdout: String::new(),
-            stderr: String::new(),
-            truncated_stdout: false,
-            truncated_stderr: false,
+            stdout_bytes,
+            stderr_bytes,
+            stdout: stdout_text,
+            stderr: stderr_text,
+            truncated_stdout: stdout.truncated,
+            truncated_stderr: stderr.truncated,
         });
     };
     let stdout = stdout?;
@@ -730,6 +736,53 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
         assert_eq!(result.stdout_bytes, vec![b'x'; 32]);
         assert!(result.truncated_stdout);
         assert!(!result.truncated_stderr);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn run_spec_timeout_keeps_limited_stdout_and_stderr() {
+        if !python_available() {
+            return;
+        }
+        let root = temp_test_dir("cptool-runner-timeout-output");
+        std::fs::create_dir_all(&root).unwrap();
+        let script = root.join("timeout_output.py");
+        std::fs::write(
+            &script,
+            r#"
+import sys
+import time
+
+sys.stdout.buffer.write(b"stdout-before-timeout")
+sys.stdout.buffer.flush()
+sys.stderr.buffer.write(b"stderr-before-timeout")
+sys.stderr.buffer.flush()
+time.sleep(10)
+"#,
+        )
+        .unwrap();
+        let spec = ProgramSpec {
+            label: "timeout_output".to_string(),
+            info: ProgramInfo::Python(CommandProgram {
+                path: script,
+                extra_args: Vec::new(),
+            }),
+            time_limit_secs: 0.2,
+            memory_limit_mb: 128.0,
+        };
+
+        let result = run_spec(&root, &spec, &[], None, 6).unwrap();
+
+        assert!(!result.ok);
+        assert_eq!(result.kind, "timeout");
+        assert_eq!(result.exit_code, None);
+        assert_eq!(result.stdout_bytes, b"stdout");
+        assert_eq!(result.stderr_bytes, b"stderr");
+        assert_eq!(result.stdout, "stdout");
+        assert_eq!(result.stderr, "stderr");
+        assert!(result.truncated_stdout);
+        assert!(result.truncated_stderr);
 
         std::fs::remove_dir_all(root).unwrap();
     }

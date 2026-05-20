@@ -8,6 +8,9 @@ CP Tool is a command line tool for competitive programming.
 # create a cptool/autocpp problem package
 ./cptool init a_plus_b
 
+# --root accepts either a workspace root or the problems/ directory itself
+./cptool init p_agent45 --root ./problems
+
 # generate official data into ./example/a_plus_b/data
 ./cptool gen -w ./example/a_plus_b
 
@@ -123,7 +126,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 
 + Syzoj export is not fully supported yet.
 + `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.5.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
-+ `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. The scaffold sets `gen`, `std`, and `brute` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits.
++ `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, and `brute` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits.
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
 + `gen`, implicit selector generation in `run`, `check`, `stress-plan`, and `evidence` support `--wait-for-generation-lock <SECONDS>`. Pass a positive timeout such as `--wait-for-generation-lock 10` to poll every 250ms while another generation is in progress. The wait mode never deletes stale locks; it times out with a retry/prewarm hint.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.
