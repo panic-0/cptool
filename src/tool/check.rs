@@ -489,7 +489,11 @@ fn normalize_output_block(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool::schema::{
+        CppProgram, Program, Test, TestBundle, TestCase, TestTask, TestTaskType,
+    };
     use crate::tool::{init_package, temp_test_dir};
+    use std::collections::HashMap;
 
     #[test]
     fn report_render_separates_errors_and_warnings() {
@@ -513,6 +517,48 @@ mod tests {
         );
 
         assert_eq!(blocks, vec!["3\n"]);
+    }
+
+    #[test]
+    fn sample_output_normalization_ignores_crlf_and_trailing_space() {
+        assert_eq!(
+            normalize_output_block("3  \r\n4\t\r\n\r\n"),
+            normalize_output_block("3\n4\n")
+        );
+    }
+
+    #[test]
+    fn sample_answer_path_uses_samples_bundle_when_sample_is_absent() {
+        let root = temp_test_dir("cptool-check-samples-fallback");
+        let data_dir = root.join("data");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let answer_path = data_dir.join("samples-0.ans");
+        std::fs::write(&answer_path, "42\n").unwrap();
+        let problem = problem_with_bundles(["samples"]);
+
+        assert_eq!(
+            sample_answer_from_data_dir(&root, Some(&problem)),
+            Some(answer_path)
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_warns_when_statement_has_multiple_sample_outputs() {
+        let root = temp_test_dir("cptool-check-multiple-sample-output");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("statement.md"),
+            "# Sample Output\n```text\n1\n```\n# Sample Output\n```text\n2\n```\n",
+        )
+        .unwrap();
+        let mut report = CheckReport::new(root.clone());
+
+        check_statement_sample_output(&mut report, &root, None, Some("1\n"));
+
+        assert_issue(&report, "sample_output_ambiguous", CheckSeverity::Warning);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -661,5 +707,67 @@ mod tests {
 
     fn assert_no_issue(report: &CheckReport, code: &str) {
         assert!(!report.issues.iter().any(|issue| issue.code == code));
+    }
+
+    fn problem_with_bundles<const N: usize>(bundle_names: [&str; N]) -> Problem {
+        let mut programs = HashMap::new();
+        programs.insert(
+            "gen".to_string(),
+            Program {
+                info: ProgramInfo::Cpp(CppProgram {
+                    path: PathBuf::from("src/gen.cpp"),
+                    compile_args: Vec::new(),
+                }),
+                time_limit_secs: 1.0,
+                memory_limit_mb: 512.0,
+            },
+        );
+        programs.insert(
+            "std".to_string(),
+            Program {
+                info: ProgramInfo::Cpp(CppProgram {
+                    path: PathBuf::from("src/std.cpp"),
+                    compile_args: Vec::new(),
+                }),
+                time_limit_secs: 1.0,
+                memory_limit_mb: 512.0,
+            },
+        );
+
+        let bundles = bundle_names
+            .into_iter()
+            .map(|name| {
+                (
+                    name.to_string(),
+                    TestBundle {
+                        cases: vec![TestCase {
+                            generator_name: "gen".to_string(),
+                            args: Vec::new(),
+                        }],
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        Problem {
+            name: "samples fallback".to_string(),
+            output: Default::default(),
+            stress: Default::default(),
+            programs,
+            test: Test {
+                bundles,
+                tasks: vec![TestTask {
+                    name: "samples".to_string(),
+                    score: 100.0,
+                    task_type: TestTaskType::Min,
+                    bundles: vec!["samples".to_string()],
+                    dependencies: Vec::new(),
+                }],
+            },
+            solution_name: "std".to_string(),
+            validator_name: None,
+            validator_omitted_reason: None,
+            checker_name: None,
+        }
     }
 }

@@ -321,6 +321,97 @@ fn gen_summary_only_prints_compact_success_totals() {
 }
 
 #[test]
+fn gen_and_export_cover_multiple_bundles_cases_and_tasks() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-diverse-data");
+    run_cptool(["init", "diverse_problem", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("diverse_problem");
+    configure_diverse_python_problem(&problem_dir);
+
+    let summary = run_cptool(
+        ["gen", "-w", problem_dir.to_str().unwrap(), "--summary-only"],
+        None,
+    );
+    let summary_stdout = String::from_utf8_lossy(&summary.stdout);
+
+    assert!(summary_stdout.contains("gen: ok cases=3 bundles=main,sample elapsed="));
+    assert!(summary_stdout.contains("in_bytes=9"));
+    assert!(summary_stdout.contains("ans_bytes=12"));
+    assert!(summary_stdout.contains("warnings=0"));
+
+    let data_dir = problem_dir.join("data");
+    assert_eq!(
+        std::fs::read_to_string(data_dir.join("sample-0.in")).unwrap(),
+        "1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(data_dir.join("sample-0.ans")).unwrap(),
+        "1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(data_dir.join("main-0.in")).unwrap(),
+        "20\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(data_dir.join("main-0.ans")).unwrap(),
+        "400\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(data_dir.join("main-1.in")).unwrap(),
+        "300\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(data_dir.join("main-1.ans")).unwrap(),
+        "90000\n"
+    );
+
+    run_cptool(
+        [
+            "export",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--oj",
+            "syzoj",
+        ],
+        None,
+    );
+
+    let export_dir = problem_dir.join("export").join("syzoj");
+    assert!(export_dir.join("data.yml").exists());
+    assert_eq!(
+        std::fs::read_to_string(export_dir.join("0.in")).unwrap(),
+        "1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(export_dir.join("0.ans")).unwrap(),
+        "1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(export_dir.join("1.in")).unwrap(),
+        "20\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(export_dir.join("1.ans")).unwrap(),
+        "400\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(export_dir.join("2.in")).unwrap(),
+        "300\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(export_dir.join("2.ans")).unwrap(),
+        "90000\n"
+    );
+
+    let data_yml = std::fs::read_to_string(export_dir.join("data.yml")).unwrap();
+    assert!(data_yml.contains("subtasks:"));
+    assert!(data_yml.contains("dependencies:"));
+}
+
+#[test]
 fn gen_warns_when_generator_stdout_is_empty() {
     if !python_available() {
         return;
@@ -816,6 +907,72 @@ sys.stdout.buffer.write(f"{left} {right}\n".encode("utf-8"))
 
 text = sys.stdin.buffer.read().decode("utf-8").strip()
 sys.stdout.buffer.write(f"答案: {text}\n".encode("utf-8"))
+"#,
+    )
+    .unwrap();
+}
+
+fn configure_diverse_python_problem(problem_dir: &Path) {
+    std::fs::write(
+        problem_dir.join("problem.yaml"),
+        r#"name: diverse_problem
+programs:
+  gen:
+    info: !python
+      path: ./src/gen.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  std:
+    info: !python
+      path: ./src/solve.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  brute:
+    info: !python
+      path: ./src/solve.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+solution: std
+validator_omitted_reason: "coverage fixture"
+test:
+  bundles:
+    sample:
+      cases:
+      - generator: gen
+        args: ["1"]
+    main:
+      cases:
+      - generator: gen
+        args: ["20"]
+      - generator: gen
+        args: ["300"]
+  tasks:
+  - name: sample
+    score: 10.0
+    type: min
+    bundles: [sample]
+  - name: main
+    score: 90.0
+    type: sum
+    bundles: [main]
+    dependencies: [sample]
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("gen.py"),
+        r#"import sys
+
+sys.stdout.buffer.write(f"{sys.argv[1]}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("solve.py"),
+        r#"import sys
+
+value = int(sys.stdin.read())
+sys.stdout.buffer.write(f"{value * value}\n".encode("ascii"))
 "#,
     )
     .unwrap();
