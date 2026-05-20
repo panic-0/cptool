@@ -62,16 +62,38 @@ function Build-LinuxPackage {
         throw "Could not translate repository path for WSL"
     }
     $wslCargoHome = Convert-CargoHomeToWslPath
+    $commit = (git rev-parse HEAD).Trim()
     $quotedRepoRoot = $wslRepoRoot.Replace("'", "'\''")
-    $command = "cd '$quotedRepoRoot' && VERSION='$Version'"
+    $quotedCommit = $commit.Replace("'", "'\''")
+    $linuxEnv = "VERSION='$Version'"
     if (-not [string]::IsNullOrWhiteSpace($wslCargoHome)) {
         $quotedCargoHome = $wslCargoHome.Replace("'", "'\''")
-        $command += " CARGO_HOME='$quotedCargoHome'"
+        $linuxEnv += " CARGO_HOME='$quotedCargoHome'"
     }
-    $command += " bash scripts/build-release-linux.sh"
-    wsl bash -lc $command
-    if ($LASTEXITCODE -ne 0) {
-        throw "Linux release build failed with exit code $LASTEXITCODE"
+
+    $tempScript = [System.IO.Path]::GetTempFileName()
+    $wslScript = ConvertTo-WslPath $tempScript
+    $script = @"
+set -euo pipefail
+export PATH="`$HOME/.cargo/bin:`$PATH"
+tmp_dir=`$(mktemp -d)
+trap 'rm -rf "`$tmp_dir"' EXIT
+git clone --quiet '$quotedRepoRoot' "`$tmp_dir/repo"
+cd "`$tmp_dir/repo"
+git checkout --quiet '$quotedCommit'
+$linuxEnv bash scripts/build-release-linux.sh
+mkdir -p '$quotedRepoRoot/dist'
+cp "dist/cptool-v$Version-linux-x86_64.tar.gz" '$quotedRepoRoot/dist/'
+"@
+    try {
+        $script | Set-Content -Encoding ascii -LiteralPath $tempScript
+        wsl bash $wslScript
+        if ($LASTEXITCODE -ne 0) {
+            throw "Linux release build failed with exit code $LASTEXITCODE"
+        }
+    }
+    finally {
+        Remove-Item -Force -LiteralPath $tempScript -ErrorAction SilentlyContinue
     }
 }
 
