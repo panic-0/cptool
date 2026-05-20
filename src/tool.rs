@@ -86,6 +86,12 @@ mod tests {
         assert!(problem_dir.join(".gitignore").exists());
         assert!(!problem_dir.join("quality_report.md").exists());
         assert!(!problem_dir.join("problem.md").exists());
+
+        let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.programs["gen"].time_limit_secs, 3.0);
+        assert_eq!(problem.programs["std"].time_limit_secs, 3.0);
+        assert_eq!(problem.programs["brute"].time_limit_secs, 3.0);
+
         std::fs::remove_dir_all(root).unwrap();
     }
 
