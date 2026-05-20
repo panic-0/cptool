@@ -84,6 +84,11 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
 
 #[test]
 fn cli_help_describes_new_workflow_commands() {
+    let version = run_cptool(["--version"], None);
+    let version_stdout = String::from_utf8_lossy(&version.stdout);
+    assert!(version_stdout.contains(env!("CARGO_PKG_VERSION")));
+    assert!(version_stdout.contains("(commit "));
+
     let top = run_cptool(["--help"], None);
     let top_stdout = String::from_utf8_lossy(&top.stdout);
 

@@ -102,6 +102,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 ## Notes
 
 + Syzoj export is not fully supported yet.
++ `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.4.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
 + `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`.
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.

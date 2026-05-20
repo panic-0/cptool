@@ -6,7 +6,7 @@ use std::time::Instant;
 
 #[derive(Debug, Parser)]
 #[command(
-    version,
+    version = env!("CPTOOL_VERSION"),
     about = "Deterministic competitive-programming problem package tool",
     long_about = "cptool initializes problem packages, runs configured programs, generates official data, stress-tests solutions, checks package health, and exports judge data."
 )]
