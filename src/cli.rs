@@ -561,7 +561,7 @@ struct StressJsonSummary<'a> {
     all_empty_stdout_cases: usize,
     unique_input_hashes: usize,
     expected_failure: Option<&'a tool::ExpectedStressFailure>,
-    warnings: Vec<JsonWarning>,
+    warnings: Vec<tool::StressWarning>,
 }
 
 impl<'a> From<&'a tool::StressSummary> for StressJsonSummary<'a> {
@@ -575,7 +575,7 @@ impl<'a> From<&'a tool::StressSummary> for StressJsonSummary<'a> {
             all_empty_stdout_cases: summary.all_empty_stdout_cases,
             unique_input_hashes: summary.unique_input_hashes,
             expected_failure: summary.expected_failure.as_ref(),
-            warnings: stress_warnings(summary),
+            warnings: summary.warnings(),
         }
     }
 }
@@ -599,33 +599,6 @@ impl<'a> From<&'a tool::CheckReport> for CheckJsonReport<'a> {
             issues: &report.issues,
         }
     }
-}
-
-#[derive(Serialize)]
-struct JsonWarning {
-    code: &'static str,
-    count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    random_coverage: Option<bool>,
-}
-
-fn stress_warnings(summary: &tool::StressSummary) -> Vec<JsonWarning> {
-    let mut warnings = Vec::new();
-    if summary.all_empty_stdout_cases > 0 {
-        warnings.push(JsonWarning {
-            code: "all_empty_output",
-            count: summary.all_empty_stdout_cases,
-            random_coverage: None,
-        });
-    }
-    if summary.cases > 1 && summary.unique_input_hashes == 1 {
-        warnings.push(JsonWarning {
-            code: "repeated_input",
-            count: 1,
-            random_coverage: Some(false),
-        });
-    }
-    warnings
 }
 
 fn stress_plan_filter(positive_only: bool, negative_only: bool) -> tool::StressPlanFilter {

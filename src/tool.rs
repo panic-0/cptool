@@ -32,8 +32,8 @@ pub use schema::{
     TestBundle, TestCase, TestTask, TestTaskType,
 };
 pub use stress::{
-    ExpectedStressFailure, StressOptions, StressSummary, stress, stress_with_options,
-    stress_with_summary,
+    ExpectedStressFailure, StressOptions, StressSummary, StressWarning, stress,
+    stress_with_options, stress_with_summary,
 };
 pub use stress_plan::{
     StressPlanFilter, StressPlanOptions, stress_plan, stress_plan_collect_with_options,

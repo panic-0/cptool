@@ -94,6 +94,25 @@ pub struct StressSummary {
 }
 
 impl StressSummary {
+    pub fn warnings(&self) -> Vec<StressWarning> {
+        let mut warnings = Vec::new();
+        if self.all_empty_stdout_cases > 0 {
+            warnings.push(StressWarning {
+                code: "all_empty_output",
+                count: self.all_empty_stdout_cases,
+                random_coverage: None,
+            });
+        }
+        if self.has_repeated_input_warning() {
+            warnings.push(StressWarning {
+                code: "repeated_input",
+                count: 1,
+                random_coverage: Some(false),
+            });
+        }
+        warnings
+    }
+
     pub fn summary_line(&self) -> String {
         let name = self.plan_name.as_deref().unwrap_or("stress");
         if let Some(failure) = &self.expected_failure {
@@ -124,13 +143,11 @@ impl StressSummary {
     }
 
     fn warning_summary(&self) -> String {
-        let mut warnings = Vec::new();
-        if self.all_empty_stdout_cases > 0 {
-            warnings.push(format!("all_empty_output:{}", self.all_empty_stdout_cases));
-        }
-        if self.has_repeated_input_warning() {
-            warnings.push("repeated_input:1".to_string());
-        }
+        let warnings = self
+            .warnings()
+            .into_iter()
+            .map(|warning| format!("{}:{}", warning.code, warning.count))
+            .collect::<Vec<_>>();
         if warnings.is_empty() {
             "0".to_string()
         } else {
@@ -141,6 +158,14 @@ impl StressSummary {
     fn has_repeated_input_warning(&self) -> bool {
         self.cases > 1 && self.unique_input_hashes == 1
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct StressWarning {
+    pub code: &'static str,
+    pub count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub random_coverage: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
