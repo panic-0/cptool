@@ -799,6 +799,54 @@ fn stress_plan_expands_seed_and_case_placeholders() {
     assert!(stdout.contains("stress plan `seeded` passed: 2 cases"));
 }
 
+#[test]
+fn stress_plan_expect_fail_treats_wrong_answer_as_success() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-plan-expect-fail");
+    run_cptool(
+        ["init", "stress_plan_expect_fail", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("stress_plan_expect_fail");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("bad.py"),
+        r#"import sys
+
+a, b = map(int, sys.stdin.read().split())
+sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+    append_expect_fail_stress_plan(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "bad-is-detected",
+            "--summary-only",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("bad-is-detected: expected_fail observed=true case=1"));
+    assert!(stdout.contains("reason=wrong_answer: output mismatch between `std` and `bad`"));
+    assert!(
+        problem_dir
+            .join("tests")
+            .join("failures")
+            .join("stress-bad-is-detected-001.txt")
+            .exists()
+    );
+}
+
 fn configure_python_problem(problem_dir: &Path) {
     std::fs::write(
         problem_dir.join("problem.yaml"),
@@ -1022,6 +1070,28 @@ fn append_stress_plan_with_seed_placeholders(problem_dir: &Path) {
     against: [std, brute]
     cases: 2
     seed_base: 20260519
+"#,
+    );
+    std::fs::write(yaml_path, yaml).unwrap();
+}
+
+fn append_expect_fail_stress_plan(problem_dir: &Path) {
+    let yaml_path = problem_dir.join("problem.yaml");
+    let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    yaml = yaml.replacen(
+        "  brute:\n    info: !python\n      path: ./src/solve.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n",
+        "  brute:\n    info: !python\n      path: ./src/solve.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n  bad:\n    info: !python\n      path: ./src/bad.py\n    time_limit_secs: 1.0\n    memory_limit_mb: 128.0\n",
+        1,
+    );
+    yaml.push_str(
+        r#"stress:
+  plans:
+  - name: bad-is-detected
+    generator: gen
+    args: ["3", "4"]
+    against: [std, bad]
+    cases: 3
+    expect: fail
 "#,
     );
     std::fs::write(yaml_path, yaml).unwrap();

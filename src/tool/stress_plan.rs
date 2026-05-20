@@ -1,5 +1,5 @@
 use super::problem::load_problem;
-use super::schema::StressPlan;
+use super::schema::{StressPlan, StressPlanExpectation};
 use super::stress::{StressRunOptions, StressSummary, run_stress};
 use super::stress_args::plan_args_by_case;
 use anyhow::{Context, Result};
@@ -52,6 +52,7 @@ pub fn stress_plan_with_options(options: StressPlanOptions<'_>) -> Result<Vec<St
             plan_name: Some(&plan.name),
             print_progress: !summary_only,
             print_warnings: !summary_only,
+            expect_failure: plan.expect == StressPlanExpectation::Fail,
         })
         .with_context(|| format!("stress plan `{}` failed", plan.name))?;
         if summary_only {
@@ -100,6 +101,7 @@ mod tests {
             against: vec!["std".to_string(), "brute".to_string()],
             cases: 3,
             seed_base: Some(42),
+            expect: StressPlanExpectation::Pass,
         };
 
         let args = plan_args_by_case(&plan);
@@ -152,6 +154,7 @@ mod tests {
             against: vec!["std".to_string(), "brute".to_string()],
             cases: 1,
             seed_base: None,
+            expect: StressPlanExpectation::Pass,
         }
     }
 }

@@ -50,6 +50,7 @@ pub fn stress_with_summary(
         plan_name: None,
         print_progress: true,
         print_warnings: true,
+        expect_failure: false,
     })
 }
 
@@ -62,11 +63,23 @@ pub struct StressSummary {
     pub empty_stdout_cases: usize,
     pub all_empty_stdout_cases: usize,
     pub unique_input_hashes: usize,
+    pub expected_failure: Option<ExpectedStressFailure>,
 }
 
 impl StressSummary {
     pub fn summary_line(&self) -> String {
         let name = self.plan_name.as_deref().unwrap_or("stress");
+        if let Some(failure) = &self.expected_failure {
+            return format!(
+                "{name}: expected_fail observed=true case={} reason={} cases_run={} unique_input_hashes={} against={} elapsed={}ms",
+                failure.case_index,
+                failure.reason,
+                self.cases,
+                self.unique_input_hashes,
+                self.against.join(","),
+                self.elapsed_ms,
+            );
+        }
         format!(
             "{name}: ok cases={} unique_input_hashes={} against={} elapsed={}ms empty_stdout_cases={} all_empty_stdout_cases={} warnings={}",
             self.cases,
@@ -99,6 +112,12 @@ impl StressSummary {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExpectedStressFailure {
+    pub case_index: usize,
+    pub reason: String,
+}
+
 pub(crate) struct StressRunOptions<'a> {
     pub(crate) work_dir: &'a Path,
     pub(crate) generator: &'a str,
@@ -109,6 +128,7 @@ pub(crate) struct StressRunOptions<'a> {
     pub(crate) plan_name: Option<&'a str>,
     pub(crate) print_progress: bool,
     pub(crate) print_warnings: bool,
+    pub(crate) expect_failure: bool,
 }
 
 pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary> {
@@ -122,6 +142,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         plan_name,
         print_progress,
         print_warnings,
+        expect_failure,
     } = options;
     let cases = args_by_case.len();
     if against.len() < 2 {
@@ -153,6 +174,29 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             output_limit_bytes,
         )?;
         if let Some(failure) = outcome.failure {
+            if expect_failure {
+                let case_index = failure.case_index;
+                let reason = failure.reason.clone();
+                save_stress_failure_artifacts(&failure_dir, plan_name, &failure)?;
+                let summary = StressSummary {
+                    plan_name: plan_name.map(str::to_string),
+                    cases: index,
+                    elapsed_ms: start.elapsed().as_millis(),
+                    against: against.to_vec(),
+                    empty_stdout_cases,
+                    all_empty_stdout_cases,
+                    unique_input_hashes: input_hashes.len(),
+                    expected_failure: Some(ExpectedStressFailure { case_index, reason }),
+                };
+                if print_progress {
+                    if let Some(plan_name) = plan_name {
+                        println!("plan `{plan_name}` case {case_index} expected failure observed");
+                    } else {
+                        println!("case {case_index} expected failure observed");
+                    }
+                }
+                return Ok(summary);
+            }
             save_stress_failure(&failure_dir, plan_name, failure)?;
             unreachable!("save_stress_failure always returns an error");
         }
@@ -187,7 +231,17 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         empty_stdout_cases,
         all_empty_stdout_cases,
         unique_input_hashes: input_hashes.len(),
+        expected_failure: None,
     };
+    if expect_failure {
+        let plan = plan_name
+            .map(|name| format!(" plan `{name}`"))
+            .unwrap_or_default();
+        anyhow::bail!(
+            "stress{plan} expected failure but all {} cases passed",
+            summary.cases
+        );
+    }
     if print_warnings && summary.has_repeated_input_warning() {
         eprintln!(
             "warning: repeated_input cases={} unique_input_hashes=1 hint=generator_args_produced_identical_inputs",
@@ -290,12 +344,7 @@ fn save_stress_failure(
     plan_name: Option<&str>,
     failure: StressFailure,
 ) -> Result<()> {
-    std::fs::create_dir_all(failure_dir)?;
-    let (stem, mut input_file) = create_failure_input(failure_dir, plan_name)?;
-    input_file.write_all(&failure.input)?;
-    let artifacts = write_stress_outputs(&stem, &failure.results)?;
-    let report = render_stress_failure(plan_name, failure.case_index, &failure.results, &artifacts);
-    std::fs::write(stem.with_extension("txt"), report.as_bytes())?;
+    let stem = save_stress_failure_artifacts(failure_dir, plan_name, &failure)?;
     let plan = plan_name
         .map(|name| format!(" plan `{name}`"))
         .unwrap_or_default();
@@ -306,6 +355,20 @@ fn save_stress_failure(
         stem.display(),
         stem.display()
     );
+}
+
+fn save_stress_failure_artifacts(
+    failure_dir: &Path,
+    plan_name: Option<&str>,
+    failure: &StressFailure,
+) -> Result<PathBuf> {
+    std::fs::create_dir_all(failure_dir)?;
+    let (stem, mut input_file) = create_failure_input(failure_dir, plan_name)?;
+    input_file.write_all(&failure.input)?;
+    let artifacts = write_stress_outputs(&stem, &failure.results)?;
+    let report = render_stress_failure(plan_name, failure.case_index, &failure.results, &artifacts);
+    std::fs::write(stem.with_extension("txt"), report.as_bytes())?;
+    Ok(stem)
 }
 
 fn create_failure_input(
@@ -469,6 +532,7 @@ mod tests {
             empty_stdout_cases: 0,
             all_empty_stdout_cases: 0,
             unique_input_hashes: 300,
+            expected_failure: None,
         };
 
         assert_eq!(
@@ -487,6 +551,7 @@ mod tests {
             empty_stdout_cases: 3,
             all_empty_stdout_cases: 3,
             unique_input_hashes: 1,
+            expected_failure: None,
         };
 
         assert_eq!(
@@ -505,6 +570,7 @@ mod tests {
             empty_stdout_cases: 0,
             all_empty_stdout_cases: 0,
             unique_input_hashes: 1,
+            expected_failure: None,
         };
 
         assert_eq!(
@@ -523,6 +589,7 @@ mod tests {
             empty_stdout_cases: 0,
             all_empty_stdout_cases: 0,
             unique_input_hashes: 1,
+            expected_failure: None,
         };
 
         assert_eq!(

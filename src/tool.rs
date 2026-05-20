@@ -21,8 +21,8 @@ pub use problem::{load_problem, parse_case_selector};
 pub use run::run;
 pub use schema::{
     CommandProgram, CppProgram, DEFAULT_OUTPUT_LIMIT_BYTES, OutputConfig, Problem, Program,
-    ProgramInfo, RunOptions, RunResult, Stress, StressPlan, Test, TestBundle, TestCase, TestTask,
-    TestTaskType,
+    ProgramInfo, RunOptions, RunResult, Stress, StressPlan, StressPlanExpectation, Test,
+    TestBundle, TestCase, TestTask, TestTaskType,
 };
 pub use stress::{StressSummary, stress, stress_with_summary};
 pub use stress_plan::{StressPlanOptions, stress_plan, stress_plan_with_options};

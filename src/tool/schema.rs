@@ -198,10 +198,21 @@ pub struct StressPlan {
     pub cases: usize,
     #[serde(default)]
     pub seed_base: Option<u64>,
+    #[serde(default)]
+    pub expect: StressPlanExpectation,
 }
 
 fn default_stress_cases() -> usize {
     100
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub enum StressPlanExpectation {
+    #[default]
+    #[serde(rename = "pass")]
+    Pass,
+    #[serde(rename = "fail")]
+    Fail,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
