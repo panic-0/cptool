@@ -1,7 +1,29 @@
-/target
-/dist
-/example/**/.cptool
-/example/**/data
-/example/**/tmp
-/example/**/output
-/example/**/export
+# Rust build and release artifacts
+/target/
+/dist/
+
+# Local Codex/agent workspace metadata
+/.agents/
+
+# Generated cptool package artifacts in examples
+/example/**/.cptool/
+/example/**/data/
+/example/**/export/
+/example/**/output/
+/example/**/tmp/
+/example/**/tests/failures/
+
+# Local binaries and temporary files created while running examples
+/example/**/*.exe
+/example/**/*.tmp
+
+# Coverage/profiling output
+/coverage/
+/tarpaulin-report.html
+*.profraw
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
