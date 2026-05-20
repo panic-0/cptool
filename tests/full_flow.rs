@@ -191,6 +191,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(evidence_stdout.contains("Collect check, generation, and stress-plan evidence"));
     assert!(evidence_stdout.contains("--json"));
     assert!(evidence_stdout.contains("--skip-gen"));
+    assert!(evidence_stdout.contains("--reuse-existing-stress-plan"));
     assert!(evidence_stdout.contains("--wait-for-generation-lock"));
 
     let stress_plan = run_cptool(["stress-plan", "--help"], None);
@@ -905,6 +906,79 @@ fn evidence_json_aggregates_check_gen_and_stress_plan() {
     assert_eq!(value["stress_plan"]["status"], "ok");
     assert_eq!(value["stress_plan"]["report"][0]["plan_name"], "tiny");
     assert_eq!(value["stress_plan"]["report"][0]["cases"], 2);
+}
+
+#[test]
+fn evidence_json_can_reuse_stress_plan_report_without_new_failure_artifacts() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-evidence-reuse-stress-plan");
+    run_cptool(
+        ["init", "evidence_reuse_stress_plan", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp
+        .path()
+        .join("problems")
+        .join("evidence_reuse_stress_plan");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("bad.py"),
+        r#"import sys
+
+a, b = map(int, sys.stdin.read().split())
+sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+    append_expect_fail_stress_plan(&problem_dir);
+
+    let stress_plan = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let reused_path = problem_dir.join("stress-plan-summary.json");
+    std::fs::write(&reused_path, &stress_plan.stdout).unwrap();
+    let failure_reports_before = count_failure_reports(&problem_dir);
+
+    let evidence = run_cptool(
+        [
+            "evidence",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+            "--reuse-existing-stress-plan",
+            reused_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&evidence.stdout).unwrap();
+
+    assert_eq!(value["stress_plan"]["status"], "ok");
+    assert_eq!(
+        value["stress_plan"]["report"][0]["plan_name"],
+        "bad-is-detected"
+    );
+    assert_eq!(
+        value["stress_plan"]["report"][0]["expected_failure"]["failed_cases"],
+        3
+    );
+    assert_eq!(count_failure_reports(&problem_dir), failure_reports_before);
+    assert!(
+        !problem_dir
+            .join("tests")
+            .join("failures")
+            .join("stress-bad-is-detected-002.txt")
+            .exists()
+    );
 }
 
 #[test]
@@ -1758,6 +1832,20 @@ fn append_mixed_stress_plans(problem_dir: &Path) {
 "#,
     );
     std::fs::write(yaml_path, yaml).unwrap();
+}
+
+fn count_failure_reports(problem_dir: &Path) -> usize {
+    let failure_dir = problem_dir.join("tests").join("failures");
+    std::fs::read_dir(failure_dir)
+        .unwrap()
+        .filter(|entry| {
+            entry
+                .as_ref()
+                .ok()
+                .and_then(|entry| entry.path().extension().map(|extension| extension == "txt"))
+                .unwrap_or(false)
+        })
+        .count()
 }
 
 fn release_generation_lock_after(

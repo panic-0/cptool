@@ -221,6 +221,13 @@ enum Commands {
         skip_stress_plan: bool,
         #[arg(
             long,
+            value_name = "PATH",
+            conflicts_with = "skip_stress_plan",
+            help = "Reuse JSON from `stress-plan --summary-only --json` instead of rerunning stress plans"
+        )]
+        reuse_existing_stress_plan: Option<PathBuf>,
+        #[arg(
+            long,
             value_name = "SECONDS",
             value_parser = positive_seconds,
             help = "Wait up to SECONDS for an in-progress data generation lock"
@@ -432,6 +439,7 @@ fn main() -> anyhow::Result<()> {
             output_limit_bytes,
             skip_gen,
             skip_stress_plan,
+            reuse_existing_stress_plan,
             wait_for_generation_lock,
             json,
         } => {
@@ -440,6 +448,7 @@ fn main() -> anyhow::Result<()> {
                 output_limit_bytes,
                 skip_gen,
                 skip_stress_plan,
+                reuse_existing_stress_plan,
                 generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
             });
             if json {

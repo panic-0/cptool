@@ -3,7 +3,7 @@ use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
 use super::schema::RunResult;
 use super::stress_args::direct_stress_args_by_case;
 use anyhow::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::io::Write;
@@ -81,7 +81,7 @@ pub fn stress_with_options(options: StressOptions<'_>) -> Result<StressSummary> 
     })
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct StressSummary {
     pub plan_name: Option<String>,
     pub cases: usize,
@@ -143,7 +143,7 @@ impl StressSummary {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ExpectedStressFailure {
     pub case_index: usize,
     pub reason: String,
@@ -156,7 +156,7 @@ pub struct ExpectedStressFailure {
     pub outputs: Vec<ExpectedStressOutput>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ExpectedStressOutput {
     pub label: String,
     pub status_line: String,

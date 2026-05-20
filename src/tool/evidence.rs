@@ -3,6 +3,8 @@ use super::data::{GenerateOptions, GenerateReport, generate_data_report_with_opt
 use super::schema::DEFAULT_OUTPUT_LIMIT_BYTES;
 use super::stress::StressSummary;
 use super::stress_plan::{StressPlanOptions, stress_plan_collect_with_options};
+use anyhow::Context;
+use serde::Deserialize;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -13,6 +15,7 @@ pub struct EvidenceOptions {
     pub output_limit_bytes: usize,
     pub skip_gen: bool,
     pub skip_stress_plan: bool,
+    pub reuse_existing_stress_plan: Option<PathBuf>,
     pub generation_lock_timeout: Option<Duration>,
 }
 
@@ -23,6 +26,7 @@ impl EvidenceOptions {
             output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
             skip_gen: false,
             skip_stress_plan: false,
+            reuse_existing_stress_plan: None,
             generation_lock_timeout: None,
         }
     }
@@ -180,6 +184,7 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
         output_limit_bytes,
         skip_gen,
         skip_stress_plan,
+        reuse_existing_stress_plan,
         generation_lock_timeout,
     } = options;
     let check = EvidenceSection::ok(EvidenceCheckReport::from_check_report(
@@ -197,6 +202,8 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
     };
     let stress_plan = if skip_stress_plan {
         EvidenceSection::skipped("requested_by_user")
+    } else if let Some(path) = reuse_existing_stress_plan {
+        collect_reused_stress_plan(&path)
     } else {
         collect_stress_plan(&work_dir, output_limit_bytes, generation_lock_timeout)
     };
@@ -208,6 +215,30 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
         r#gen,
         stress_plan,
     }
+}
+
+#[derive(Deserialize)]
+struct StressPlanJsonReport {
+    plans: Vec<StressSummary>,
+}
+
+fn collect_reused_stress_plan(path: &Path) -> EvidenceSection<Vec<StressSummary>> {
+    match read_reused_stress_plan(path) {
+        Ok(report) => EvidenceSection::ok(report),
+        Err(err) => EvidenceSection::error(err.to_string()),
+    }
+}
+
+fn read_reused_stress_plan(path: &Path) -> anyhow::Result<Vec<StressSummary>> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read stress-plan JSON `{}`", path.display()))?;
+    let report: StressPlanJsonReport = serde_json::from_str(&text).with_context(|| {
+        format!(
+            "failed to parse stress-plan JSON `{}`; expected output from `cptool stress-plan --summary-only --json`",
+            path.display()
+        )
+    })?;
+    Ok(report.plans)
 }
 
 fn collect_gen(
