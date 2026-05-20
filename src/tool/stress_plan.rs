@@ -1,9 +1,11 @@
+use super::data::{format_duration, wait_for_generation_status};
 use super::problem::load_problem;
 use super::schema::{StressPlan, StressPlanExpectation};
 use super::stress::{StressRunOptions, StressSummary, run_stress};
 use super::stress_args::plan_args_by_case;
 use anyhow::{Context, Result};
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug)]
 pub struct StressPlanOptions<'a> {
@@ -13,6 +15,7 @@ pub struct StressPlanOptions<'a> {
     pub output_limit_bytes: usize,
     pub summary_only: bool,
     pub filter: StressPlanFilter,
+    pub generation_lock_timeout: Option<Duration>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,6 +38,7 @@ pub fn stress_plan(
         output_limit_bytes,
         summary_only: false,
         filter: StressPlanFilter::All,
+        generation_lock_timeout: None,
     })
 }
 
@@ -56,7 +60,9 @@ fn stress_plan_impl(options: StressPlanOptions<'_>, emit_text: bool) -> Result<V
         output_limit_bytes,
         summary_only,
         filter,
+        generation_lock_timeout,
     } = options;
+    wait_for_generation_lock(work_dir, generation_lock_timeout)?;
     let problem = load_problem(work_dir)?;
     let plans = select_plans(&problem.stress.plans, name, filter)?;
     let mut summaries = Vec::with_capacity(plans.len());
@@ -89,6 +95,21 @@ fn stress_plan_impl(options: StressPlanOptions<'_>, emit_text: bool) -> Result<V
     }
 
     Ok(summaries)
+}
+
+fn wait_for_generation_lock(work_dir: &Path, timeout: Option<Duration>) -> Result<()> {
+    let Some(timeout) = timeout else {
+        return Ok(());
+    };
+    let data_dir = work_dir.join("data");
+    if let Some(status) = wait_for_generation_status(&data_dir, timeout) {
+        anyhow::bail!(
+            "data generation is still in progress after waiting {}: {} (retry after current generation finishes or prewarm the selector serially)",
+            format_duration(timeout),
+            status.marker_path.display()
+        );
+    }
+    Ok(())
 }
 
 fn select_plans<'a>(

@@ -170,6 +170,13 @@ enum Commands {
         failure_dir: Option<PathBuf>,
         #[arg(
             long,
+            value_name = "SECONDS",
+            value_parser = positive_seconds,
+            help = "Wait up to SECONDS for an in-progress data generation lock"
+        )]
+        wait_for_generation_lock: Option<u64>,
+        #[arg(
+            long,
             help = "Print one compact summary line per plan instead of per-case progress"
         )]
         summary_only: bool,
@@ -212,6 +219,13 @@ enum Commands {
         skip_gen: bool,
         #[arg(long, help = "Skip stress-plan evidence")]
         skip_stress_plan: bool,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            value_parser = positive_seconds,
+            help = "Wait up to SECONDS for an in-progress data generation lock"
+        )]
+        wait_for_generation_lock: Option<u64>,
         #[arg(long, help = "Print the evidence report as JSON")]
         json: bool,
     },
@@ -365,6 +379,7 @@ fn main() -> anyhow::Result<()> {
             name,
             output_limit_bytes,
             failure_dir,
+            wait_for_generation_lock,
             summary_only,
             positive_only,
             negative_only,
@@ -377,6 +392,7 @@ fn main() -> anyhow::Result<()> {
                 output_limit_bytes,
                 summary_only,
                 filter: stress_plan_filter(positive_only, negative_only),
+                generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
             };
             if json {
                 let summaries = tool::stress_plan_collect_with_options(options)?;
@@ -416,6 +432,7 @@ fn main() -> anyhow::Result<()> {
             output_limit_bytes,
             skip_gen,
             skip_stress_plan,
+            wait_for_generation_lock,
             json,
         } => {
             let report = tool::collect_evidence(tool::EvidenceOptions {
@@ -423,6 +440,7 @@ fn main() -> anyhow::Result<()> {
                 output_limit_bytes,
                 skip_gen,
                 skip_stress_plan,
+                generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
             });
             if json {
                 print_json(&report)?;

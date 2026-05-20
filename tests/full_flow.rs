@@ -191,6 +191,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(evidence_stdout.contains("Collect check, generation, and stress-plan evidence"));
     assert!(evidence_stdout.contains("--json"));
     assert!(evidence_stdout.contains("--skip-gen"));
+    assert!(evidence_stdout.contains("--wait-for-generation-lock"));
 
     let stress_plan = run_cptool(["stress-plan", "--help"], None);
     let stress_plan_stdout = String::from_utf8_lossy(&stress_plan.stdout);
@@ -200,6 +201,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(stress_plan_stdout.contains("--positive-only"));
     assert!(stress_plan_stdout.contains("--negative-only"));
     assert!(stress_plan_stdout.contains("--json"));
+    assert!(stress_plan_stdout.contains("--wait-for-generation-lock"));
 
     let stress = run_cptool(["stress", "--help"], None);
     let stress_stdout = String::from_utf8_lossy(&stress.stdout);
@@ -211,11 +213,19 @@ fn cli_help_describes_new_workflow_commands() {
 
 #[test]
 fn wait_for_generation_lock_rejects_zero_seconds() {
-    let output = run_cptool_allow_failure(["gen", "--wait-for-generation-lock", "0"], None);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    for args in [
+        &["gen", "--wait-for-generation-lock", "0"][..],
+        &["run", "--wait-for-generation-lock", "0"][..],
+        &["check", "--wait-for-generation-lock", "0"][..],
+        &["stress-plan", "--wait-for-generation-lock", "0"][..],
+        &["evidence", "--wait-for-generation-lock", "0"][..],
+    ] {
+        let output = run_cptool_slice_allow_failure(args, None);
+        let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert!(!output.status.success());
-    assert!(stderr.contains("value must be at least 1 second"));
+        assert!(!output.status.success());
+        assert!(stderr.contains("value must be at least 1 second"));
+    }
 }
 
 #[test]
@@ -898,6 +908,45 @@ fn evidence_json_aggregates_check_gen_and_stress_plan() {
 }
 
 #[test]
+fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-evidence-json-wait-lock");
+    run_cptool(
+        ["init", "evidence_json_wait_lock", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("evidence_json_wait_lock");
+    configure_python_problem(&problem_dir);
+    append_stress_plan(&problem_dir);
+    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+
+    let output = run_cptool(
+        [
+            "evidence",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+            "--wait-for-generation-lock",
+            "1",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    handle.join().unwrap();
+    assert_eq!(value["check"]["status"], "ok");
+    assert_eq!(value["check"]["report"]["status"], "pass");
+    assert_eq!(value["gen"]["status"], "ok");
+    assert_eq!(value["stress_plan"]["status"], "ok");
+    assert!(stderr.contains("waiting for data generation lock:"));
+    assert!(stderr.contains("timeout=1s"));
+}
+
+#[test]
 fn stress_plan_runs_named_plan_without_seed_config() {
     if !python_available() {
         return;
@@ -924,6 +973,48 @@ fn stress_plan_runs_named_plan_without_seed_config() {
     assert!(stdout.contains("plan `tiny` case 1 ok"));
     assert!(stdout.contains("plan `tiny` case 2 ok"));
     assert!(stdout.contains("stress plan `tiny` passed: 2 cases"));
+}
+
+#[test]
+fn stress_plan_json_waits_for_generation_lock_and_stays_parseable() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-plan-json-wait-lock");
+    run_cptool(
+        ["init", "stress_plan_json_wait_lock", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp
+        .path()
+        .join("problems")
+        .join("stress_plan_json_wait_lock");
+    configure_python_problem(&problem_dir);
+    append_stress_plan(&problem_dir);
+    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+
+    let output = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "tiny",
+            "--summary-only",
+            "--json",
+            "--wait-for-generation-lock",
+            "1",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    handle.join().unwrap();
+    assert_eq!(value["plans"][0]["plan_name"], "tiny");
+    assert_eq!(value["plans"][0]["cases"], 2);
+    assert!(stderr.contains("waiting for data generation lock:"));
 }
 
 #[test]
@@ -1702,6 +1793,10 @@ fn run_cptool_allow_failure<const N: usize>(
     args: [&str; N],
     trailing_path: Option<&Path>,
 ) -> Output {
+    run_cptool_slice_allow_failure(&args, trailing_path)
+}
+
+fn run_cptool_slice_allow_failure(args: &[&str], trailing_path: Option<&Path>) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_cptool"));
     command.args(args);
     if let Some(path) = trailing_path {

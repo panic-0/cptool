@@ -1,10 +1,11 @@
-use super::check::{CheckIssue, CheckReport, check_problem_package};
+use super::check::{CheckIssue, CheckOptions, CheckReport, check_problem_package_with_options};
 use super::data::{GenerateOptions, GenerateReport, generate_data_report_with_options};
 use super::schema::DEFAULT_OUTPUT_LIMIT_BYTES;
 use super::stress::StressSummary;
 use super::stress_plan::{StressPlanOptions, stress_plan_collect_with_options};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub struct EvidenceOptions {
@@ -12,6 +13,7 @@ pub struct EvidenceOptions {
     pub output_limit_bytes: usize,
     pub skip_gen: bool,
     pub skip_stress_plan: bool,
+    pub generation_lock_timeout: Option<Duration>,
 }
 
 impl EvidenceOptions {
@@ -21,6 +23,7 @@ impl EvidenceOptions {
             output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
             skip_gen: false,
             skip_stress_plan: false,
+            generation_lock_timeout: None,
         }
     }
 }
@@ -177,19 +180,25 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
         output_limit_bytes,
         skip_gen,
         skip_stress_plan,
+        generation_lock_timeout,
     } = options;
     let check = EvidenceSection::ok(EvidenceCheckReport::from_check_report(
-        check_problem_package(&work_dir),
+        check_problem_package_with_options(
+            &work_dir,
+            CheckOptions {
+                generation_lock_timeout,
+            },
+        ),
     ));
     let r#gen = if skip_gen {
         EvidenceSection::skipped("requested_by_user")
     } else {
-        collect_gen(&work_dir, output_limit_bytes)
+        collect_gen(&work_dir, output_limit_bytes, generation_lock_timeout)
     };
     let stress_plan = if skip_stress_plan {
         EvidenceSection::skipped("requested_by_user")
     } else {
-        collect_stress_plan(&work_dir, output_limit_bytes)
+        collect_stress_plan(&work_dir, output_limit_bytes, generation_lock_timeout)
     };
 
     EvidenceReport {
@@ -201,7 +210,11 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
     }
 }
 
-fn collect_gen(work_dir: &Path, output_limit_bytes: usize) -> EvidenceSection<GenerateReport> {
+fn collect_gen(
+    work_dir: &Path,
+    output_limit_bytes: usize,
+    generation_lock_timeout: Option<Duration>,
+) -> EvidenceSection<GenerateReport> {
     match generate_data_report_with_options(GenerateOptions {
         work_dir: work_dir.to_path_buf(),
         bundle: None,
@@ -209,7 +222,7 @@ fn collect_gen(work_dir: &Path, output_limit_bytes: usize) -> EvidenceSection<Ge
         output_dir: None,
         output_limit_bytes,
         clean: false,
-        generation_lock_timeout: None,
+        generation_lock_timeout,
     }) {
         Ok(report) => EvidenceSection::ok(report),
         Err(err) => EvidenceSection::error(err.to_string()),
@@ -219,6 +232,7 @@ fn collect_gen(work_dir: &Path, output_limit_bytes: usize) -> EvidenceSection<Ge
 fn collect_stress_plan(
     work_dir: &Path,
     output_limit_bytes: usize,
+    generation_lock_timeout: Option<Duration>,
 ) -> EvidenceSection<Vec<StressSummary>> {
     match stress_plan_collect_with_options(StressPlanOptions {
         work_dir,
@@ -227,6 +241,7 @@ fn collect_stress_plan(
         output_limit_bytes,
         summary_only: true,
         filter: super::stress_plan::StressPlanFilter::All,
+        generation_lock_timeout,
     }) {
         Ok(report) => EvidenceSection::ok(report),
         Err(err) => EvidenceSection::error(err.to_string()),

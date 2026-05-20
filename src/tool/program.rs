@@ -6,6 +6,7 @@ use super::schema::{
 use anyhow::{Context, Result};
 use process_control::{ChildExt, Control};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -205,9 +206,14 @@ pub(crate) fn compile_cpp(
 ) -> Result<PathBuf> {
     let source = resolve_path(work_dir, source);
     let effective_compile_args = effective_cpp_compile_args(&source, compile_args);
-    let code =
-        std::fs::read(&source).with_context(|| format!("failed to read {}", source.display()))?;
-    let digest = cpp_cache_key(&code, &effective_compile_args);
+    let cache_inputs = collect_cpp_cache_inputs(&source)?;
+    let code = cache_inputs
+        .first()
+        .context("C++ cache input list was unexpectedly empty")?
+        .bytes
+        .clone();
+    let toolchain = CppToolchain::detect();
+    let digest = cpp_cache_key(&cache_inputs, &effective_compile_args, &toolchain);
     let cache_dir = work_dir
         .join(".cptool")
         .join("cache")
@@ -232,7 +238,7 @@ pub(crate) fn compile_cpp(
     if temp_exe.exists() {
         std::fs::remove_file(&temp_exe)?;
     }
-    let diagnostics = cpp_compile_diagnostics(&digest, &exe, &effective_compile_args);
+    let diagnostics = cpp_compile_diagnostics(&digest, &exe, &effective_compile_args, &toolchain);
     let output = std::process::Command::new("g++")
         .current_dir(work_dir)
         .arg(&cached_source)
@@ -263,12 +269,147 @@ fn effective_cpp_compile_args(source: &Path, compile_args: &[String]) -> Vec<Str
     args
 }
 
-fn cpp_cache_key(code: &[u8], compile_args: &[String]) -> String {
+#[derive(Clone, Debug)]
+struct CppCacheInput {
+    path: PathBuf,
+    bytes: Vec<u8>,
+}
+
+fn collect_cpp_cache_inputs(source: &Path) -> Result<Vec<CppCacheInput>> {
+    let source = source
+        .canonicalize()
+        .with_context(|| format!("failed to resolve {}", source.display()))?;
+    let source_root = source
+        .parent()
+        .context("C++ source path has no parent directory")?
+        .canonicalize()
+        .with_context(|| {
+            format!(
+                "failed to resolve source directory for {}",
+                source.display()
+            )
+        })?;
+    let mut visited = HashSet::new();
+    let mut inputs = Vec::new();
+    collect_cpp_cache_inputs_recursive(&source, &source_root, &mut visited, &mut inputs)?;
+    Ok(inputs)
+}
+
+fn collect_cpp_cache_inputs_recursive(
+    path: &Path,
+    source_root: &Path,
+    visited: &mut HashSet<PathBuf>,
+    inputs: &mut Vec<CppCacheInput>,
+) -> Result<()> {
+    let path = path
+        .canonicalize()
+        .with_context(|| format!("failed to resolve {}", path.display()))?;
+    if !visited.insert(path.clone()) {
+        return Ok(());
+    }
+
+    let bytes =
+        std::fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let includes = parse_quoted_includes(&bytes);
+    inputs.push(CppCacheInput {
+        path: path.clone(),
+        bytes,
+    });
+
+    let current_dir = path.parent().unwrap_or(source_root);
+    for include in includes {
+        if let Some(include_path) = resolve_local_include(&include, current_dir, source_root) {
+            collect_cpp_cache_inputs_recursive(&include_path, source_root, visited, inputs)?;
+        }
+    }
+    Ok(())
+}
+
+fn parse_quoted_includes(bytes: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_start();
+            let directive = line.strip_prefix('#')?.trim_start();
+            let rest = directive.strip_prefix("include")?;
+            if rest
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
+                return None;
+            }
+            let rest = rest.trim_start().strip_prefix('"')?;
+            let end = rest.find('"')?;
+            let include = &rest[..end];
+            if include.is_empty() {
+                None
+            } else {
+                Some(include.to_string())
+            }
+        })
+        .collect()
+}
+
+fn resolve_local_include(include: &str, current_dir: &Path, source_root: &Path) -> Option<PathBuf> {
+    let include = Path::new(include);
+    for base in [current_dir, source_root] {
+        let candidate = if include.is_absolute() {
+            include.to_path_buf()
+        } else {
+            base.join(include)
+        };
+        let Ok(candidate) = candidate.canonicalize() else {
+            continue;
+        };
+        if candidate.is_file() && candidate.starts_with(source_root) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+#[derive(Clone, Debug)]
+struct CppToolchain {
+    gpp_path: String,
+    gpp_version_first_line: Option<String>,
+}
+
+impl CppToolchain {
+    fn detect() -> Self {
+        Self {
+            gpp_path: resolve_command_path("g++").unwrap_or_else(|| "g++".to_string()),
+            gpp_version_first_line: command_version_first_line("g++"),
+        }
+    }
+}
+
+fn cpp_cache_key(
+    inputs: &[CppCacheInput],
+    compile_args: &[String],
+    toolchain: &CppToolchain,
+) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(code);
+    hasher.update(b"cptool-cpp-cache-v2");
+    hasher.update([0]);
+    hasher.update(toolchain.gpp_path.as_bytes());
+    hasher.update([0]);
+    hasher.update(
+        toolchain
+            .gpp_version_first_line
+            .as_deref()
+            .unwrap_or("<unavailable>")
+            .as_bytes(),
+    );
     for arg in compile_args {
         hasher.update([0]);
         hasher.update(arg.as_bytes());
+    }
+    for input in inputs {
+        hasher.update([0]);
+        hasher.update(input.path.to_string_lossy().as_bytes());
+        hasher.update([0]);
+        hasher.update(&input.bytes);
     }
     format!("{:x}", hasher.finalize())
 }
@@ -305,10 +446,11 @@ fn cpp_compile_diagnostics(
     cache_key: &str,
     exe_path: &Path,
     compile_args: &[String],
+    toolchain: &CppToolchain,
 ) -> CppCompileDiagnostics {
     CppCompileDiagnostics {
-        gpp_path: resolve_command_path("g++").unwrap_or_else(|| "g++".to_string()),
-        gpp_version_first_line: command_version_first_line("g++"),
+        gpp_path: toolchain.gpp_path.clone(),
+        gpp_version_first_line: toolchain.gpp_version_first_line.clone(),
         compile_args: compile_args.to_vec(),
         has_static: compile_args.iter().any(|arg| arg == "-static"),
         cache_key: cache_key.to_string(),
@@ -604,7 +746,17 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
             gpp_version_first_line: Some("g++ (Rev1) 13.2.0".to_string()),
             compile_args: args.clone(),
             has_static: args.iter().any(|arg| arg == "-static"),
-            cache_key: cpp_cache_key(b"int main(){}", &args),
+            cache_key: cpp_cache_key(
+                &[CppCacheInput {
+                    path: PathBuf::from("main.cpp"),
+                    bytes: b"int main(){}".to_vec(),
+                }],
+                &args,
+                &CppToolchain {
+                    gpp_path: "C:\\tools\\mingw\\bin\\g++.exe".to_string(),
+                    gpp_version_first_line: Some("g++ (Rev1) 13.2.0".to_string()),
+                },
+            ),
             exe_path: PathBuf::from("D:\\work\\.cptool\\cache\\cpp\\abc\\main.exe"),
         };
 
@@ -637,6 +789,37 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
         let exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
 
         assert!(exe.exists());
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cpp_compile_cache_key_includes_local_header_contents() {
+        if command_version_first_line("g++").is_none() {
+            return;
+        }
+        let root = temp_test_dir("cptool-cpp-header-cache-key");
+        let src_dir = root.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        let header = src_dir.join("common.hpp");
+        std::fs::write(&header, "#define ANSWER 1\n").unwrap();
+        let main = src_dir.join("main.cpp");
+        std::fs::write(
+            &main,
+            "#include \"common.hpp\"\n#include <iostream>\nint main(){ std::cout << ANSWER << '\\n'; }\n",
+        )
+        .unwrap();
+
+        let first_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let first_output = std::process::Command::new(&first_exe).output().unwrap();
+        assert_eq!(decode_output(&first_output.stdout), "1\n");
+
+        std::fs::write(&header, "#define ANSWER 2\n").unwrap();
+        let second_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let second_output = std::process::Command::new(&second_exe).output().unwrap();
+
+        assert_ne!(first_exe, second_exe);
+        assert_eq!(decode_output(&second_output.stdout), "2\n");
 
         std::fs::remove_dir_all(root).unwrap();
     }
