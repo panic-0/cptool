@@ -83,6 +83,72 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
 }
 
 #[test]
+fn unicode_paths_and_utf8_data_flow_through_cli() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-unicode 路径");
+    run_cptool(["init", "unicode_problem", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("unicode_problem");
+    configure_unicode_python_problem(&problem_dir);
+
+    run_cptool(["gen", "-w"], Some(&problem_dir));
+
+    assert_eq!(
+        std::fs::read_to_string(problem_dir.join("data").join("sample-0.in")).unwrap(),
+        "你好 世界\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(problem_dir.join("data").join("sample-0.ans")).unwrap(),
+        "答案: 你好 世界\n"
+    );
+
+    let stdout_path = problem_dir.join("输出 结果.out");
+    run_cptool(
+        [
+            "run",
+            "std",
+            "sample[0]",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--stdout-path",
+            stdout_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert_eq!(
+        std::fs::read_to_string(&stdout_path).unwrap(),
+        "答案: 你好 世界\n"
+    );
+
+    let check = run_cptool(["check", "-w"], Some(&problem_dir));
+    let check_stdout = String::from_utf8_lossy(&check.stdout);
+    assert!(check_stdout.contains("status: `PASS`"));
+
+    run_cptool(
+        [
+            "export",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--oj",
+            "syzoj",
+        ],
+        None,
+    );
+
+    let export_dir = problem_dir.join("export").join("syzoj");
+    assert_eq!(
+        std::fs::read_to_string(export_dir.join("0.in")).unwrap(),
+        "你好 世界\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(export_dir.join("0.ans")).unwrap(),
+        "答案: 你好 世界\n"
+    );
+}
+
+#[test]
 fn cli_help_describes_new_workflow_commands() {
     let version = run_cptool(["--version"], None);
     let version_stdout = String::from_utf8_lossy(&version.stdout);
@@ -693,6 +759,63 @@ sys.stdout.buffer.write(f"{a} {b}\n".encode("ascii"))
 
 a, b = map(int, sys.stdin.read().split())
 sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+}
+
+fn configure_unicode_python_problem(problem_dir: &Path) {
+    std::fs::write(
+        problem_dir.join("problem.yaml"),
+        r#"name: "求和 案例"
+programs:
+  gen:
+    info: !python
+      path: ./src/生成.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  std:
+    info: !python
+      path: ./src/求解.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  brute:
+    info: !python
+      path: ./src/求解.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+solution: std
+validator_omitted_reason: "unicode path smoke test"
+test:
+  bundles:
+    sample:
+      cases:
+      - generator: gen
+        args: ["你好", "世界"]
+  tasks:
+  - name: sample
+    score: 100.0
+    type: min
+    bundles: [sample]
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("生成.py"),
+        r#"import sys
+
+left = sys.argv[1]
+right = sys.argv[2]
+sys.stdout.buffer.write(f"{left} {right}\n".encode("utf-8"))
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("求解.py"),
+        r#"import sys
+
+text = sys.stdin.buffer.read().decode("utf-8").strip()
+sys.stdout.buffer.write(f"答案: {text}\n".encode("utf-8"))
 "#,
     )
     .unwrap();
