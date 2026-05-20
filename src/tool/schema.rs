@@ -217,6 +217,8 @@ pub struct Problem {
     pub solution_name: String,
     #[serde(rename = "validator")]
     pub validator_name: Option<String>,
+    #[serde(default)]
+    pub validator_omitted_reason: Option<String>,
     #[serde(rename = "checker")]
     pub checker_name: Option<String>,
 }

@@ -258,6 +258,7 @@ mod tests {
             },
             solution_name: "std".to_string(),
             validator_name: None,
+            validator_omitted_reason: None,
             checker_name: None,
         }
     }

@@ -151,6 +151,7 @@ pub fn check_problem_package(work_dir: &Path) -> CheckReport {
     };
 
     check_program_paths(&mut report, &work_dir, &problem);
+    check_validator_declaration(&mut report, &work_dir, &problem);
     if let Some(status) = data_generation_status(&work_dir.join("data")) {
         report.error(
             "data_generation_in_progress",
@@ -207,6 +208,25 @@ fn check_program_paths(report: &mut CheckReport, work_dir: &Path, problem: &Prob
             );
         }
     }
+}
+
+fn check_validator_declaration(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
+    if problem.validator_name.is_some() {
+        return;
+    }
+    if problem
+        .validator_omitted_reason
+        .as_deref()
+        .is_some_and(|reason| !reason.trim().is_empty())
+    {
+        return;
+    }
+
+    report.warning(
+        "validator_missing",
+        "`validator` is not declared; add one or set `validator_omitted_reason`",
+        Some(work_dir.join("problem.yaml")),
+    );
 }
 
 fn check_empty_answers(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
@@ -552,5 +572,94 @@ mod tests {
         );
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_warns_when_validator_is_missing_without_omitted_reason() {
+        let root = temp_test_dir("cptool-check-validator-missing");
+        let problem_dir = create_minimal_check_package(&root, None, None);
+
+        let report = check_problem_package(&problem_dir);
+
+        assert_issue(&report, "validator_missing", CheckSeverity::Warning);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_does_not_warn_when_validator_omitted_reason_is_declared() {
+        let root = temp_test_dir("cptool-check-validator-reason");
+        let problem_dir =
+            create_minimal_check_package(&root, None, Some("interactive output is unrestricted"));
+
+        let report = check_problem_package(&problem_dir);
+
+        assert_no_issue(&report, "validator_missing");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_does_not_warn_when_validator_is_declared() {
+        let root = temp_test_dir("cptool-check-validator-declared");
+        let problem_dir = create_minimal_check_package(&root, Some("val"), None);
+
+        let report = check_problem_package(&problem_dir);
+
+        assert_no_issue(&report, "validator_missing");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    fn create_minimal_check_package(
+        root: &Path,
+        validator: Option<&str>,
+        omitted_reason: Option<&str>,
+    ) -> PathBuf {
+        let problem_dir = root.join("pkg");
+        let src_dir = problem_dir.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(problem_dir.join("statement.md"), "# Statement\n").unwrap();
+        std::fs::write(problem_dir.join("editorial.md"), "# Editorial\n").unwrap();
+        std::fs::write(src_dir.join("std.cpp"), "int main(){}\n").unwrap();
+        std::fs::write(src_dir.join("gen.cpp"), "int main(){}\n").unwrap();
+        if validator.is_some() {
+            std::fs::write(src_dir.join("val.cpp"), "int main(){}\n").unwrap();
+        }
+
+        let mut yaml = String::from(
+            "name: Validator Check\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\n",
+        );
+        if validator.is_some() {
+            yaml.push_str(
+                "  val:\n    info: !cpp\n      path: ./src/val.cpp\n    time_limit_secs: 1.0\n    memory_limit_mb: 512.0\n",
+            );
+        }
+        yaml.push_str("solution: std\n");
+        if let Some(validator) = validator {
+            yaml.push_str(&format!("validator: {validator}\n"));
+        }
+        if let Some(reason) = omitted_reason {
+            yaml.push_str(&format!("validator_omitted_reason: {reason:?}\n"));
+        }
+        yaml.push_str(
+            "test:\n  bundles:\n    main:\n      cases:\n      - generator: gen\n        args: []\n  tasks:\n  - name: main\n    score: 100.0\n    type: min\n    bundles: [main]\n",
+        );
+        std::fs::write(problem_dir.join("problem.yaml"), yaml).unwrap();
+
+        problem_dir
+    }
+
+    fn assert_issue(report: &CheckReport, code: &str, severity: CheckSeverity) {
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.code == code && issue.severity == severity)
+        );
+    }
+
+    fn assert_no_issue(report: &CheckReport, code: &str) {
+        assert!(!report.issues.iter().any(|issue| issue.code == code));
     }
 }
