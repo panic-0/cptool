@@ -61,8 +61,18 @@ function Build-LinuxPackage {
     if ([string]::IsNullOrWhiteSpace($wslRepoRoot)) {
         throw "Could not translate repository path for WSL"
     }
+    $wslCargoHome = Convert-CargoHomeToWslPath
     $quotedRepoRoot = $wslRepoRoot.Replace("'", "'\''")
-    wsl bash -lc "cd '$quotedRepoRoot' && VERSION='$Version' bash scripts/build-release-linux.sh"
+    $command = "cd '$quotedRepoRoot' && VERSION='$Version'"
+    if (-not [string]::IsNullOrWhiteSpace($wslCargoHome)) {
+        $quotedCargoHome = $wslCargoHome.Replace("'", "'\''")
+        $command += " CARGO_HOME='$quotedCargoHome'"
+    }
+    $command += " bash scripts/build-release-linux.sh"
+    wsl bash -lc $command
+    if ($LASTEXITCODE -ne 0) {
+        throw "Linux release build failed with exit code $LASTEXITCODE"
+    }
 }
 
 function ConvertTo-WslPath {
@@ -75,6 +85,17 @@ function ConvertTo-WslPath {
     }
 
     return (& wsl wslpath -a $Path).Trim()
+}
+
+function Convert-CargoHomeToWslPath {
+    $cargoHome = $env:CARGO_HOME
+    if ([string]::IsNullOrWhiteSpace($cargoHome)) {
+        $cargoHome = Join-Path $env:USERPROFILE ".cargo"
+    }
+    if (-not (Test-Path -LiteralPath $cargoHome)) {
+        return ""
+    }
+    return ConvertTo-WslPath $cargoHome
 }
 
 function Write-Checksums {
