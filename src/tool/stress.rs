@@ -80,11 +80,22 @@ impl StressSummary {
     }
 
     fn warning_summary(&self) -> String {
-        if self.all_empty_stdout_cases == 0 {
+        let mut warnings = Vec::new();
+        if self.all_empty_stdout_cases > 0 {
+            warnings.push(format!("all_empty_output:{}", self.all_empty_stdout_cases));
+        }
+        if self.has_repeated_input_warning() {
+            warnings.push("repeated_input:1".to_string());
+        }
+        if warnings.is_empty() {
             "0".to_string()
         } else {
-            format!("all_empty_output:{}", self.all_empty_stdout_cases)
+            warnings.join(",")
         }
+    }
+
+    fn has_repeated_input_warning(&self) -> bool {
+        self.cases > 1 && self.unique_input_hashes == 1
     }
 }
 
@@ -168,7 +179,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             }
         }
     }
-    Ok(StressSummary {
+    let summary = StressSummary {
         plan_name: plan_name.map(str::to_string),
         cases,
         elapsed_ms: start.elapsed().as_millis(),
@@ -176,7 +187,14 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         empty_stdout_cases,
         all_empty_stdout_cases,
         unique_input_hashes: input_hashes.len(),
-    })
+    };
+    if print_warnings && summary.has_repeated_input_warning() {
+        eprintln!(
+            "warning: repeated_input cases={} unique_input_hashes=1 hint=generator_args_produced_identical_inputs",
+            summary.cases
+        );
+    }
+    Ok(summary)
 }
 
 struct StressCaseOutcome {
@@ -473,7 +491,43 @@ mod tests {
 
         assert_eq!(
             summary.summary_line(),
-            "small: ok cases=3 unique_input_hashes=1 against=std,brute elapsed=7ms empty_stdout_cases=3 all_empty_stdout_cases=3 warnings=all_empty_output:3"
+            "small: ok cases=3 unique_input_hashes=1 against=std,brute elapsed=7ms empty_stdout_cases=3 all_empty_stdout_cases=3 warnings=all_empty_output:3,repeated_input:1"
+        );
+    }
+
+    #[test]
+    fn stress_summary_line_reports_repeated_input_warning() {
+        let summary = StressSummary {
+            plan_name: Some("small".to_string()),
+            cases: 2,
+            elapsed_ms: 7,
+            against: vec!["std".to_string(), "brute".to_string()],
+            empty_stdout_cases: 0,
+            all_empty_stdout_cases: 0,
+            unique_input_hashes: 1,
+        };
+
+        assert_eq!(
+            summary.summary_line(),
+            "small: ok cases=2 unique_input_hashes=1 against=std,brute elapsed=7ms empty_stdout_cases=0 all_empty_stdout_cases=0 warnings=repeated_input:1"
+        );
+    }
+
+    #[test]
+    fn stress_summary_line_does_not_report_repeated_input_for_single_case() {
+        let summary = StressSummary {
+            plan_name: Some("small".to_string()),
+            cases: 1,
+            elapsed_ms: 7,
+            against: vec!["std".to_string(), "brute".to_string()],
+            empty_stdout_cases: 0,
+            all_empty_stdout_cases: 0,
+            unique_input_hashes: 1,
+        };
+
+        assert_eq!(
+            summary.summary_line(),
+            "small: ok cases=1 unique_input_hashes=1 against=std,brute elapsed=7ms empty_stdout_cases=0 all_empty_stdout_cases=0 warnings=0"
         );
     }
 }

@@ -425,9 +425,10 @@ fn stress_plan_summary_only_suppresses_case_progress() {
     assert!(stdout.contains("unique_input_hashes=1"));
     assert!(stdout.contains("empty_stdout_cases=0"));
     assert!(stdout.contains("all_empty_stdout_cases=0"));
-    assert!(stdout.contains("warnings=0"));
+    assert!(stdout.contains("warnings=repeated_input:1"));
     assert!(!stdout.contains("plan `tiny` case 1 ok"));
     assert!(!stdout.contains("stress plan `tiny` passed"));
+    assert!(output.stderr.is_empty());
 }
 
 #[test]
@@ -468,6 +469,9 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
     assert!(stdout.contains("stress passed: 2 cases"));
     assert!(stderr.contains("warning: all_empty_output case=1 against=std,brute input_bytes=4"));
     assert!(stderr.contains("warning: all_empty_output case=2 against=std,brute input_bytes=4"));
+    assert!(stderr.contains(
+        "warning: repeated_input cases=2 unique_input_hashes=1 hint=generator_args_produced_identical_inputs"
+    ));
 }
 
 #[test]
@@ -501,9 +505,13 @@ fn stress_reports_single_unique_input_hash_for_fixed_args() {
         None,
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(stdout.contains("stress passed: 3 cases"));
     assert!(stdout.contains("unique_input_hashes=1"));
+    assert!(stderr.contains(
+        "warning: repeated_input cases=3 unique_input_hashes=1 hint=generator_args_produced_identical_inputs"
+    ));
 }
 
 #[test]
@@ -588,8 +596,9 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
     assert!(stdout.contains("unique_input_hashes=1"));
     assert!(stdout.contains("empty_stdout_cases=2"));
     assert!(stdout.contains("all_empty_stdout_cases=2"));
-    assert!(stdout.contains("warnings=all_empty_output:2"));
+    assert!(stdout.contains("warnings=all_empty_output:2,repeated_input:1"));
     assert!(!stderr.contains("warning: all_empty_output"));
+    assert!(!stderr.contains("warning: repeated_input"));
 }
 
 #[test]
