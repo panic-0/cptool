@@ -3,9 +3,11 @@ use super::data::{
     wait_for_generation_status,
 };
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
-use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo};
+use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo, StressPlanExpectation};
 use super::temp_suffix;
 use serde::Serialize;
+use serde_yml::{Mapping, Value};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -38,6 +40,8 @@ pub struct CheckIssue {
     pub transient: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_after: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -129,6 +133,27 @@ impl CheckReport {
             kind: None,
             transient: None,
             retry_after: None,
+            location: None,
+        });
+    }
+
+    fn push_at(
+        &mut self,
+        severity: CheckSeverity,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        path: Option<PathBuf>,
+        location: impl Into<String>,
+    ) {
+        self.issues.push(CheckIssue {
+            severity,
+            code: code.into(),
+            message: message.into(),
+            path,
+            kind: None,
+            transient: None,
+            retry_after: None,
+            location: Some(location.into()),
         });
     }
 
@@ -146,6 +171,7 @@ impl CheckReport {
             kind: Some("lock".to_string()),
             transient: Some(true),
             retry_after: Some("wait_for_generation_then_retry".to_string()),
+            location: None,
         });
     }
 
@@ -166,6 +192,26 @@ impl CheckReport {
     ) {
         self.push(CheckSeverity::Warning, code, message, path);
     }
+
+    fn error_at(
+        &mut self,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        path: Option<PathBuf>,
+        location: impl Into<String>,
+    ) {
+        self.push_at(CheckSeverity::Error, code, message, path, location);
+    }
+
+    fn warning_at(
+        &mut self,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        path: Option<PathBuf>,
+        location: impl Into<String>,
+    ) {
+        self.push_at(CheckSeverity::Warning, code, message, path, location);
+    }
 }
 
 pub fn check_problem_package(work_dir: &Path) -> CheckReport {
@@ -177,6 +223,7 @@ pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions
     let mut report = CheckReport::new(work_dir.clone());
 
     check_required_files(&mut report, &work_dir);
+    check_unknown_yaml_fields(&mut report, &work_dir);
 
     let problem = match load_problem(&work_dir) {
         Ok(problem) => problem,
@@ -192,7 +239,9 @@ pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions
     };
 
     check_program_paths(&mut report, &work_dir, &problem);
+    check_problem_structure(&mut report, &work_dir, &problem);
     check_validator_declaration(&mut report, &work_dir, &problem);
+    check_stress_plans(&mut report, &work_dir, &problem);
     let data_dir = work_dir.join("data");
     let generation_status = if let Some(timeout) = options.generation_lock_timeout {
         wait_for_generation_status(&data_dir, timeout)
@@ -216,7 +265,7 @@ pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions
         return report;
     }
 
-    check_empty_answers(&mut report, &work_dir, &problem);
+    check_generated_data(&mut report, &work_dir, &problem);
 
     let generated_sample_answer = check_sample_generation(&mut report, &work_dir, &problem);
     check_statement_sample_output(
@@ -265,6 +314,200 @@ fn check_program_paths(report: &mut CheckReport, work_dir: &Path, problem: &Prob
     }
 }
 
+fn check_unknown_yaml_fields(report: &mut CheckReport, work_dir: &Path) {
+    let path = work_dir.join("problem.yaml");
+    let Ok(yaml) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(value) = serde_yml::from_str::<Value>(&yaml) else {
+        return;
+    };
+    let Some(root) = value_mapping(&value) else {
+        return;
+    };
+
+    warn_unknown_keys(
+        report,
+        &path,
+        root,
+        "",
+        &[
+            "name",
+            "output",
+            "stress",
+            "programs",
+            "test",
+            "solution",
+            "validator",
+            "validator_omitted_reason",
+            "checker",
+        ],
+    );
+
+    if let Some(output) = mapping_get(root, "output").and_then(value_mapping) {
+        warn_unknown_keys(report, &path, output, "output", &["allow_empty"]);
+    }
+    if let Some(programs) = mapping_get(root, "programs").and_then(value_mapping) {
+        for (program_name, program_value) in string_entries(programs) {
+            let program_location = format!("programs.{program_name}");
+            let Some(program) = value_mapping(program_value) else {
+                continue;
+            };
+            warn_unknown_keys(
+                report,
+                &path,
+                program,
+                &program_location,
+                &["info", "time_limit_secs", "memory_limit_mb"],
+            );
+            if let Some(info) = mapping_get(program, "info").and_then(value_mapping) {
+                warn_unknown_keys(
+                    report,
+                    &path,
+                    info,
+                    &format!("{program_location}.info"),
+                    &["path", "compile_args", "extra_args"],
+                );
+            }
+        }
+    }
+    if let Some(test) = mapping_get(root, "test").and_then(value_mapping) {
+        warn_unknown_keys(report, &path, test, "test", &["bundles", "tasks"]);
+        if let Some(bundles) = mapping_get(test, "bundles").and_then(value_mapping) {
+            for (bundle_name, bundle_value) in string_entries(bundles) {
+                let bundle_location = format!("test.bundles.{bundle_name}");
+                let Some(bundle) = value_mapping(bundle_value) else {
+                    continue;
+                };
+                warn_unknown_keys(report, &path, bundle, &bundle_location, &["cases"]);
+                if let Some(cases) = mapping_get(bundle, "cases").and_then(value_sequence) {
+                    for (case_index, case_value) in cases.iter().enumerate() {
+                        if let Some(case) = value_mapping(case_value) {
+                            warn_unknown_keys(
+                                report,
+                                &path,
+                                case,
+                                &format!("{bundle_location}.cases[{case_index}]"),
+                                &["generator", "args"],
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(tasks) = mapping_get(test, "tasks").and_then(value_sequence) {
+            for (task_index, task_value) in tasks.iter().enumerate() {
+                if let Some(task) = value_mapping(task_value) {
+                    warn_unknown_keys(
+                        report,
+                        &path,
+                        task,
+                        &format!("test.tasks[{task_index}]"),
+                        &["name", "score", "type", "bundles", "dependencies"],
+                    );
+                }
+            }
+        }
+    }
+    if let Some(stress) = mapping_get(root, "stress").and_then(value_mapping) {
+        warn_unknown_keys(report, &path, stress, "stress", &["plans"]);
+        if let Some(plans) = mapping_get(stress, "plans").and_then(value_sequence) {
+            for (plan_index, plan_value) in plans.iter().enumerate() {
+                if let Some(plan) = value_mapping(plan_value) {
+                    warn_unknown_keys(
+                        report,
+                        &path,
+                        plan,
+                        &format!("stress.plans[{plan_index}]"),
+                        &[
+                            "name",
+                            "generator",
+                            "args",
+                            "against",
+                            "cases",
+                            "seed_base",
+                            "expect",
+                        ],
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
+    let yaml_path = work_dir.join("problem.yaml");
+    if problem.test.tasks.is_empty() {
+        report.error_at(
+            "test_tasks_empty",
+            "`test.tasks` must contain at least one task",
+            Some(yaml_path.clone()),
+            "test.tasks",
+        );
+    }
+
+    for (bundle_name, bundle) in &problem.test.bundles {
+        if bundle.cases.is_empty() {
+            report.error_at(
+                "bundle_empty",
+                format!("bundle `{bundle_name}` has no cases"),
+                Some(yaml_path.clone()),
+                format!("test.bundles.{bundle_name}.cases"),
+            );
+        }
+    }
+
+    let mut used_bundles = HashSet::new();
+    let mut task_index_by_name = HashMap::new();
+    for (index, task) in problem.test.tasks.iter().enumerate() {
+        task_index_by_name.insert(task.name.as_str(), index);
+        if task.bundles.is_empty() {
+            report.error_at(
+                "task_has_no_bundles",
+                format!("task `{}` has no bundles", task.name),
+                Some(yaml_path.clone()),
+                format!("test.tasks[{index}].bundles"),
+            );
+        }
+        used_bundles.extend(task.bundles.iter().cloned());
+    }
+
+    let total_score = problem
+        .test
+        .tasks
+        .iter()
+        .map(|task| task.score)
+        .sum::<f64>();
+    if !problem.test.tasks.is_empty() && (total_score - 100.0).abs() > 1e-6 {
+        report.warning_at(
+            "task_score_total_not_100",
+            format!("task scores sum to {total_score}, expected 100.0"),
+            Some(yaml_path.clone()),
+            "test.tasks",
+        );
+    }
+
+    for bundle_name in problem.test.bundles.keys() {
+        if !used_bundles.contains(bundle_name) {
+            report.warning_at(
+                "bundle_uncovered_by_task",
+                format!("bundle `{bundle_name}` is not referenced by any task"),
+                Some(yaml_path.clone()),
+                format!("test.bundles.{bundle_name}"),
+            );
+        }
+    }
+
+    if let Some(cycle) = task_dependency_cycle(problem, &task_index_by_name) {
+        report.error_at(
+            "task_dependency_cycle",
+            format!("task dependencies contain a cycle: {}", cycle.join(" -> ")),
+            Some(yaml_path),
+            "test.tasks",
+        );
+    }
+}
+
 fn check_validator_declaration(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
     if problem.validator_name.is_some() {
         return;
@@ -282,6 +525,70 @@ fn check_validator_declaration(report: &mut CheckReport, work_dir: &Path, proble
         "`validator` is not declared; add one or set `validator_omitted_reason`",
         Some(work_dir.join("problem.yaml")),
     );
+}
+
+fn check_generated_data(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
+    check_expected_data_files(report, work_dir, problem);
+    check_stale_data_files(report, work_dir, problem);
+    check_empty_answers(report, work_dir, problem);
+}
+
+fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
+    let data_dir = work_dir.join("data");
+    for (bundle_name, bundle) in &problem.test.bundles {
+        for case_index in 0..bundle.cases.len() {
+            for extension in ["in", "ans"] {
+                let path = data_dir.join(format!("{bundle_name}-{case_index}.{extension}"));
+                if !path.is_file() {
+                    report.error_at(
+                        "generated_data_missing",
+                        format!("generated data file `{bundle_name}-{case_index}.{extension}` is missing"),
+                        Some(path),
+                        format!("test.bundles.{bundle_name}.cases[{case_index}]"),
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
+    let data_dir = work_dir.join("data");
+    let Ok(entries) = std::fs::read_dir(&data_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() || !is_data_io_file(&path) {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let Some((bundle_name, case_index)) = parse_data_file_stem(stem) else {
+            report.warning(
+                "stale_data_file",
+                "data file does not match `<bundle>-<index>.in/.ans` naming",
+                Some(path),
+            );
+            continue;
+        };
+        let Some(bundle) = problem.test.bundles.get(bundle_name) else {
+            report.warning(
+                "stale_data_file",
+                format!("data file references unknown bundle `{bundle_name}`"),
+                Some(path),
+            );
+            continue;
+        };
+        if case_index >= bundle.cases.len() {
+            report.warning(
+                "stale_data_file",
+                format!("data file references missing case `{bundle_name}[{case_index}]`"),
+                Some(path),
+            );
+        }
+    }
 }
 
 fn check_empty_answers(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
@@ -314,6 +621,221 @@ fn check_empty_answers(report: &mut CheckReport, work_dir: &Path, problem: &Prob
                 format!("could not inspect .ans file: {err}"),
                 Some(path),
             ),
+        }
+    }
+}
+
+fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
+    let yaml_path = work_dir.join("problem.yaml");
+    let plans = &problem.stress.plans;
+    if plans.is_empty() {
+        report.warning_at(
+            "stress_plans_missing",
+            "`stress.plans` is not declared",
+            Some(yaml_path),
+            "stress.plans",
+        );
+        return;
+    }
+
+    if !plans
+        .iter()
+        .any(|plan| plan.expect == StressPlanExpectation::Pass)
+    {
+        report.warning_at(
+            "stress_positive_plan_missing",
+            "`stress.plans` has no `expect: pass` plan",
+            Some(work_dir.join("problem.yaml")),
+            "stress.plans",
+        );
+    }
+
+    for (index, plan) in plans.iter().enumerate() {
+        let location = format!("stress.plans[{index}]");
+        if plan.cases == 0 {
+            report.error_at(
+                "stress_plan_empty",
+                format!("stress plan `{}` has zero cases", plan.name),
+                Some(work_dir.join("problem.yaml")),
+                format!("{location}.cases"),
+            );
+        }
+        if plan.against.len() < 2 {
+            report.error_at(
+                "stress_plan_against_too_few",
+                format!(
+                    "stress plan `{}` must compare at least two programs or sources",
+                    plan.name
+                ),
+                Some(work_dir.join("problem.yaml")),
+                format!("{location}.against"),
+            );
+        }
+        for (field, value) in std::iter::once(("generator", plan.generator.as_str())).chain(
+            plan.against
+                .iter()
+                .map(|target| ("against", target.as_str())),
+        ) {
+            if !stress_program_exists(work_dir, problem, value) {
+                report.error_at(
+                    "stress_plan_program_missing",
+                    format!(
+                        "stress plan `{}` {field} `{value}` is neither a configured program nor an existing source file",
+                        plan.name
+                    ),
+                    Some(work_dir.join("problem.yaml")),
+                    location.clone(),
+                );
+            }
+        }
+    }
+}
+
+fn task_dependency_cycle<'a>(
+    problem: &'a Problem,
+    task_index_by_name: &HashMap<&'a str, usize>,
+) -> Option<Vec<String>> {
+    fn visit(
+        index: usize,
+        problem: &Problem,
+        task_index_by_name: &HashMap<&str, usize>,
+        state: &mut [u8],
+        stack: &mut Vec<usize>,
+    ) -> Option<Vec<String>> {
+        if state[index] == 1 {
+            let start = stack.iter().position(|&item| item == index).unwrap_or(0);
+            let mut cycle = stack[start..]
+                .iter()
+                .map(|&item| problem.test.tasks[item].name.clone())
+                .collect::<Vec<_>>();
+            cycle.push(problem.test.tasks[index].name.clone());
+            return Some(cycle);
+        }
+        if state[index] == 2 {
+            return None;
+        }
+
+        state[index] = 1;
+        stack.push(index);
+        for dependency in &problem.test.tasks[index].dependencies {
+            if let Some(&dependency_index) = task_index_by_name.get(dependency.as_str())
+                && let Some(cycle) =
+                    visit(dependency_index, problem, task_index_by_name, state, stack)
+            {
+                return Some(cycle);
+            }
+        }
+        stack.pop();
+        state[index] = 2;
+        None
+    }
+
+    let mut state = vec![0u8; problem.test.tasks.len()];
+    let mut stack = Vec::new();
+    for index in 0..problem.test.tasks.len() {
+        if let Some(cycle) = visit(index, problem, task_index_by_name, &mut state, &mut stack) {
+            return Some(cycle);
+        }
+    }
+    None
+}
+
+fn stress_program_exists(work_dir: &Path, problem: &Problem, value: &str) -> bool {
+    if problem.programs.contains_key(value) {
+        return true;
+    }
+    let path = resolve_path(work_dir, Path::new(value));
+    path.is_file()
+        && matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("cpp" | "cc" | "cxx" | "py")
+        )
+}
+
+fn is_data_io_file(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("in" | "ans")
+    )
+}
+
+fn parse_data_file_stem(stem: &str) -> Option<(&str, usize)> {
+    let (bundle, index) = stem.rsplit_once('-')?;
+    if bundle.is_empty() {
+        return None;
+    }
+    Some((bundle, index.parse().ok()?))
+}
+
+fn value_mapping(value: &Value) -> Option<&Mapping> {
+    match value {
+        Value::Mapping(mapping) => Some(mapping),
+        Value::Tagged(tagged) => value_mapping(&tagged.value),
+        _ => None,
+    }
+}
+
+fn value_sequence(value: &Value) -> Option<&[Value]> {
+    match value {
+        Value::Sequence(sequence) => Some(sequence),
+        Value::Tagged(tagged) => value_sequence(&tagged.value),
+        _ => None,
+    }
+}
+
+fn mapping_get<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a Value> {
+    mapping
+        .map
+        .iter()
+        .find_map(|(candidate, value)| match candidate {
+            Value::String(candidate) if candidate == key => Some(value),
+            _ => None,
+        })
+}
+
+fn string_entries(mapping: &Mapping) -> impl Iterator<Item = (&str, &Value)> {
+    mapping.map.iter().filter_map(|(key, value)| match key {
+        Value::String(key) => Some((key.as_str(), value)),
+        _ => None,
+    })
+}
+
+fn warn_unknown_keys(
+    report: &mut CheckReport,
+    path: &Path,
+    mapping: &Mapping,
+    location: &str,
+    allowed: &[&str],
+) {
+    for (key, _value) in &mapping.map {
+        let key = match key {
+            Value::String(key) => key,
+            _ => {
+                report.warning_at(
+                    "unknown_field",
+                    "non-string YAML key is ignored by cptool",
+                    Some(path.to_path_buf()),
+                    if location.is_empty() {
+                        "<root>"
+                    } else {
+                        location
+                    },
+                );
+                continue;
+            }
+        };
+        if !allowed.contains(&key.as_str()) {
+            let field_location = if location.is_empty() {
+                key.to_string()
+            } else {
+                format!("{location}.{key}")
+            };
+            report.warning_at(
+                "unknown_field",
+                format!("unknown problem.yaml field `{key}`"),
+                Some(path.to_path_buf()),
+                field_location,
+            );
         }
     }
 }
@@ -723,6 +1245,109 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn check_warns_on_unknown_yaml_field() {
+        let root = temp_test_dir("cptool-check-unknown-field");
+        let problem_dir = create_minimal_check_package(&root, None, None);
+        let yaml_path = problem_dir.join("problem.yaml");
+        let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+        yaml.push_str("surprise: true\n");
+        std::fs::write(&yaml_path, yaml).unwrap();
+
+        let report = check_problem_package(&problem_dir);
+
+        let issue = report
+            .issues
+            .iter()
+            .find(|issue| issue.code == "unknown_field")
+            .expect("expected unknown field warning");
+        assert_eq!(issue.severity, CheckSeverity::Warning);
+        assert_eq!(issue.location.as_deref(), Some("surprise"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_problem_structure_reports_task_and_bundle_issues() {
+        let root = temp_test_dir("cptool-check-structure");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut problem = minimal_problem();
+        problem.test.tasks.clear();
+
+        let mut report = CheckReport::new(root.clone());
+        check_problem_structure(&mut report, &root, &problem);
+        assert_issue(&report, "test_tasks_empty", CheckSeverity::Error);
+        assert_issue(&report, "bundle_uncovered_by_task", CheckSeverity::Warning);
+
+        problem = minimal_problem();
+        problem.test.bundles.get_mut("main").unwrap().cases.clear();
+        problem.test.tasks[0].bundles.clear();
+        problem.test.tasks[0].score = 42.0;
+        let mut report = CheckReport::new(root.clone());
+        check_problem_structure(&mut report, &root, &problem);
+        assert_issue(&report, "bundle_empty", CheckSeverity::Error);
+        assert_issue(&report, "task_has_no_bundles", CheckSeverity::Error);
+        assert_issue(&report, "task_score_total_not_100", CheckSeverity::Warning);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_problem_structure_reports_dependency_cycles() {
+        let root = temp_test_dir("cptool-check-dependency-cycle");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut problem = minimal_problem();
+        problem.test.tasks.push(TestTask {
+            name: "extra".to_string(),
+            score: 0.0,
+            task_type: TestTaskType::Min,
+            bundles: vec!["main".to_string()],
+            dependencies: vec!["main".to_string()],
+        });
+        problem.test.tasks[0].dependencies = vec!["extra".to_string()];
+
+        let mut report = CheckReport::new(root.clone());
+        check_problem_structure(&mut report, &root, &problem);
+
+        assert_issue(&report, "task_dependency_cycle", CheckSeverity::Error);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_stress_plans_reports_quality_and_shape_issues() {
+        let root = temp_test_dir("cptool-check-stress");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut problem = minimal_problem();
+
+        let mut report = CheckReport::new(root.clone());
+        check_stress_plans(&mut report, &root, &problem);
+        assert_issue(&report, "stress_plans_missing", CheckSeverity::Warning);
+
+        problem.stress.plans.push(crate::tool::schema::StressPlan {
+            name: "bad".to_string(),
+            generator: "missing_gen.py".to_string(),
+            args: Vec::new(),
+            against: vec!["std".to_string()],
+            cases: 0,
+            seed_base: None,
+            expect: crate::tool::schema::StressPlanExpectation::Fail,
+        });
+        let mut report = CheckReport::new(root.clone());
+        check_stress_plans(&mut report, &root, &problem);
+
+        assert_issue(
+            &report,
+            "stress_positive_plan_missing",
+            CheckSeverity::Warning,
+        );
+        assert_issue(&report, "stress_plan_empty", CheckSeverity::Error);
+        assert_issue(&report, "stress_plan_against_too_few", CheckSeverity::Error);
+        assert_issue(&report, "stress_plan_program_missing", CheckSeverity::Error);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     fn create_minimal_check_package(
         root: &Path,
         validator: Option<&str>,
@@ -775,6 +1400,10 @@ mod tests {
         assert!(!report.issues.iter().any(|issue| issue.code == code));
     }
 
+    fn minimal_problem() -> Problem {
+        problem_with_bundles(["main"])
+    }
+
     fn problem_with_bundles<const N: usize>(bundle_names: [&str; N]) -> Problem {
         let mut programs = HashMap::new();
         programs.insert(
@@ -823,10 +1452,10 @@ mod tests {
             test: Test {
                 bundles,
                 tasks: vec![TestTask {
-                    name: "samples".to_string(),
+                    name: bundle_names[0].to_string(),
                     score: 100.0,
                     task_type: TestTaskType::Min,
-                    bundles: vec!["samples".to_string()],
+                    bundles: vec![bundle_names[0].to_string()],
                     dependencies: Vec::new(),
                 }],
             },

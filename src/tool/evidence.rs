@@ -187,6 +187,11 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
         reuse_existing_stress_plan,
         generation_lock_timeout,
     } = options;
+    let r#gen = if skip_gen {
+        EvidenceSection::skipped("requested_by_user")
+    } else {
+        collect_gen(&work_dir, output_limit_bytes, generation_lock_timeout)
+    };
     let check = EvidenceSection::ok(EvidenceCheckReport::from_check_report(
         check_problem_package_with_options(
             &work_dir,
@@ -195,11 +200,6 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
             },
         ),
     ));
-    let r#gen = if skip_gen {
-        EvidenceSection::skipped("requested_by_user")
-    } else {
-        collect_gen(&work_dir, output_limit_bytes, generation_lock_timeout)
-    };
     let stress_plan = if skip_stress_plan {
         EvidenceSection::skipped("requested_by_user")
     } else if let Some(path) = reuse_existing_stress_plan {

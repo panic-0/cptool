@@ -753,6 +753,7 @@ fn check_command_reports_valid_and_invalid_packages() {
     run_cptool(["init", "check_problem", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("check_problem");
     configure_python_problem(&problem_dir);
+    run_cptool(["gen", "-w"], Some(&problem_dir));
 
     let ok = run_cptool(["check", "-w"], Some(&problem_dir));
     let ok_stdout = String::from_utf8_lossy(&ok.stdout);
@@ -777,6 +778,7 @@ fn check_json_reports_status_and_issue_counts() {
     run_cptool(["init", "check_json_problem", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("check_json_problem");
     configure_python_problem(&problem_dir);
+    run_cptool(["gen", "-w"], Some(&problem_dir));
 
     let ok = run_cptool(
         ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
@@ -785,6 +787,7 @@ fn check_json_reports_status_and_issue_counts() {
     let ok_value: Value = serde_json::from_slice(&ok.stdout).unwrap();
     assert_eq!(ok_value["status"], "pass");
     assert_eq!(ok_value["errors"], 0);
+    assert!(ok_value.get("schema_version").is_none());
 
     std::fs::remove_file(problem_dir.join("src").join("std.cpp")).unwrap();
     let failed = run_cptool_allow_failure(
@@ -803,6 +806,53 @@ fn check_json_reports_status_and_issue_counts() {
             .any(|issue| {
                 issue["code"] == "required_file_missing" && issue["severity"] == "error"
             })
+    );
+}
+
+#[test]
+fn check_json_reports_missing_and_stale_generated_data() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-check-data-audit");
+    run_cptool(["init", "check_data_audit", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("check_data_audit");
+    configure_python_problem(&problem_dir);
+
+    let missing = run_cptool_allow_failure(
+        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let missing_value: Value = serde_json::from_slice(&missing.stdout).unwrap();
+    assert!(!missing.status.success());
+    assert!(
+        missing_value["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["code"] == "generated_data_missing" && issue["severity"] == "error")
+    );
+
+    run_cptool(["gen", "-w"], Some(&problem_dir));
+    let data_dir = problem_dir.join("data");
+    std::fs::write(data_dir.join("sample-99.in"), "stale\n").unwrap();
+    std::fs::write(data_dir.join("unknown-0.ans"), "stale\n").unwrap();
+    std::fs::write(data_dir.join("badname.in"), "stale\n").unwrap();
+
+    let stale = run_cptool(
+        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let stale_value: Value = serde_json::from_slice(&stale.stdout).unwrap();
+    assert_eq!(stale_value["status"], "pass");
+    assert_eq!(stale_value["errors"], 0);
+    assert!(
+        stale_value["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["code"] == "stale_data_file" && issue["severity"] == "warning")
     );
 }
 
@@ -849,6 +899,7 @@ fn check_json_waits_for_generation_lock_and_stays_parseable() {
     );
     let problem_dir = temp.path().join("problems").join("check_json_wait_lock");
     configure_python_problem(&problem_dir);
+    run_cptool(["gen", "-w"], Some(&problem_dir));
     let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
 
     let output = run_cptool(
