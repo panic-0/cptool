@@ -169,6 +169,19 @@ enum Commands {
         #[arg(long, help = "Print the check report as JSON")]
         json: bool,
     },
+    #[command(about = "Collect check, generation, and stress-plan evidence")]
+    Evidence {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
+        output_limit_bytes: usize,
+        #[arg(long, help = "Skip official data generation evidence")]
+        skip_gen: bool,
+        #[arg(long, help = "Skip stress-plan evidence")]
+        skip_stress_plan: bool,
+        #[arg(long, help = "Print the evidence report as JSON")]
+        json: bool,
+    },
     #[command(about = "Export the package to an online judge format")]
     Export {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
@@ -342,6 +355,28 @@ fn main() -> anyhow::Result<()> {
             let report = tool::check_problem_package(&work_dir);
             if json {
                 print_json(&CheckJsonReport::from(&report))?;
+            } else {
+                print!("{}", report.render_text());
+            }
+            if report.has_errors() {
+                std::process::exit(2);
+            }
+        }
+        Commands::Evidence {
+            work_dir,
+            output_limit_bytes,
+            skip_gen,
+            skip_stress_plan,
+            json,
+        } => {
+            let report = tool::collect_evidence(tool::EvidenceOptions {
+                work_dir,
+                output_limit_bytes,
+                skip_gen,
+                skip_stress_plan,
+            });
+            if json {
+                print_json(&report)?;
             } else {
                 print!("{}", report.render_text());
             }

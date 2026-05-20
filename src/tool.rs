@@ -1,5 +1,6 @@
 mod check;
 mod data;
+mod evidence;
 mod package;
 mod problem;
 mod program;
@@ -14,6 +15,9 @@ pub use check::{CheckIssue, CheckReport, CheckSeverity, check_problem_package};
 pub use data::{
     GenerateOptions, GenerateReport, GenerateWarning, GenerateWarningKind, generate_data,
     generate_data_report_with_options, generate_data_with_options,
+};
+pub use evidence::{
+    EvidenceCheckReport, EvidenceOptions, EvidenceReport, EvidenceSection, collect_evidence,
 };
 pub use package::{init_package, slugify};
 pub(crate) use problem::resolve_path;

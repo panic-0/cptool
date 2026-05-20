@@ -160,6 +160,7 @@ fn cli_help_describes_new_workflow_commands() {
     let top_stdout = String::from_utf8_lossy(&top.stdout);
 
     assert!(top_stdout.contains("check"));
+    assert!(top_stdout.contains("evidence"));
     assert!(top_stdout.contains("stress-plan"));
 
     let gen_help = run_cptool(["gen", "--help"], None);
@@ -180,6 +181,12 @@ fn cli_help_describes_new_workflow_commands() {
     let check_stdout = String::from_utf8_lossy(&check.stdout);
     assert!(check_stdout.contains("Check common package structure"));
     assert!(check_stdout.contains("--json"));
+
+    let evidence = run_cptool(["evidence", "--help"], None);
+    let evidence_stdout = String::from_utf8_lossy(&evidence.stdout);
+    assert!(evidence_stdout.contains("Collect check, generation, and stress-plan evidence"));
+    assert!(evidence_stdout.contains("--json"));
+    assert!(evidence_stdout.contains("--skip-gen"));
 
     let stress_plan = run_cptool(["stress-plan", "--help"], None);
     let stress_plan_stdout = String::from_utf8_lossy(&stress_plan.stdout);
@@ -641,6 +648,37 @@ fn check_json_reports_status_and_issue_counts() {
                 issue["code"] == "required_file_missing" && issue["severity"] == "error"
             })
     );
+}
+
+#[test]
+fn evidence_json_aggregates_check_gen_and_stress_plan() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-evidence-json");
+    run_cptool(
+        ["init", "evidence_json_problem", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("evidence_json_problem");
+    configure_python_problem(&problem_dir);
+    append_stress_plan(&problem_dir);
+
+    let output = run_cptool(
+        ["evidence", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(value["cptool_version"].as_str().unwrap().contains("commit"));
+    assert_eq!(value["check"]["status"], "ok");
+    assert_eq!(value["check"]["report"]["errors"], 0);
+    assert_eq!(value["gen"]["status"], "ok");
+    assert_eq!(value["gen"]["report"]["cases"], 1);
+    assert_eq!(value["stress_plan"]["status"], "ok");
+    assert_eq!(value["stress_plan"]["report"][0]["plan_name"], "tiny");
+    assert_eq!(value["stress_plan"]["report"][0]["cases"], 2);
 }
 
 #[test]
