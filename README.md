@@ -14,6 +14,9 @@ CP Tool is a command line tool for competitive programming.
 # generate official data and print one compact audit summary
 ./cptool gen -w ./example/a_plus_b --summary-only
 
+# print machine-readable audit evidence
+./cptool gen -w ./example/a_plus_b --summary-only --json
+
 # clean selected stale data before publishing newly generated data
 ./cptool gen -w ./example/a_plus_b --bundle main --clean
 
@@ -26,6 +29,9 @@ CP Tool is a command line tool for competitive programming.
 # print only a compact run summary for large outputs
 ./cptool run std sample[0] -w ./example/a_plus_b --summary-only
 
+# print a machine-readable run summary
+./cptool run std sample[0] -w ./example/a_plus_b --json
+
 # stress test programs with generated temporary inputs
 ./cptool stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10
 ./cptool stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- {seed} {case}
@@ -33,9 +39,11 @@ CP Tool is a command line tool for competitive programming.
 # run stress plans declared in problem.yaml
 ./cptool stress-plan -w ./example/a_plus_b --name small
 ./cptool stress-plan -w ./example/a_plus_b --summary-only
+./cptool stress-plan -w ./example/a_plus_b --summary-only --json
 
 # check common package structure and generated data issues
 ./cptool check -w ./example/a_plus_b
+./cptool check -w ./example/a_plus_b --json
 
 # export problem to online judge format; currently only support syzoj
 ./cptool export -w ./example/a_plus_b --oj syzoj
@@ -106,6 +114,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 + `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`.
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.
++ `run`, `gen`, `stress`, `stress-plan`, and `check` support `--json` for machine-readable evidence. `--json` can be combined with `--summary-only` where that flag exists; JSON mode suppresses progress/raw-output text on stdout so the result can be parsed directly.
 + `gen` warns when a non-empty input produces an empty answer. Set `output.allow_empty: true` in `problem.yaml` for tasks where empty output is valid. In `--summary-only` mode, `empty_answer` and generator-output warnings are counted in the summary.
 + `check` reports common structure, program path, validator declaration, generated data, sample generation, and sample output issues. It exits non-zero when errors are found, and reports `data_generation_in_progress` instead of inspecting data during a concurrent `gen`. If no `validator` is configured, `check` emits `warning: validator_missing`; set `validator_omitted_reason: "..."` in `problem.yaml` when omission is intentional.
 + `stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data. Arguments after `--` support `{seed}`, `{case}` (1-based), and `{case0}` (0-based); fixed args without placeholders are passed literally for every case. `{seed}` is derived deterministically from the stress command and case number. The final summary includes `unique_input_hashes=N`, which is useful for noticing fixed-argument repeated inputs. If `cases > 1` but all generated inputs have the same hash, `stress` still passes but prints `warning: repeated_input`. Multiple `cptool stress` processes can run against the same package concurrently; compile cache hits are reused and failure files are created atomically. If all compared programs succeed but all stdout streams are empty on a non-empty generated input, `stress` still passes but prints `warning: all_empty_output`.

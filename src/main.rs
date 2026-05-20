@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use cptool::export::{Exporter, OnlineJudge, syzoj};
 use cptool::tool::{self, DEFAULT_OUTPUT_LIMIT_BYTES, RunOptions};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -70,6 +72,11 @@ enum Commands {
         summary_only: bool,
         #[arg(
             long,
+            help = "Print a JSON run summary; suppresses raw stdout/stderr terminal output"
+        )]
+        json: bool,
+        #[arg(
+            long,
             help = "Hide stdout in the terminal while preserving the status line and stderr"
         )]
         hide_stdout: bool,
@@ -98,6 +105,8 @@ enum Commands {
             help = "Print one compact generation summary instead of each generated path"
         )]
         summary_only: bool,
+        #[arg(long, help = "Print the generation report as JSON")]
+        json: bool,
     },
     #[command(
         about = "Stress test several programs on temporary generated inputs",
@@ -124,6 +133,8 @@ enum Commands {
         output_limit_bytes: usize,
         #[arg(long, help = "Directory for failed inputs and per-program outputs")]
         failure_dir: Option<PathBuf>,
+        #[arg(long, help = "Print the stress summary as JSON")]
+        json: bool,
         #[arg(
             last = true,
             help = "Arguments passed to the generator after --; supports {seed}, {case}, and {case0}"
@@ -148,11 +159,15 @@ enum Commands {
             help = "Print one compact summary line per plan instead of per-case progress"
         )]
         summary_only: bool,
+        #[arg(long, help = "Print stress plan summaries as JSON")]
+        json: bool,
     },
     #[command(about = "Check common package structure, config, data, and sample issues")]
     Check {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
+        #[arg(long, help = "Print the check report as JSON")]
+        json: bool,
     },
     #[command(about = "Export the package to an online judge format")]
     Export {
@@ -181,6 +196,7 @@ fn main() -> anyhow::Result<()> {
             stderr_path,
             output_limit_bytes,
             summary_only,
+            json,
             hide_stdout,
             args,
         } => {
@@ -197,7 +213,9 @@ fn main() -> anyhow::Result<()> {
                 args,
                 output_limit_bytes,
             })?;
-            if summary_only {
+            if json {
+                print_json(&RunJsonSummary::from(&result))?;
+            } else if summary_only {
                 println!("{}", result.summary_line());
                 if !result.ok {
                     eprintln!(
@@ -207,10 +225,15 @@ fn main() -> anyhow::Result<()> {
             } else {
                 println!("{}", result.status_line());
             }
-            if !summary_only && !hide_stdout && stdout_path.is_none() && !result.stdout.is_empty() {
+            if !json
+                && !summary_only
+                && !hide_stdout
+                && stdout_path.is_none()
+                && !result.stdout.is_empty()
+            {
                 print!("{}", result.stdout);
             }
-            if !summary_only && stderr_path.is_none() && !result.stderr.is_empty() {
+            if !json && !summary_only && stderr_path.is_none() && !result.stderr.is_empty() {
                 eprint!("{}", result.stderr);
             }
             if !result.ok {
@@ -225,6 +248,7 @@ fn main() -> anyhow::Result<()> {
             output_limit_bytes,
             clean,
             summary_only,
+            json,
         } => {
             let options = tool::GenerateOptions {
                 work_dir,
@@ -234,7 +258,10 @@ fn main() -> anyhow::Result<()> {
                 output_limit_bytes,
                 clean,
             };
-            if summary_only {
+            if json {
+                let report = tool::generate_data_report_with_options(options)?;
+                print_json(&report)?;
+            } else if summary_only {
                 let report = tool::generate_data_report_with_options(options)?;
                 println!("{}", report.summary_line());
             } else {
@@ -251,21 +278,37 @@ fn main() -> anyhow::Result<()> {
             cases,
             output_limit_bytes,
             failure_dir,
+            json,
             args,
         } => {
-            let summary = tool::stress_with_summary(
-                &work_dir,
-                &generator,
-                &against,
-                cases,
-                &args,
-                failure_dir.as_deref(),
-                output_limit_bytes,
-            )?;
-            println!(
-                "stress passed: {} cases unique_input_hashes={}",
-                summary.cases, summary.unique_input_hashes
-            );
+            if json {
+                let summary = tool::stress_with_options(tool::StressOptions {
+                    work_dir: &work_dir,
+                    generator: &generator,
+                    against: &against,
+                    cases,
+                    args: &args,
+                    failure_dir: failure_dir.as_deref(),
+                    output_limit_bytes,
+                    print_progress: false,
+                    print_warnings: false,
+                })?;
+                print_json(&StressJsonSummary::from(&summary))?;
+            } else {
+                let summary = tool::stress_with_summary(
+                    &work_dir,
+                    &generator,
+                    &against,
+                    cases,
+                    &args,
+                    failure_dir.as_deref(),
+                    output_limit_bytes,
+                )?;
+                println!(
+                    "stress passed: {} cases unique_input_hashes={}",
+                    summary.cases, summary.unique_input_hashes
+                );
+            }
         }
         Commands::StressPlan {
             work_dir,
@@ -273,18 +316,35 @@ fn main() -> anyhow::Result<()> {
             output_limit_bytes,
             failure_dir,
             summary_only,
+            json,
         } => {
-            tool::stress_plan_with_options(tool::StressPlanOptions {
+            let options = tool::StressPlanOptions {
                 work_dir: &work_dir,
                 name: name.as_deref(),
                 failure_dir: failure_dir.as_deref(),
                 output_limit_bytes,
                 summary_only,
-            })?;
+            };
+            if json {
+                let summaries = tool::stress_plan_collect_with_options(options)?;
+                let report = StressPlanJsonReport {
+                    plans: summaries
+                        .iter()
+                        .map(StressJsonSummary::from)
+                        .collect::<Vec<_>>(),
+                };
+                print_json(&report)?;
+            } else {
+                tool::stress_plan_with_options(options)?;
+            }
         }
-        Commands::Check { work_dir } => {
+        Commands::Check { work_dir, json } => {
             let report = tool::check_problem_package(&work_dir);
-            print!("{}", report.render_text());
+            if json {
+                print_json(&CheckJsonReport::from(&report))?;
+            } else {
+                print!("{}", report.render_text());
+            }
             if report.has_errors() {
                 std::process::exit(2);
             }
@@ -336,4 +396,132 @@ fn normalize_run_positionals(
         (Some(first), None) if first.contains('[') && first.ends_with(']') => (None, Some(first)),
         (program, case) => (program, case),
     }
+}
+
+#[derive(Serialize)]
+struct RunJsonSummary<'a> {
+    label: &'a str,
+    ok: bool,
+    kind: &'a str,
+    exit_code: Option<i32>,
+    diagnostic: Option<&'a str>,
+    elapsed_ms: u128,
+    stdout_bytes: usize,
+    stdout_lines: usize,
+    stdout_sha256: String,
+    stderr_bytes: usize,
+    stderr_nonempty: bool,
+    truncated_stdout: bool,
+    truncated_stderr: bool,
+}
+
+impl<'a> From<&'a tool::RunResult> for RunJsonSummary<'a> {
+    fn from(result: &'a tool::RunResult) -> Self {
+        Self {
+            label: &result.label,
+            ok: result.ok,
+            kind: &result.kind,
+            exit_code: result.exit_code,
+            diagnostic: result.diagnostic.as_deref(),
+            elapsed_ms: result.elapsed_ms,
+            stdout_bytes: result.stdout_bytes.len(),
+            stdout_lines: count_lines(&result.stdout_bytes),
+            stdout_sha256: format!("{:x}", Sha256::digest(&result.stdout_bytes)),
+            stderr_bytes: result.stderr_bytes.len(),
+            stderr_nonempty: !result.stderr_bytes.is_empty(),
+            truncated_stdout: result.truncated_stdout,
+            truncated_stderr: result.truncated_stderr,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct StressPlanJsonReport<'a> {
+    plans: Vec<StressJsonSummary<'a>>,
+}
+
+#[derive(Serialize)]
+struct StressJsonSummary<'a> {
+    plan_name: Option<&'a str>,
+    cases: usize,
+    elapsed_ms: u128,
+    against: &'a [String],
+    empty_stdout_cases: usize,
+    all_empty_stdout_cases: usize,
+    unique_input_hashes: usize,
+    expected_failure: Option<&'a tool::ExpectedStressFailure>,
+    warnings: Vec<JsonWarning>,
+}
+
+impl<'a> From<&'a tool::StressSummary> for StressJsonSummary<'a> {
+    fn from(summary: &'a tool::StressSummary) -> Self {
+        Self {
+            plan_name: summary.plan_name.as_deref(),
+            cases: summary.cases,
+            elapsed_ms: summary.elapsed_ms,
+            against: &summary.against,
+            empty_stdout_cases: summary.empty_stdout_cases,
+            all_empty_stdout_cases: summary.all_empty_stdout_cases,
+            unique_input_hashes: summary.unique_input_hashes,
+            expected_failure: summary.expected_failure.as_ref(),
+            warnings: stress_warnings(summary),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct CheckJsonReport<'a> {
+    work_dir: &'a PathBuf,
+    status: &'static str,
+    errors: usize,
+    warnings: usize,
+    issues: &'a [tool::CheckIssue],
+}
+
+impl<'a> From<&'a tool::CheckReport> for CheckJsonReport<'a> {
+    fn from(report: &'a tool::CheckReport) -> Self {
+        Self {
+            work_dir: &report.work_dir,
+            status: if report.has_errors() { "fail" } else { "pass" },
+            errors: report.error_count(),
+            warnings: report.warning_count(),
+            issues: &report.issues,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct JsonWarning {
+    code: &'static str,
+    count: usize,
+}
+
+fn stress_warnings(summary: &tool::StressSummary) -> Vec<JsonWarning> {
+    let mut warnings = Vec::new();
+    if summary.all_empty_stdout_cases > 0 {
+        warnings.push(JsonWarning {
+            code: "all_empty_output",
+            count: summary.all_empty_stdout_cases,
+        });
+    }
+    if summary.cases > 1 && summary.unique_input_hashes == 1 {
+        warnings.push(JsonWarning {
+            code: "repeated_input",
+            count: 1,
+        });
+    }
+    warnings
+}
+
+fn count_lines(bytes: &[u8]) -> usize {
+    if bytes.is_empty() {
+        0
+    } else {
+        bytes.iter().filter(|byte| **byte == b'\n').count() + usize::from(!bytes.ends_with(b"\n"))
+    }
+}
+
+fn print_json<T: Serialize>(value: &T) -> anyhow::Result<()> {
+    println!("{}", serde_json::to_string(value)?);
+    Ok(())
 }

@@ -24,8 +24,13 @@ pub use schema::{
     ProgramInfo, RunOptions, RunResult, Stress, StressPlan, StressPlanExpectation, Test,
     TestBundle, TestCase, TestTask, TestTaskType,
 };
-pub use stress::{StressSummary, stress, stress_with_summary};
-pub use stress_plan::{StressPlanOptions, stress_plan, stress_plan_with_options};
+pub use stress::{
+    ExpectedStressFailure, StressOptions, StressSummary, stress, stress_with_options,
+    stress_with_summary,
+};
+pub use stress_plan::{
+    StressPlanOptions, stress_plan, stress_plan_collect_with_options, stress_plan_with_options,
+};
 
 #[cfg(test)]
 pub(crate) fn temp_test_dir(prefix: &str) -> std::path::PathBuf {

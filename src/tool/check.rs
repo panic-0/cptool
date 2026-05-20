@@ -2,10 +2,12 @@ use super::data::{data_generation_status, generate_data};
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
 use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo};
 use super::temp_suffix;
+use serde::Serialize;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CheckSeverity {
     Warning,
     Error,
@@ -20,7 +22,7 @@ impl CheckSeverity {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct CheckIssue {
     pub severity: CheckSeverity,
     pub code: String,
@@ -28,7 +30,7 @@ pub struct CheckIssue {
     pub path: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct CheckReport {
     pub work_dir: PathBuf,
     pub issues: Vec<CheckIssue>,

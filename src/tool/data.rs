@@ -5,6 +5,7 @@ use super::program::{ProgramSpec, absolutize_program_info, run_spec};
 use super::schema::{CaseSelector, Problem};
 use super::unix_epoch_nanos;
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -47,7 +48,7 @@ struct GeneratedCase {
     warnings: Vec<GenerateWarning>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct GenerateReport {
     pub paths: Vec<PathBuf>,
     pub cases: usize,
@@ -72,7 +73,7 @@ impl GenerateReport {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct GenerateWarning {
     pub kind: GenerateWarningKind,
     pub bundle: String,
@@ -97,7 +98,8 @@ impl GenerateWarning {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GenerateWarningKind {
     GeneratorOutputSuspicious,
     EmptyAnswer,

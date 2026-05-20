@@ -1,4 +1,5 @@
 use cptool::test_support::{python_available, temp_suffix};
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -167,27 +168,32 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(gen_stdout.contains("Remove stale .in/.ans files"));
     assert!(gen_stdout.contains("--summary-only"));
     assert!(gen_stdout.contains("compact generation summary"));
+    assert!(gen_stdout.contains("--json"));
 
     let run = run_cptool(["run", "--help"], None);
     let run_stdout = String::from_utf8_lossy(&run.stdout);
     assert!(run_stdout.contains("--summary-only"));
     assert!(run_stdout.contains("Print only status"));
+    assert!(run_stdout.contains("--json"));
 
     let check = run_cptool(["check", "--help"], None);
     let check_stdout = String::from_utf8_lossy(&check.stdout);
     assert!(check_stdout.contains("Check common package structure"));
+    assert!(check_stdout.contains("--json"));
 
     let stress_plan = run_cptool(["stress-plan", "--help"], None);
     let stress_plan_stdout = String::from_utf8_lossy(&stress_plan.stdout);
     assert!(stress_plan_stdout.contains("--name"));
     assert!(stress_plan_stdout.contains("Run only the named stress plan"));
     assert!(stress_plan_stdout.contains("--summary-only"));
+    assert!(stress_plan_stdout.contains("--json"));
 
     let stress = run_cptool(["stress", "--help"], None);
     let stress_stdout = String::from_utf8_lossy(&stress.stdout);
     assert!(stress_stdout.contains("{seed}"));
     assert!(stress_stdout.contains("{case}"));
     assert!(stress_stdout.contains("{case0}"));
+    assert!(stress_stdout.contains("--json"));
 }
 
 #[test]
@@ -237,6 +243,39 @@ fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
 
     assert!(hidden_stdout.contains("std: ok exit=0"));
     assert!(!hidden_stdout.contains("\n7\n"));
+}
+
+#[test]
+fn run_json_prints_machine_readable_summary_without_program_stdout() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-run-json");
+    run_cptool(["init", "run_json_problem", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("run_json_problem");
+    configure_python_problem(&problem_dir);
+    run_cptool(["gen", "-w"], Some(&problem_dir));
+
+    let output = run_cptool(
+        [
+            "run",
+            "std",
+            "sample[0]",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["stdout_bytes"], 2);
+    assert_eq!(value["stdout_lines"], 1);
+    assert_eq!(value["stderr_nonempty"], false);
+    assert!(value.get("stdout").is_none());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("7\n"));
 }
 
 #[test]
@@ -318,6 +357,42 @@ fn gen_summary_only_prints_compact_success_totals() {
     assert!(stdout.contains("ans_bytes=2"));
     assert!(stdout.contains("warnings=0"));
     assert!(!stdout.contains("generated "));
+}
+
+#[test]
+fn gen_summary_only_json_prints_report() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-json");
+    run_cptool(["init", "gen_json", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("gen_json");
+    configure_python_problem(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(value["cases"], 1);
+    assert_eq!(value["bundles"][0], "sample");
+    assert_eq!(value["input_bytes"], 4);
+    assert_eq!(value["answer_bytes"], 2);
+    assert_eq!(value["warnings"].as_array().unwrap().len(), 0);
+    assert!(
+        value["paths"].as_array().unwrap()[0]
+            .as_str()
+            .unwrap()
+            .ends_with("sample-0.in")
+    );
 }
 
 #[test]
@@ -530,6 +605,45 @@ fn check_command_reports_valid_and_invalid_packages() {
 }
 
 #[test]
+fn check_json_reports_status_and_issue_counts() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-check-json");
+    run_cptool(["init", "check_json_problem", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("check_json_problem");
+    configure_python_problem(&problem_dir);
+
+    let ok = run_cptool(
+        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let ok_value: Value = serde_json::from_slice(&ok.stdout).unwrap();
+    assert_eq!(ok_value["status"], "pass");
+    assert_eq!(ok_value["errors"], 0);
+
+    std::fs::remove_file(problem_dir.join("src").join("std.cpp")).unwrap();
+    let failed = run_cptool_allow_failure(
+        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let failed_value: Value = serde_json::from_slice(&failed.stdout).unwrap();
+    assert!(!failed.status.success());
+    assert_eq!(failed_value["status"], "fail");
+    assert!(failed_value["errors"].as_u64().unwrap() > 0);
+    assert!(
+        failed_value["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| {
+                issue["code"] == "required_file_missing" && issue["severity"] == "error"
+            })
+    );
+}
+
+#[test]
 fn stress_plan_runs_named_plan_without_seed_config() {
     if !python_available() {
         return;
@@ -590,6 +704,41 @@ fn stress_plan_summary_only_suppresses_case_progress() {
     assert!(stdout.contains("warnings=repeated_input:1"));
     assert!(!stdout.contains("plan `tiny` case 1 ok"));
     assert!(!stdout.contains("stress plan `tiny` passed"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn stress_plan_summary_only_json_prints_plan_summaries() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-plan-json");
+    run_cptool(["init", "stress_plan_json", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("stress_plan_json");
+    configure_python_problem(&problem_dir);
+    append_stress_plan(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "tiny",
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(value["plans"][0]["plan_name"], "tiny");
+    assert_eq!(value["plans"][0]["cases"], 2);
+    assert_eq!(value["plans"][0]["unique_input_hashes"], 1);
+    assert_eq!(value["plans"][0]["warnings"][0]["code"], "repeated_input");
+    assert!(!stdout.contains("plan `tiny` case 1 ok"));
     assert!(output.stderr.is_empty());
 }
 
@@ -674,6 +823,47 @@ fn stress_reports_single_unique_input_hash_for_fixed_args() {
     assert!(stderr.contains(
         "warning: repeated_input cases=3 unique_input_hashes=1 hint=generator_args_produced_identical_inputs"
     ));
+}
+
+#[test]
+fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-json");
+    run_cptool(["init", "stress_json", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("stress_json");
+    configure_python_problem(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "stress",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--generator",
+            "gen",
+            "--against",
+            "std",
+            "--against",
+            "brute",
+            "--cases",
+            "3",
+            "--json",
+            "--",
+            "5",
+            "8",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(value["cases"], 3);
+    assert_eq!(value["unique_input_hashes"], 1);
+    assert_eq!(value["warnings"][0]["code"], "repeated_input");
+    assert!(!stdout.contains("case 1 ok"));
+    assert!(output.stderr.is_empty());
 }
 
 #[test]

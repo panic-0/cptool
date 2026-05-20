@@ -30,6 +30,16 @@ pub fn stress_plan(
 }
 
 pub fn stress_plan_with_options(options: StressPlanOptions<'_>) -> Result<Vec<StressSummary>> {
+    stress_plan_impl(options, true)
+}
+
+pub fn stress_plan_collect_with_options(
+    options: StressPlanOptions<'_>,
+) -> Result<Vec<StressSummary>> {
+    stress_plan_impl(options, false)
+}
+
+fn stress_plan_impl(options: StressPlanOptions<'_>, emit_text: bool) -> Result<Vec<StressSummary>> {
     let StressPlanOptions {
         work_dir,
         name,
@@ -50,18 +60,20 @@ pub fn stress_plan_with_options(options: StressPlanOptions<'_>) -> Result<Vec<St
             failure_dir,
             output_limit_bytes,
             plan_name: Some(&plan.name),
-            print_progress: !summary_only,
-            print_warnings: !summary_only,
+            print_progress: emit_text && !summary_only,
+            print_warnings: emit_text && !summary_only,
             expect_failure: plan.expect == StressPlanExpectation::Fail,
         })
         .with_context(|| format!("stress plan `{}` failed", plan.name))?;
-        if summary_only {
-            println!("{}", summary.summary_line());
-        } else {
-            println!(
-                "stress plan `{}` passed: {} cases",
-                plan.name, summary.cases
-            );
+        if emit_text {
+            if summary_only {
+                println!("{}", summary.summary_line());
+            } else {
+                println!(
+                    "stress plan `{}` passed: {} cases",
+                    plan.name, summary.cases
+                );
+            }
         }
         summaries.push(summary);
     }

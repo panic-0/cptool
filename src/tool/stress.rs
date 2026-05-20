@@ -3,6 +3,7 @@ use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
 use super::schema::RunResult;
 use super::stress_args::direct_stress_args_by_case;
 use anyhow::Result;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::io::Write;
@@ -39,22 +40,48 @@ pub fn stress_with_summary(
     failure_dir: Option<&Path>,
     output_limit_bytes: usize,
 ) -> Result<StressSummary> {
-    let args_by_case = direct_stress_args_by_case(args, cases);
-    run_stress(StressRunOptions {
+    stress_with_options(StressOptions {
         work_dir,
         generator,
         against,
-        args_by_case,
+        cases,
+        args,
         failure_dir,
         output_limit_bytes,
-        plan_name: None,
         print_progress: true,
         print_warnings: true,
+    })
+}
+
+pub struct StressOptions<'a> {
+    pub work_dir: &'a Path,
+    pub generator: &'a str,
+    pub against: &'a [String],
+    pub cases: usize,
+    pub args: &'a [String],
+    pub failure_dir: Option<&'a Path>,
+    pub output_limit_bytes: usize,
+    pub print_progress: bool,
+    pub print_warnings: bool,
+}
+
+pub fn stress_with_options(options: StressOptions<'_>) -> Result<StressSummary> {
+    let args_by_case = direct_stress_args_by_case(options.args, options.cases);
+    run_stress(StressRunOptions {
+        work_dir: options.work_dir,
+        generator: options.generator,
+        against: options.against,
+        args_by_case,
+        failure_dir: options.failure_dir,
+        output_limit_bytes: options.output_limit_bytes,
+        plan_name: None,
+        print_progress: options.print_progress,
+        print_warnings: options.print_warnings,
         expect_failure: false,
     })
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct StressSummary {
     pub plan_name: Option<String>,
     pub cases: usize,
@@ -112,7 +139,7 @@ impl StressSummary {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ExpectedStressFailure {
     pub case_index: usize,
     pub reason: String,
