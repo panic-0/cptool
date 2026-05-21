@@ -27,25 +27,29 @@ solution: std
 validator: val
 checker: chk
 test:
+  # Generator defaults can be declared globally for all bundles.
+  generator: gen
   bundles:
     s1:
       cases:
-      - generator: gen
-        args: [998, 10]
-      - generator: gen
-        args: [999, 1000000000]
+      # Args-only shorthand; uses test.generator.
+      - [998, 10]
+      # Args-only mapping; also uses test.generator.
+      - args: [999, 1000000000]
+      # Full case form; use this escape hatch when a case needs its own generator.
       - generator: gen
         args: [1000, 1000000000]
     s2:
+      # Bundle defaults override test.generator for this bundle.
+      generator: gen
       cases:
-      - generator: gen
-        args: [49998, 10]
-      - generator: gen
-        args: [49999, 1000000000]
-      - generator: gen
-        args: [50000, 1000000000]
+      # Args-only shorthand; uses this bundle's generator.
+      - [49998, 10]
+      - [49999, 1000000000]
+      - [50000, 1000000000]
     s3:
       cases:
+      # Full case form remains valid and is the most explicit spelling.
       - generator: gen
         args: [1999998, 10]
       - generator: gen

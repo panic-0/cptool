@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
+use serde_yml::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -146,14 +147,14 @@ pub struct Program {
     pub memory_limit_mb: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct TestCase {
     #[serde(rename = "generator")]
     pub generator_name: String,
     pub args: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct TestBundle {
     pub cases: Vec<TestCase>,
 }
@@ -177,10 +178,146 @@ pub struct TestTask {
     pub dependencies: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Test {
     pub bundles: HashMap<String, TestBundle>,
     pub tasks: Vec<TestTask>,
+}
+
+#[derive(Deserialize)]
+struct RawTest {
+    #[serde(default)]
+    generator: Option<String>,
+    bundles: HashMap<String, RawTestBundle>,
+    tasks: Vec<TestTask>,
+}
+
+#[derive(Deserialize)]
+struct RawTestBundle {
+    #[serde(default)]
+    generator: Option<String>,
+    cases: Vec<RawTestCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawTestCase {
+    Args(Vec<Value>),
+    Full {
+        #[serde(default, rename = "generator")]
+        generator_name: Option<String>,
+        #[serde(default)]
+        args: Vec<Value>,
+    },
+}
+
+impl<'de> Deserialize<'de> for Test {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawTest::deserialize(deserializer)?;
+        let global_generator = raw.generator;
+        let bundles = raw
+            .bundles
+            .into_iter()
+            .map(|(bundle_name, bundle)| {
+                let bundle_generator = bundle.generator.or_else(|| global_generator.clone());
+                let cases = bundle
+                    .cases
+                    .into_iter()
+                    .enumerate()
+                    .map(|(case_index, case)| {
+                        normalize_test_case(
+                            case,
+                            bundle_generator.as_deref(),
+                            &bundle_name,
+                            case_index,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok((bundle_name, TestBundle { cases }))
+            })
+            .collect::<Result<HashMap<_, _>, D::Error>>()?;
+
+        Ok(Self {
+            bundles,
+            tasks: raw.tasks,
+        })
+    }
+}
+
+fn normalize_test_case<E>(
+    case: RawTestCase,
+    default_generator: Option<&str>,
+    bundle_name: &str,
+    case_index: usize,
+) -> Result<TestCase, E>
+where
+    E: de::Error,
+{
+    match case {
+        RawTestCase::Args(args) => {
+            let Some(generator_name) = default_generator else {
+                return Err(E::custom(format!(
+                    "test.bundles.{bundle_name}.cases[{case_index}] uses args-only shorthand but no generator is declared for the case, bundle, or test"
+                )));
+            };
+            let args = raw_args_to_strings(args, bundle_name, case_index)?;
+            Ok(TestCase {
+                generator_name: generator_name.to_string(),
+                args,
+            })
+        }
+        RawTestCase::Full {
+            generator_name,
+            args,
+        } => {
+            let generator_name = generator_name
+                .or_else(|| default_generator.map(str::to_string))
+                .ok_or_else(|| {
+                    E::custom(format!(
+                        "test.bundles.{bundle_name}.cases[{case_index}] is missing `generator` and no default generator is declared for the bundle or test"
+                    ))
+                })?;
+            let args = raw_args_to_strings(args, bundle_name, case_index)?;
+            Ok(TestCase {
+                generator_name,
+                args,
+            })
+        }
+    }
+}
+
+fn raw_args_to_strings<E>(
+    args: Vec<Value>,
+    bundle_name: &str,
+    case_index: usize,
+) -> Result<Vec<String>, E>
+where
+    E: de::Error,
+{
+    args.into_iter()
+        .enumerate()
+        .map(|(arg_index, value)| {
+            raw_arg_to_string(value).ok_or_else(|| {
+                E::custom(format!(
+                    "test.bundles.{bundle_name}.cases[{case_index}].args[{arg_index}] must be a string, number, boolean, or null"
+                ))
+            })
+        })
+        .collect()
+}
+
+fn raw_arg_to_string(value: Value) -> Option<String> {
+    match value {
+        Value::Null => Some("null".to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::String(value) => Some(value),
+        Value::Tagged(tagged) => raw_arg_to_string(tagged.value),
+        Value::Sequence(_) | Value::Mapping(_) => None,
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -315,5 +452,66 @@ mod tests {
             result.failure_report("solution failed"),
             "solution failed: std: runtime_error exit=-1073741819 elapsed=1ms\ndiagnostic:\nhint: access violation"
         );
+    }
+
+    #[test]
+    fn test_cases_accept_global_bundle_and_case_generators() {
+        let test: Test = serde_yml::from_str(
+            r#"
+generator: gen
+bundles:
+  global:
+    cases:
+    - [1, 2]
+    - args: [3, 4]
+  local:
+    generator: local_gen
+    cases:
+    - [5]
+    - args: [6]
+  explicit:
+    generator: ignored
+    cases:
+    - generator: special_gen
+      args: [7]
+tasks:
+- name: main
+  score: 100.0
+  type: min
+  bundles: [global, local, explicit]
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(test.bundles["global"].cases[0].generator_name, "gen");
+        assert_eq!(test.bundles["global"].cases[0].args, ["1", "2"]);
+        assert_eq!(test.bundles["global"].cases[1].generator_name, "gen");
+        assert_eq!(test.bundles["local"].cases[0].generator_name, "local_gen");
+        assert_eq!(test.bundles["local"].cases[1].generator_name, "local_gen");
+        assert_eq!(
+            test.bundles["explicit"].cases[0].generator_name,
+            "special_gen"
+        );
+    }
+
+    #[test]
+    fn args_only_test_case_requires_default_generator() {
+        let err = serde_yml::from_str::<Test>(
+            r#"
+bundles:
+  sample:
+    cases:
+    - [1]
+tasks:
+- name: sample
+  score: 100.0
+  type: min
+  bundles: [sample]
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("args-only shorthand"));
     }
 }

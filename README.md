@@ -88,17 +88,16 @@ solution: std
 output:
   allow_empty: false
 test:
+  generator: gen
   bundles:
     sample:
       cases:
-      - generator: gen
-        args: [20]
+      - [20]
     main:
+      generator: gen
       cases:
-      - generator: gen
-        args: [10]
-      - generator: gen
-        args: [10000000]
+      - [10]
+      - args: [10000000]
       - generator: gen
         args: [1000000000]
   tasks:
@@ -121,7 +120,7 @@ stress:
     seed_base: 20260519
 ```
 
-Programs can also use `!command` or `!python`; omitted C++ compile args default to C++20 with warnings. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
+Programs can also use `!command` or `!python`; omitted C++ compile args default to C++20 with warnings. Test cases can use any of these equivalent spellings: full form (`generator: gen`, `args: [...]`), args-only mapping (`args: [...]`) with a bundle or test default generator, or args-only shorthand (`- [...]`) with a bundle or test default generator. A bundle-level `generator` overrides `test.generator`, and a full case `generator` overrides both defaults. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
 
 ## Notes
 

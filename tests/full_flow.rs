@@ -1617,11 +1617,11 @@ programs:
     memory_limit_mb: 128.0
 solution: std
 test:
+  generator: gen
   bundles:
     sample:
       cases:
-      - generator: gen
-        args: ["3", "4"]
+      - ["3", "4"]
   tasks:
   - name: sample
     score: 100.0
