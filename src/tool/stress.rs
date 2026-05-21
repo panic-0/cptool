@@ -2,7 +2,7 @@ use super::problem::{load_problem, normalize_work_dir, resolve_path};
 use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
 use super::schema::RunResult;
 use super::stress_args::direct_stress_args_by_case;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -477,14 +477,18 @@ fn save_stress_failure_artifacts(
     plan_name: Option<&str>,
     failure: &StressFailure,
 ) -> Result<SavedStressFailureArtifacts> {
-    std::fs::create_dir_all(failure_dir)?;
+    std::fs::create_dir_all(failure_dir)
+        .with_context(|| format!("failed to create failure dir {}", failure_dir.display()))?;
     let (stem, mut input_file) = create_failure_input(failure_dir, plan_name)?;
     let input_path = stem.with_extension("in");
     let report_path = stem.with_extension("txt");
-    input_file.write_all(&failure.input)?;
+    input_file
+        .write_all(&failure.input)
+        .with_context(|| format!("failed to write stress input {}", input_path.display()))?;
     let artifacts = write_stress_outputs(&stem, &failure.results)?;
     let report = render_stress_failure(plan_name, failure.case_index, &failure.results, &artifacts);
-    std::fs::write(&report_path, report.as_bytes())?;
+    std::fs::write(&report_path, report.as_bytes())
+        .with_context(|| format!("failed to write stress report {}", report_path.display()))?;
     Ok(SavedStressFailureArtifacts {
         stem,
         input_path,
@@ -502,14 +506,19 @@ fn create_failure_input(
         .unwrap_or_else(|| "stress".to_string());
     for id in 1.. {
         let stem = failure_dir.join(format!("{prefix}-{id:03}"));
+        let input_path = stem.with_extension("in");
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(stem.with_extension("in"))
+            .open(&input_path)
         {
             Ok(file) => return Ok((stem, file)),
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(err) => return Err(err.into()),
+            Err(err) => {
+                return Err(err).with_context(|| {
+                    format!("failed to create stress input {}", input_path.display())
+                });
+            }
         }
     }
     unreachable!()
@@ -523,8 +532,12 @@ fn write_stress_outputs(stem: &Path, results: &[RunResult]) -> Result<Vec<Stress
             let artifact_stem = result_artifact_stem(stem, index, &result.label);
             let stdout_path = artifact_stem.with_extension("out");
             let stderr_path = artifact_stem.with_extension("err");
-            std::fs::write(&stdout_path, &result.stdout_bytes)?;
-            std::fs::write(&stderr_path, &result.stderr_bytes)?;
+            std::fs::write(&stdout_path, &result.stdout_bytes).with_context(|| {
+                format!("failed to write stress stdout {}", stdout_path.display())
+            })?;
+            std::fs::write(&stderr_path, &result.stderr_bytes).with_context(|| {
+                format!("failed to write stress stderr {}", stderr_path.display())
+            })?;
             Ok(StressOutputArtifact {
                 label: result.label.clone(),
                 status_line: result.status_line(),

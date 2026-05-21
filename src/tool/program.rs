@@ -4,14 +4,19 @@ use super::schema::{
     ProgramInfo, RunResult, default_compile_args,
 };
 use anyhow::{Context, Result};
+use fs4::TryLockError;
 use process_control::{ChildExt, Control};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
+use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
+const COMPILE_LOCK_TIMEOUT: Duration = Duration::from_secs(30);
+const COMPILE_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
 #[derive(Clone, Debug)]
 pub(crate) struct ProgramSpec {
@@ -225,7 +230,8 @@ pub(crate) fn compile_cpp(
         .join("cache")
         .join("cpp")
         .join(&digest);
-    std::fs::create_dir_all(&cache_dir)?;
+    std::fs::create_dir_all(&cache_dir)
+        .with_context(|| format!("failed to create C++ cache dir {}", cache_dir.display()))?;
     let exe = cache_dir.join(if cfg!(windows) { "main.exe" } else { "main" });
     if exe.exists() {
         return Ok(exe);
@@ -235,14 +241,20 @@ pub(crate) fn compile_cpp(
         return Ok(exe);
     }
     let cached_source = cache_dir.join("main.cpp");
-    std::fs::write(&cached_source, code)?;
+    std::fs::write(&cached_source, code).with_context(|| {
+        format!(
+            "failed to write cached C++ source {}",
+            cached_source.display()
+        )
+    })?;
     let temp_exe = cache_dir.join(if cfg!(windows) {
         format!("main-{}.tmp.exe", std::process::id())
     } else {
         format!("main-{}.tmp", std::process::id())
     });
     if temp_exe.exists() {
-        std::fs::remove_file(&temp_exe)?;
+        std::fs::remove_file(&temp_exe)
+            .with_context(|| format!("failed to remove stale temp exe {}", temp_exe.display()))?;
     }
     let diagnostics = cpp_compile_diagnostics(&digest, &exe, &effective_compile_args, &toolchain);
     let output = std::process::Command::new("g++")
@@ -262,7 +274,13 @@ pub(crate) fn compile_cpp(
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    std::fs::rename(&temp_exe, &exe)?;
+    std::fs::rename(&temp_exe, &exe).with_context(|| {
+        format!(
+            "failed to move compiled temp exe {} to {}",
+            temp_exe.display(),
+            exe.display()
+        )
+    })?;
     Ok(exe)
 }
 
@@ -522,93 +540,67 @@ fn runtime_exit_diagnostic(exit_code: Option<i32>) -> Option<String> {
     }
 }
 
+#[derive(Debug)]
 struct CompileLock {
-    path: Option<PathBuf>,
-}
-
-impl Drop for CompileLock {
-    fn drop(&mut self) {
-        if let Some(path) = &self.path {
-            let _ = std::fs::remove_file(path);
-        }
-    }
+    _file: Option<File>,
 }
 
 fn acquire_compile_lock(cache_dir: &Path, exe: &Path) -> Result<CompileLock> {
+    acquire_compile_lock_with_timeout(cache_dir, exe, COMPILE_LOCK_TIMEOUT)
+}
+
+fn acquire_compile_lock_with_timeout(
+    cache_dir: &Path,
+    exe: &Path,
+    timeout: Duration,
+) -> Result<CompileLock> {
     let lock_path = cache_dir.join("compile.lock");
+    let start = Instant::now();
     loop {
-        match std::fs::OpenOptions::new()
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
             .write(true)
-            .create_new(true)
+            .create(true)
+            .truncate(false)
             .open(&lock_path)
-        {
-            Ok(mut file) => {
-                writeln!(file, "pid={}", std::process::id())?;
-                return Ok(CompileLock {
-                    path: Some(lock_path),
+            .with_context(|| format!("failed to open compile lock {}", lock_path.display()))?;
+        match fs4::FileExt::try_lock(&file) {
+            Ok(()) => {
+                file.set_len(0).with_context(|| {
+                    format!("failed to truncate compile lock {}", lock_path.display())
+                })?;
+                writeln!(file, "pid={}", std::process::id()).with_context(|| {
+                    format!("failed to write compile lock {}", lock_path.display())
+                })?;
+                return Ok(CompileLock { _file: Some(file) });
+            }
+            Err(TryLockError::WouldBlock) => {
+                if exe.exists() {
+                    return Ok(CompileLock { _file: None });
+                }
+                let elapsed = start.elapsed();
+                if elapsed >= timeout {
+                    anyhow::bail!(
+                        "timed out after {:.3}s waiting for C++ compile lock {} (cache_dir={} exe={})",
+                        timeout.as_secs_f64(),
+                        lock_path.display(),
+                        cache_dir.display(),
+                        exe.display()
+                    );
+                }
+                std::thread::sleep(
+                    timeout
+                        .saturating_sub(elapsed)
+                        .min(COMPILE_LOCK_POLL_INTERVAL),
+                );
+            }
+            Err(TryLockError::Error(err)) => {
+                return Err(err).with_context(|| {
+                    format!("failed to lock compile lock {}", lock_path.display())
                 });
             }
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                if exe.exists() {
-                    return Ok(CompileLock { path: None });
-                }
-                if is_stale_compile_lock(&lock_path)? {
-                    match std::fs::remove_file(&lock_path) {
-                        Ok(()) => continue,
-                        Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
-                        Err(err) => return Err(err.into()),
-                    }
-                }
-                std::thread::sleep(Duration::from_millis(25));
-            }
-            Err(err) => return Err(err.into()),
         }
     }
-}
-
-pub(crate) fn is_stale_compile_lock(lock_path: &Path) -> Result<bool> {
-    let content = match std::fs::read_to_string(lock_path) {
-        Ok(content) => content,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(err) => return Err(err.into()),
-    };
-    let Some(pid) = parse_lock_pid(&content) else {
-        return Ok(true);
-    };
-    Ok(!process_exists(pid))
-}
-
-pub(crate) fn parse_lock_pid(content: &str) -> Option<u32> {
-    content
-        .lines()
-        .find_map(|line| line.strip_prefix("pid="))
-        .and_then(|pid| pid.trim().parse().ok())
-}
-
-#[cfg(windows)]
-fn process_exists(pid: u32) -> bool {
-    let filter = format!("PID eq {pid}");
-    let Ok(output) = std::process::Command::new("tasklist")
-        .args(["/FI", &filter, "/NH"])
-        .output()
-    else {
-        return true;
-    };
-    if !output.status.success() {
-        return true;
-    }
-    String::from_utf8_lossy(&output.stdout)
-        .split_whitespace()
-        .any(|part| part == pid.to_string())
-}
-
-#[cfg(not(windows))]
-fn process_exists(pid: u32) -> bool {
-    std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(true)
 }
 
 pub(crate) fn absolutize_program_info(work_dir: &Path, info: &ProgramInfo) -> ProgramInfo {
@@ -898,6 +890,73 @@ time.sleep(10)
 
         assert_ne!(first_exe, second_exe);
         assert_eq!(decode_output(&second_output.stdout), "2\n");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn compile_lock_times_out_with_context() {
+        let root = temp_test_dir("cptool-compile-lock-timeout");
+        let cache_dir = root.join(".cptool").join("cache").join("cpp").join("held");
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let lock_path = cache_dir.join("compile.lock");
+        let lock_file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .unwrap();
+        fs4::FileExt::try_lock(&lock_file).unwrap();
+
+        let err = acquire_compile_lock_with_timeout(
+            &cache_dir,
+            &cache_dir.join(if cfg!(windows) { "main.exe" } else { "main" }),
+            Duration::from_millis(50),
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("timed out"));
+        assert!(err.contains("compile.lock"));
+        assert!(err.contains("cache_dir="));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cpp_compile_cache_lock_allows_concurrent_same_source_compile() {
+        if command_version_first_line("g++").is_none() {
+            return;
+        }
+        let root = temp_test_dir("cptool-cpp-concurrent-cache");
+        let src_dir = root.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        let main = src_dir.join("main.cpp");
+        std::fs::write(
+            &main,
+            "#include <iostream>\nint main(){ std::cout << 42 << '\\n'; }\n",
+        )
+        .unwrap();
+
+        let first_root = root.clone();
+        let first_main = main.clone();
+        let first = std::thread::spawn(move || {
+            compile_cpp(&first_root, &first_main, &default_compile_args())
+        });
+        let second_root = root.clone();
+        let second_main = main.clone();
+        let second = std::thread::spawn(move || {
+            compile_cpp(&second_root, &second_main, &default_compile_args())
+        });
+
+        let first_exe = first.join().unwrap().unwrap();
+        let second_exe = second.join().unwrap().unwrap();
+
+        assert_eq!(first_exe, second_exe);
+        assert!(first_exe.exists());
+        let output = std::process::Command::new(&first_exe).output().unwrap();
+        assert_eq!(decode_output(&output.stdout), "42\n");
 
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -49,7 +49,6 @@ pub(crate) fn temp_test_dir(prefix: &str) -> std::path::PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::program::{is_stale_compile_lock, parse_lock_pid};
     use super::stress::{classify_stress_failure, normalize_output};
     use super::*;
 
@@ -106,25 +105,6 @@ mod tests {
 
         assert_eq!(problem_dir.file_name().unwrap(), "my-problem-1");
         assert_eq!(problem.name, "My Problem: #1");
-
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn parse_compile_lock_pid_reads_lock_file() {
-        assert_eq!(parse_lock_pid("pid=123\n"), Some(123));
-        assert_eq!(parse_lock_pid("owner=abc\npid=456\n"), Some(456));
-        assert_eq!(parse_lock_pid("pid=not-a-number\n"), None);
-    }
-
-    #[test]
-    fn stale_compile_lock_detects_dead_process() {
-        let root = temp_test_dir("cptool-lock-test");
-        std::fs::create_dir_all(&root).unwrap();
-        let lock_path = root.join("compile.lock");
-        std::fs::write(&lock_path, "pid=999999\n").unwrap();
-
-        assert!(is_stale_compile_lock(&lock_path).unwrap());
 
         std::fs::remove_dir_all(root).unwrap();
     }

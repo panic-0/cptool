@@ -1,7 +1,7 @@
 use super::problem::{load_problem, normalize_work_dir, resolve_run_input};
 use super::program::{resolve_run_spec, run_spec};
 use super::schema::{RunOptions, RunResult};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 pub fn run(options: RunOptions) -> Result<RunResult> {
     if options.stdin_text.is_some() && options.stdin_path.is_some() {
@@ -43,9 +43,12 @@ pub fn run(options: RunOptions) -> Result<RunResult> {
 fn write_optional(path: &Option<PathBuf>, content: &[u8]) -> Result<()> {
     if let Some(path) = path {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create output parent dir {}", parent.display())
+            })?;
         }
-        std::fs::write(path, content)?;
+        std::fs::write(path, content)
+            .with_context(|| format!("failed to write output file {}", path.display()))?;
     }
     Ok(())
 }
@@ -64,6 +67,23 @@ mod tests {
         write_optional(&Some(output_path.clone()), &bytes).unwrap();
 
         assert_eq!(std::fs::read(&output_path).unwrap(), bytes);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn write_optional_reports_output_path_when_parent_is_file() {
+        let root = temp_test_dir("cptool-run-write-parent-file-test");
+        std::fs::create_dir_all(&root).unwrap();
+        let parent = root.join("not-a-dir");
+        let output_path = parent.join("stdout.bin");
+        std::fs::write(&parent, b"file").unwrap();
+
+        let err = write_optional(&Some(output_path.clone()), b"stdout").unwrap_err();
+        let message = format!("{err:#}");
+
+        assert!(message.contains("failed to create output parent dir"));
+        assert!(message.contains(&parent.display().to_string()));
 
         std::fs::remove_dir_all(root).unwrap();
     }

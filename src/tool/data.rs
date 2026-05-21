@@ -218,7 +218,8 @@ fn generate_data_report_impl(
         .as_deref()
         .map(|path| resolve_path(&work_dir, path))
         .unwrap_or_else(|| work_dir.join("data"));
-    std::fs::create_dir_all(&output_dir)?;
+    std::fs::create_dir_all(&output_dir)
+        .with_context(|| format!("failed to create output dir {}", output_dir.display()))?;
     let _generation_lock = DataGenerationLock::acquire(&output_dir, generation_lock_timeout)?;
     let selected_cases = select_cases(&problem, bundle.as_deref(), selector.as_deref())?;
     let clean_scope =
@@ -455,7 +456,14 @@ fn generate_one_case(
             stderr_bytes: generated.stderr_bytes.len(),
         });
     }
-    std::fs::write(&input_path, &generated.stdout_bytes)?;
+    std::fs::write(&input_path, &generated.stdout_bytes).with_context(|| {
+        format!(
+            "failed to write generated input for {}[{}] to {}",
+            selector.bundle,
+            selector.index,
+            input_path.display()
+        )
+    })?;
     let mut validator_calls = 0;
     if let Some(validator) = context.validator {
         validator_calls += 1;
@@ -514,7 +522,14 @@ fn generate_one_case(
             stderr_bytes: answer.stderr_bytes.len(),
         });
     }
-    std::fs::write(&answer_path, &answer.stdout_bytes)?;
+    std::fs::write(&answer_path, &answer.stdout_bytes).with_context(|| {
+        format!(
+            "failed to write generated answer for {}[{}] to {}",
+            selector.bundle,
+            selector.index,
+            answer_path.display()
+        )
+    })?;
     if emit_warnings {
         for warning in &warnings {
             eprintln!("{}", warning.render());
