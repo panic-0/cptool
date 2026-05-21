@@ -763,7 +763,7 @@ time.sleep(10)
                 path: script,
                 extra_args: Vec::new(),
             }),
-            time_limit_secs: 0.2,
+            time_limit_secs: 1.0,
             memory_limit_mb: 128.0,
         };
 
