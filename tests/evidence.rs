@@ -1,7 +1,6 @@
 mod common;
 use common::*;
 use serde_json::Value;
-use std::time::Duration;
 
 #[test]
 fn evidence_json_aggregates_check_gen_and_stress_plan() {
@@ -169,7 +168,7 @@ fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
     let problem_dir = temp.path().join("problems").join("evidence_json_wait_lock");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
-    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+    let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
         [
@@ -178,7 +177,7 @@ fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
             problem_dir.to_str().unwrap(),
             "--json",
             "--wait-for-generation-lock",
-            "1",
+            GENERATION_LOCK_WAIT_TIMEOUT_SECS,
         ],
         None,
     );
@@ -191,5 +190,5 @@ fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
     assert_eq!(value["gen"]["status"], "ok");
     assert_eq!(value["stress_plan"]["status"], "ok");
     assert!(stderr.contains("waiting for data generation lock:"));
-    assert!(stderr.contains("timeout=1s"));
+    assert!(stderr.contains(GENERATION_LOCK_WAIT_TIMEOUT_LOG));
 }

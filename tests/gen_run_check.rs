@@ -2,7 +2,6 @@ mod common;
 use common::*;
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::time::Duration;
 
 #[test]
 fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
@@ -564,7 +563,7 @@ fn gen_waits_for_generation_lock_when_requested() {
     run_cptool(["init", "gen_wait_lock", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("gen_wait_lock");
     configure_python_problem(&problem_dir);
-    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+    let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
         [
@@ -572,7 +571,7 @@ fn gen_waits_for_generation_lock_when_requested() {
             "-w",
             problem_dir.to_str().unwrap(),
             "--wait-for-generation-lock",
-            "1",
+            GENERATION_LOCK_WAIT_TIMEOUT_SECS,
         ],
         None,
     );
@@ -580,7 +579,7 @@ fn gen_waits_for_generation_lock_when_requested() {
 
     handle.join().unwrap();
     assert!(stderr.contains("waiting for data generation lock:"));
-    assert!(stderr.contains("timeout=1s"));
+    assert!(stderr.contains(GENERATION_LOCK_WAIT_TIMEOUT_LOG));
     assert_eq!(
         std::fs::read_to_string(problem_dir.join("data").join("sample-0.in")).unwrap(),
         "3 4\n"
@@ -596,7 +595,7 @@ fn run_waits_for_generation_lock_before_implicit_case_generation() {
     run_cptool(["init", "run_wait_lock", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("run_wait_lock");
     configure_python_problem(&problem_dir);
-    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+    let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
         [
@@ -606,7 +605,7 @@ fn run_waits_for_generation_lock_before_implicit_case_generation() {
             "-w",
             problem_dir.to_str().unwrap(),
             "--wait-for-generation-lock",
-            "1",
+            GENERATION_LOCK_WAIT_TIMEOUT_SECS,
         ],
         None,
     );
@@ -940,7 +939,7 @@ fn check_json_waits_for_generation_lock_and_stays_parseable() {
     let problem_dir = temp.path().join("problems").join("check_json_wait_lock");
     configure_python_problem(&problem_dir);
     run_cptool(["gen", "-w"], Some(&problem_dir));
-    let handle = release_generation_lock_after(&problem_dir, Duration::from_millis(500));
+    let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
         [
@@ -949,7 +948,7 @@ fn check_json_waits_for_generation_lock_and_stays_parseable() {
             problem_dir.to_str().unwrap(),
             "--json",
             "--wait-for-generation-lock",
-            "1",
+            GENERATION_LOCK_WAIT_TIMEOUT_SECS,
         ],
         None,
     );

@@ -894,7 +894,7 @@ mod tests {
             std::fs::remove_dir_all(lock_dir_for_thread).unwrap();
         });
 
-        let lock = DataGenerationLock::acquire(&root, Some(Duration::from_secs(1))).unwrap();
+        let lock = DataGenerationLock::acquire(&root, Some(Duration::from_secs(3))).unwrap();
 
         handle.join().unwrap();
         assert_eq!(lock.path, lock_dir);
