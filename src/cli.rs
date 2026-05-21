@@ -260,6 +260,12 @@ enum Commands {
         wait_for_generation_lock: Option<u64>,
         #[arg(long, help = "Print the evidence report as JSON")]
         json: bool,
+        #[arg(
+            long,
+            conflicts_with = "json",
+            help = "Print a quality_report.md-ready Markdown evidence section"
+        )]
+        markdown: bool,
     },
     #[command(about = "Export the package to an online judge format")]
     Export {
@@ -389,6 +395,7 @@ pub fn run() -> anyhow::Result<()> {
             reuse_existing_stress_plan,
             wait_for_generation_lock,
             json,
+            markdown,
         } => handle_evidence(EvidenceCommandOptions {
             work_dir,
             output_limit_bytes,
@@ -397,6 +404,7 @@ pub fn run() -> anyhow::Result<()> {
             reuse_existing_stress_plan,
             wait_for_generation_lock,
             json,
+            markdown,
         })?,
         Commands::Export { work_dir, oj } => handle_export(work_dir, oj)?,
     }
@@ -655,6 +663,7 @@ struct EvidenceCommandOptions {
     reuse_existing_stress_plan: Option<PathBuf>,
     wait_for_generation_lock: Option<u64>,
     json: bool,
+    markdown: bool,
 }
 
 fn handle_evidence(options: EvidenceCommandOptions) -> anyhow::Result<()> {
@@ -668,6 +677,8 @@ fn handle_evidence(options: EvidenceCommandOptions) -> anyhow::Result<()> {
     });
     if options.json {
         self::json::print(&report)?;
+    } else if options.markdown {
+        print!("{}", report.render_quality_markdown());
     } else {
         print!("{}", report.render_text());
     }

@@ -1,5 +1,8 @@
 use super::check::{CheckIssue, CheckOptions, CheckReport, check_problem_package_with_options};
-use super::data::{GenerateOptions, GenerateReport, generate_data_report_with_options};
+use super::data::{
+    GenerateOptions, GenerateReport, GenerateWarning, GenerateWarningKind,
+    generate_data_report_with_options,
+};
 use super::schema::DEFAULT_OUTPUT_LIMIT_BYTES;
 use super::stress::StressSummary;
 use super::stress_plan::{StressPlanOptions, stress_plan_collect_with_options};
@@ -62,6 +65,75 @@ impl EvidenceReport {
         out.push_str(&format!("- check: {}\n", self.check.summary()));
         out.push_str(&format!("- gen: {}\n", self.r#gen.summary()));
         out.push_str(&format!("- stress_plan: {}\n", self.stress_plan.summary()));
+        out
+    }
+
+    pub fn render_quality_markdown(&self) -> String {
+        let mut out = String::new();
+        out.push_str("## Tool Evidence\n\n");
+        out.push_str(&format!("- cptool_version: `{}`\n", self.cptool_version));
+        out.push_str(&format!("- work_dir: `{}`\n\n", self.work_dir.display()));
+
+        out.push_str("### Check\n");
+        match (&self.check.status, &self.check.report, &self.check.error) {
+            (EvidenceStatus::Ok, Some(report), _) => {
+                out.push_str(&format!("- status: `{}`\n", report.status));
+                out.push_str(&format!("- errors: {}\n", report.errors));
+                out.push_str(&format!("- warnings: {}\n", report.warnings));
+            }
+            (EvidenceStatus::Skipped, _, Some(reason)) => {
+                out.push_str(&format!("- not recorded: {reason}\n"));
+            }
+            (EvidenceStatus::Error, _, Some(error)) => {
+                out.push_str(&format!("- error: {error}\n"));
+            }
+            _ => out.push_str("- not recorded\n"),
+        }
+
+        out.push_str("\n### Generation\n");
+        match (&self.r#gen.status, &self.r#gen.report, &self.r#gen.error) {
+            (EvidenceStatus::Ok, Some(report), _) => {
+                out.push_str(&format!("- cases: {}\n", report.cases));
+                out.push_str(&format!("- bundles: {}\n", report.bundles.join(", ")));
+                out.push_str(&format!(
+                    "- validator_configured: {}\n",
+                    report.validator_configured
+                ));
+                out.push_str(&format!("- validator_calls: {}\n", report.validator_calls));
+                out.push_str(&format!(
+                    "- warnings: {}\n",
+                    generate_warning_summary(&report.warnings)
+                ));
+            }
+            (EvidenceStatus::Skipped, _, Some(reason)) => {
+                out.push_str(&format!("- not recorded: {reason}\n"));
+            }
+            (EvidenceStatus::Error, _, Some(error)) => {
+                out.push_str(&format!("- error: {error}\n"));
+            }
+            _ => out.push_str("- not recorded\n"),
+        }
+
+        let plans = self
+            .stress_plan
+            .report
+            .as_ref()
+            .filter(|_| self.stress_plan.status == EvidenceStatus::Ok)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let positive = plans
+            .iter()
+            .filter(|plan| plan.expected_failure.is_none())
+            .collect::<Vec<_>>();
+        let negative = plans
+            .iter()
+            .filter(|plan| plan.expected_failure.is_some())
+            .collect::<Vec<_>>();
+
+        out.push_str("\n### Positive Stress Plans\n");
+        render_stress_plans(&mut out, &positive, false);
+        out.push_str("\n### Negative Stress Plans\n");
+        render_stress_plans(&mut out, &negative, true);
         out
     }
 }
@@ -276,5 +348,58 @@ fn collect_stress_plan(
     }) {
         Ok(report) => EvidenceSection::ok(report),
         Err(err) => EvidenceSection::error(err.to_string()),
+    }
+}
+
+fn generate_warning_summary(warnings: &[GenerateWarning]) -> String {
+    if warnings.is_empty() {
+        return "0".to_string();
+    }
+    warnings
+        .iter()
+        .map(|warning| match warning.kind {
+            GenerateWarningKind::GeneratorOutputSuspicious => "generator_output_suspicious",
+            GenerateWarningKind::EmptyAnswer => "empty_answer",
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn render_stress_plans(out: &mut String, plans: &[&StressSummary], negative: bool) {
+    if plans.is_empty() {
+        out.push_str("- not recorded\n");
+        return;
+    }
+    for plan in plans {
+        let name = plan.plan_name.as_deref().unwrap_or("<unnamed>");
+        out.push_str(&format!(
+            "- `{name}`: cases={} unique_input_hashes={} warnings={}",
+            plan.cases,
+            plan.unique_input_hashes,
+            stress_warning_summary(plan)
+        ));
+        if negative && let Some(failure) = &plan.expected_failure {
+            out.push_str(&format!(
+                " failed_cases={} passed_cases={} failure_ratio={:.3} report={}",
+                failure.failed_cases,
+                failure.passed_cases,
+                failure.failure_ratio,
+                failure.report_path.display()
+            ));
+        }
+        out.push('\n');
+    }
+}
+
+fn stress_warning_summary(summary: &StressSummary) -> String {
+    let warnings = summary
+        .warnings()
+        .into_iter()
+        .map(|warning| format!("{}:{}", warning.code, warning.count))
+        .collect::<Vec<_>>();
+    if warnings.is_empty() {
+        "0".to_string()
+    } else {
+        warnings.join(",")
     }
 }

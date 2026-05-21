@@ -33,6 +33,56 @@ fn evidence_json_aggregates_check_gen_and_stress_plan() {
     assert_eq!(value["stress_plan"]["report"][0]["plan_name"], "tiny");
     assert_eq!(value["stress_plan"]["report"][0]["cases"], 2);
 }
+
+#[test]
+fn evidence_markdown_renders_quality_report_section() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-evidence-markdown");
+    run_cptool(
+        ["init", "evidence_markdown_problem", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp
+        .path()
+        .join("problems")
+        .join("evidence_markdown_problem");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("bad.py"),
+        r#"import sys
+
+a, b = map(int, sys.stdin.read().split())
+sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+    append_mixed_stress_plans(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "evidence",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--markdown",
+        ],
+        None,
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+
+    assert!(text.contains("## Tool Evidence"));
+    assert!(text.contains("### Check"));
+    assert!(text.contains("- status: `pass`"));
+    assert!(text.contains("### Generation"));
+    assert!(text.contains("- validator_configured: false"));
+    assert!(text.contains("### Positive Stress Plans"));
+    assert!(text.contains("`tiny-pass`: cases=2 unique_input_hashes=1"));
+    assert!(text.contains("### Negative Stress Plans"));
+    assert!(text.contains("`bad-is-detected`: cases=2 unique_input_hashes=1"));
+    assert!(text.contains("failed_cases=2 passed_cases=0 failure_ratio=1.000"));
+}
 #[test]
 fn evidence_json_can_reuse_stress_plan_report_without_new_failure_artifacts() {
     if !python_available() {
