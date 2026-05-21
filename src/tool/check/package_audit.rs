@@ -1,4 +1,4 @@
-use super::{CheckReport, Problem, StressPlanExpectation};
+use super::{CheckReport, Problem, StressPlanExpectation, codes};
 use std::path::Path;
 
 const SERVICE_NOISE: &[&str] = &[
@@ -44,7 +44,7 @@ pub(super) fn check_report_stress_plan_classification(
             .any(|line| line.contains("正向") && line.contains(name))
         {
             report.warning(
-                "negative_plan_counted_as_positive",
+                codes::NEGATIVE_PLAN_COUNTED_AS_POSITIVE,
                 format!("expect: fail plan appears in positive coverage text: {name}"),
                 Some(path),
             );
@@ -61,7 +61,7 @@ fn check_markdown_placeholders(report: &mut CheckReport, work_dir: &Path) {
         };
         if let Some(pattern) = placeholder_pattern(&text) {
             report.warning(
-                "placeholder_text",
+                codes::PLACEHOLDER_TEXT,
                 format!("placeholder pattern matched: {pattern}"),
                 Some(path),
             );
@@ -148,7 +148,7 @@ fn check_double_nested_problem_dir(report: &mut CheckReport, work_dir: &Path) {
         && (nested.join("problem.yaml").exists() || nested.join("problem.md").exists())
     {
         report.warning(
-            "double_nested_problem_dir",
+            codes::DOUBLE_NESTED_PROBLEM_DIR,
             "nested directory looks like a duplicated problem root",
             Some(nested),
         );
@@ -167,7 +167,7 @@ fn check_report_service_noise_and_failure_refs(report: &mut CheckReport, work_di
             .find(|token| lowered.contains(&token.to_lowercase()))
         {
             report.warning(
-                "service_side_noise",
+                codes::SERVICE_SIDE_NOISE,
                 format!("service-side noise token should not be a package issue: {token}"),
                 Some(path.clone()),
             );
@@ -175,7 +175,7 @@ fn check_report_service_noise_and_failure_refs(report: &mut CheckReport, work_di
         for reference in failure_references(&text) {
             if !work_dir.join(&reference).exists() {
                 report.warning(
-                    "missing_failure_reference",
+                    codes::MISSING_FAILURE_REFERENCE,
                     format!("referenced failure artifact does not exist: {reference}"),
                     Some(path.clone()),
                 );

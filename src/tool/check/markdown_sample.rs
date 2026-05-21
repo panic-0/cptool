@@ -1,4 +1,4 @@
-use super::{CheckReport, Problem};
+use super::{CheckReport, Problem, codes};
 use std::path::{Path, PathBuf};
 
 pub(super) fn find_sample_bundle(problem: &Problem) -> Option<&str> {
@@ -27,7 +27,7 @@ pub(super) fn check_statement_sample_output(
     }
     if blocks.len() > 1 {
         report.warning(
-            "sample_output_ambiguous",
+            codes::SAMPLE_OUTPUT_AMBIGUOUS,
             "multiple sample output code blocks were found in statement.md; skipped comparison",
             Some(statement_path),
         );
@@ -39,7 +39,7 @@ pub(super) fn check_statement_sample_output(
         None => {
             let Some(answer_path) = sample_answer_from_data_dir(work_dir, problem) else {
                 report.warning(
-                    "sample_answer_missing",
+                    codes::SAMPLE_ANSWER_MISSING,
                     "sample output was found in statement.md, but sample-0.ans is unavailable",
                     Some(statement_path),
                 );
@@ -47,7 +47,7 @@ pub(super) fn check_statement_sample_output(
             };
             let Ok(answer) = std::fs::read_to_string(&answer_path) else {
                 report.warning(
-                    "sample_answer_unreadable",
+                    codes::SAMPLE_ANSWER_UNREADABLE,
                     "sample-0.ans exists but could not be read",
                     Some(answer_path),
                 );
@@ -59,7 +59,7 @@ pub(super) fn check_statement_sample_output(
 
     if normalize_output_block(&blocks[0]) != normalize_output_block(&answer) {
         report.error(
-            "statement_sample_output_mismatch",
+            codes::STATEMENT_SAMPLE_OUTPUT_MISMATCH,
             "statement.md sample output does not match sample-0.ans",
             Some(statement_path),
         );

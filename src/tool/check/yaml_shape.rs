@@ -1,4 +1,4 @@
-use super::CheckReport;
+use super::{CheckReport, codes};
 use serde_yml::{Mapping, Value};
 use std::path::Path;
 
@@ -180,7 +180,7 @@ fn warn_unknown_keys(
             Value::String(key) => key,
             _ => {
                 report.warning_at(
-                    "unknown_field",
+                    codes::UNKNOWN_FIELD,
                     "non-string YAML key is ignored by cptool",
                     Some(path.to_path_buf()),
                     if location.is_empty() {
@@ -199,7 +199,7 @@ fn warn_unknown_keys(
                 format!("{location}.{key}")
             };
             report.warning_at(
-                "unknown_field",
+                codes::UNKNOWN_FIELD,
                 format!("unknown problem.yaml field `{key}`"),
                 Some(path.to_path_buf()),
                 field_location,

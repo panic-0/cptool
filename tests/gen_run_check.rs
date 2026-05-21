@@ -1,6 +1,7 @@
 mod common;
 use common::*;
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 #[test]
@@ -718,8 +719,27 @@ fn check_json_reports_status_and_issue_counts() {
         None,
     );
     let ok_value: Value = serde_json::from_slice(&ok.stdout).unwrap();
+    assert_eq!(
+        json_object_keys(&ok_value),
+        ["errors", "issues", "status", "warnings", "work_dir"]
+            .into_iter()
+            .collect()
+    );
     assert_eq!(ok_value["status"], "pass");
     assert_eq!(ok_value["errors"], 0);
+    assert_eq!(ok_value["warnings"], issue_count(&ok_value, "warning"));
+    assert!(
+        ok_value["work_dir"]
+            .as_str()
+            .unwrap()
+            .ends_with("check_json_problem")
+    );
+    assert!(ok_value["issues"].as_array().unwrap().iter().any(|issue| {
+        issue["code"] == "validator_missing"
+            && issue["severity"] == "warning"
+            && issue["message"].is_string()
+            && issue["path"].as_str().unwrap().ends_with("problem.yaml")
+    }));
     assert!(ok_value.get("schema_version").is_none());
 
     std::fs::remove_file(problem_dir.join("src").join("std.cpp")).unwrap();
@@ -729,7 +749,19 @@ fn check_json_reports_status_and_issue_counts() {
     );
     let failed_value: Value = serde_json::from_slice(&failed.stdout).unwrap();
     assert!(!failed.status.success());
+    assert_eq!(failed.status.code(), Some(2));
+    assert_eq!(
+        json_object_keys(&failed_value),
+        ["errors", "issues", "status", "warnings", "work_dir"]
+            .into_iter()
+            .collect()
+    );
     assert_eq!(failed_value["status"], "fail");
+    assert_eq!(failed_value["errors"], issue_count(&failed_value, "error"));
+    assert_eq!(
+        failed_value["warnings"],
+        issue_count(&failed_value, "warning")
+    );
     assert!(failed_value["errors"].as_u64().unwrap() > 0);
     assert!(
         failed_value["issues"]
@@ -741,6 +773,57 @@ fn check_json_reports_status_and_issue_counts() {
             })
     );
 }
+#[test]
+fn check_json_keeps_package_audit_warning_codes_stable() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-check-json-package-contract");
+    run_cptool(["init", "package_contract", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("package_contract");
+    configure_python_problem(&problem_dir);
+    let yaml_path = problem_dir.join("problem.yaml");
+    let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    yaml.push_str(
+        "stress:\n  plans:\n  - name: wrong-proof\n    generator: gen\n    against: [std, brute]\n    cases: 1\n    expect: fail\n",
+    );
+    std::fs::write(&yaml_path, yaml).unwrap();
+    run_cptool(["gen", "-w"], Some(&problem_dir));
+    std::fs::write(problem_dir.join("statement.md"), "# Statement\nTODO\n").unwrap();
+    std::fs::create_dir_all(problem_dir.join("package_contract")).unwrap();
+    std::fs::write(
+        problem_dir.join("package_contract").join("problem.yaml"),
+        "name: nested\n",
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("quality_report.md"),
+        "正向覆盖 wrong-proof\nmissing tests/failures/nope.txt\nrate limit\n",
+    )
+    .unwrap();
+
+    let output = run_cptool(
+        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(value["status"], "pass");
+    for code in [
+        "placeholder_text",
+        "double_nested_problem_dir",
+        "service_side_noise",
+        "missing_failure_reference",
+        "negative_plan_counted_as_positive",
+    ] {
+        let issue = find_issue(&value, code);
+        assert_eq!(issue["severity"], "warning");
+        assert!(issue["message"].is_string());
+        assert!(issue["path"].is_string());
+    }
+}
+
 #[test]
 fn check_json_reports_missing_and_stale_generated_data() {
     if !python_available() {
@@ -786,6 +869,33 @@ fn check_json_reports_missing_and_stale_generated_data() {
             .iter()
             .any(|issue| issue["code"] == "stale_data_file" && issue["severity"] == "warning")
     );
+}
+
+fn json_object_keys(value: &Value) -> BTreeSet<&str> {
+    value
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect()
+}
+
+fn find_issue<'a>(value: &'a Value, code: &str) -> &'a Value {
+    value["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|issue| issue["code"] == code)
+        .unwrap_or_else(|| panic!("missing issue code `{code}`"))
+}
+
+fn issue_count(value: &Value, severity: &str) -> usize {
+    value["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|issue| issue["severity"] == severity)
+        .count()
 }
 #[test]
 fn check_json_marks_generation_lock_as_transient() {

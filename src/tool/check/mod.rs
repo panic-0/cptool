@@ -8,6 +8,7 @@ use super::temp_suffix;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+mod codes;
 mod markdown_sample;
 mod package_audit;
 mod report;
@@ -41,7 +42,7 @@ pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions
         Ok(problem) => problem,
         Err(err) => {
             report.error(
-                "problem_yaml_invalid",
+                codes::PROBLEM_YAML_INVALID,
                 format!("problem.yaml could not be loaded or validated: {err:#}"),
                 Some(work_dir.join("problem.yaml")),
             );
@@ -71,7 +72,7 @@ pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions
             "data generation is in progress; skipped data consistency checks to avoid reading partial output".to_string()
         };
         report.lock_error(
-            "data_generation_in_progress",
+            codes::DATA_GENERATION_IN_PROGRESS,
             message,
             Some(status.marker_path),
         );
@@ -101,7 +102,7 @@ fn check_required_files(report: &mut CheckReport, work_dir: &Path) {
         let path = work_dir.join(relative);
         if !path.is_file() {
             report.error(
-                "required_file_missing",
+                codes::REQUIRED_FILE_MISSING,
                 format!("required file `{relative}` is missing"),
                 Some(path),
             );
@@ -119,7 +120,7 @@ fn check_program_paths(report: &mut CheckReport, work_dir: &Path, problem: &Prob
         let path = resolve_path(work_dir, raw_path);
         if !path.is_file() {
             report.error(
-                "program_path_missing",
+                codes::PROGRAM_PATH_MISSING,
                 format!("program `{name}` path does not exist"),
                 Some(path),
             );
@@ -131,7 +132,7 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
     let yaml_path = work_dir.join("problem.yaml");
     if problem.test.tasks.is_empty() {
         report.error_at(
-            "test_tasks_empty",
+            codes::TEST_TASKS_EMPTY,
             "`test.tasks` must contain at least one task",
             Some(yaml_path.clone()),
             "test.tasks",
@@ -141,7 +142,7 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
     for (bundle_name, bundle) in &problem.test.bundles {
         if bundle.cases.is_empty() {
             report.error_at(
-                "bundle_empty",
+                codes::BUNDLE_EMPTY,
                 format!("bundle `{bundle_name}` has no cases"),
                 Some(yaml_path.clone()),
                 format!("test.bundles.{bundle_name}.cases"),
@@ -155,7 +156,7 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
         task_index_by_name.insert(task.name.as_str(), index);
         if task.bundles.is_empty() {
             report.error_at(
-                "task_has_no_bundles",
+                codes::TASK_HAS_NO_BUNDLES,
                 format!("task `{}` has no bundles", task.name),
                 Some(yaml_path.clone()),
                 format!("test.tasks[{index}].bundles"),
@@ -172,7 +173,7 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
         .sum::<f64>();
     if !problem.test.tasks.is_empty() && (total_score - 100.0).abs() > 1e-6 {
         report.warning_at(
-            "task_score_total_not_100",
+            codes::TASK_SCORE_TOTAL_NOT_100,
             format!("task scores sum to {total_score}, expected 100.0"),
             Some(yaml_path.clone()),
             "test.tasks",
@@ -182,7 +183,7 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
     for bundle_name in problem.test.bundles.keys() {
         if !used_bundles.contains(bundle_name) {
             report.warning_at(
-                "bundle_uncovered_by_task",
+                codes::BUNDLE_UNCOVERED_BY_TASK,
                 format!("bundle `{bundle_name}` is not referenced by any task"),
                 Some(yaml_path.clone()),
                 format!("test.bundles.{bundle_name}"),
@@ -192,7 +193,7 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
 
     if let Some(cycle) = task_dependency_cycle(problem, &task_index_by_name) {
         report.error_at(
-            "task_dependency_cycle",
+            codes::TASK_DEPENDENCY_CYCLE,
             format!("task dependencies contain a cycle: {}", cycle.join(" -> ")),
             Some(yaml_path),
             "test.tasks",
@@ -213,7 +214,7 @@ fn check_validator_declaration(report: &mut CheckReport, work_dir: &Path, proble
     }
 
     report.warning(
-        "validator_missing",
+        codes::VALIDATOR_MISSING,
         "`validator` is not declared; add one or set `validator_omitted_reason`",
         Some(work_dir.join("problem.yaml")),
     );
@@ -233,7 +234,7 @@ fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem:
                 let path = data_dir.join(format!("{bundle_name}-{case_index}.{extension}"));
                 if !path.is_file() {
                     report.error_at(
-                        "generated_data_missing",
+                        codes::GENERATED_DATA_MISSING,
                         format!("generated data file `{bundle_name}-{case_index}.{extension}` is missing"),
                         Some(path),
                         format!("test.bundles.{bundle_name}.cases[{case_index}]"),
@@ -259,7 +260,7 @@ fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &P
         };
         let Some((bundle_name, case_index)) = parse_data_file_stem(stem) else {
             report.warning(
-                "stale_data_file",
+                codes::STALE_DATA_FILE,
                 "data file does not match `<bundle>-<index>.in/.ans` naming",
                 Some(path),
             );
@@ -267,7 +268,7 @@ fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &P
         };
         let Some(bundle) = problem.test.bundles.get(bundle_name) else {
             report.warning(
-                "stale_data_file",
+                codes::STALE_DATA_FILE,
                 format!("data file references unknown bundle `{bundle_name}`"),
                 Some(path),
             );
@@ -275,7 +276,7 @@ fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &P
         };
         if case_index >= bundle.cases.len() {
             report.warning(
-                "stale_data_file",
+                codes::STALE_DATA_FILE,
                 format!("data file references missing case `{bundle_name}[{case_index}]`"),
                 Some(path),
             );
@@ -290,7 +291,7 @@ fn check_empty_answers(report: &mut CheckReport, work_dir: &Path, problem: &Prob
     }
     let Ok(entries) = std::fs::read_dir(&data_dir) else {
         report.warning(
-            "data_dir_unreadable",
+            codes::DATA_DIR_UNREADABLE,
             "data directory exists but could not be read",
             Some(data_dir),
         );
@@ -303,13 +304,13 @@ fn check_empty_answers(report: &mut CheckReport, work_dir: &Path, problem: &Prob
         }
         match std::fs::metadata(&path) {
             Ok(metadata) if metadata.len() == 0 && !problem.output.allow_empty => report.error(
-                "empty_answer",
+                codes::EMPTY_ANSWER,
                 ".ans file is empty but output.allow_empty is not declared",
                 Some(path),
             ),
             Ok(_) => {}
             Err(err) => report.warning(
-                "answer_unreadable",
+                codes::ANSWER_UNREADABLE,
                 format!("could not inspect .ans file: {err}"),
                 Some(path),
             ),
@@ -322,7 +323,7 @@ fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Probl
     let plans = &problem.stress.plans;
     if plans.is_empty() {
         report.warning_at(
-            "stress_plans_missing",
+            codes::STRESS_PLANS_MISSING,
             "`stress.plans` is not declared",
             Some(yaml_path),
             "stress.plans",
@@ -335,7 +336,7 @@ fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Probl
         .any(|plan| plan.expect == StressPlanExpectation::Pass)
     {
         report.warning_at(
-            "stress_positive_plan_missing",
+            codes::STRESS_POSITIVE_PLAN_MISSING,
             "`stress.plans` has no `expect: pass` plan",
             Some(work_dir.join("problem.yaml")),
             "stress.plans",
@@ -346,7 +347,7 @@ fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Probl
         let location = format!("stress.plans[{index}]");
         if plan.cases == 0 {
             report.error_at(
-                "stress_plan_empty",
+                codes::STRESS_PLAN_EMPTY,
                 format!("stress plan `{}` has zero cases", plan.name),
                 Some(work_dir.join("problem.yaml")),
                 format!("{location}.cases"),
@@ -354,7 +355,7 @@ fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Probl
         }
         if plan.against.len() < 2 {
             report.error_at(
-                "stress_plan_against_too_few",
+                codes::STRESS_PLAN_AGAINST_TOO_FEW,
                 format!(
                     "stress plan `{}` must compare at least two programs or sources",
                     plan.name
@@ -370,7 +371,7 @@ fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Probl
         ) {
             if !stress_program_exists(work_dir, problem, value) {
                 report.error_at(
-                    "stress_plan_program_missing",
+                    codes::STRESS_PLAN_PROGRAM_MISSING,
                     format!(
                         "stress plan `{}` {field} `{value}` is neither a configured program nor an existing source file",
                         plan.name
@@ -466,7 +467,7 @@ fn check_sample_generation(
 ) -> Option<String> {
     let Some(sample_bundle) = find_sample_bundle(problem) else {
         report.warning(
-            "sample_bundle_missing",
+            codes::SAMPLE_BUNDLE_MISSING,
             "no `sample` bundle is declared, so sample data generation was not checked",
             Some(work_dir.join("problem.yaml")),
         );
@@ -479,7 +480,7 @@ fn check_sample_generation(
         .is_none_or(|bundle| bundle.cases.is_empty())
     {
         report.error(
-            "sample_bundle_empty",
+            codes::SAMPLE_BUNDLE_EMPTY,
             format!("sample bundle `{sample_bundle}` has no cases"),
             Some(work_dir.join("problem.yaml")),
         );
@@ -500,7 +501,7 @@ fn check_sample_generation(
         Ok(generated) => generated,
         Err(err) => {
             report.error(
-                "sample_generation_failed",
+                codes::SAMPLE_GENERATION_FAILED,
                 format!("sample data generation failed for bundle `{sample_bundle}`: {err:#}"),
                 Some(work_dir.join("problem.yaml")),
             );
@@ -515,7 +516,7 @@ fn check_sample_generation(
             && !problem.output.allow_empty
         {
             report.error(
-                "empty_answer",
+                codes::EMPTY_ANSWER,
                 "generated sample .ans is empty but output.allow_empty is not declared",
                 None,
             );
@@ -528,7 +529,7 @@ fn check_sample_generation(
             Ok(answer) => Some(answer),
             Err(err) => {
                 report.warning(
-                    "sample_answer_unreadable",
+                    codes::SAMPLE_ANSWER_UNREADABLE,
                     format!("generated sample-0.ans could not be read: {err}"),
                     None,
                 );
