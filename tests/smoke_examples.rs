@@ -81,6 +81,40 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
         "7\n"
     );
 }
+
+#[test]
+fn init_scaffold_includes_working_testlib_validator() {
+    let temp = TempWorkspace::new("cptool-init-testlib-validator");
+    run_cptool(["init", "testlib_validator", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("testlib_validator");
+
+    assert!(problem_dir.join("src").join("val.cpp").exists());
+    assert!(problem_dir.join("src").join("testlib.h").exists());
+    std::fs::write(
+        problem_dir.join("src").join("gen.cpp"),
+        "int main(){return 0;}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("std.cpp"),
+        "#include <iostream>\nint main(){std::cout << 0 << '\\n';}\n",
+    )
+    .unwrap();
+
+    run_cptool(["gen", "-w"], Some(&problem_dir));
+    let check = run_cptool(["check", "--json", "-w"], Some(&problem_dir));
+    let value: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
+
+    assert_eq!(value["status"], "pass");
+    assert!(
+        !value["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["code"] == "validator_missing")
+    );
+}
+
 #[test]
 fn example_problem_packages_generate_and_check() {
     let temp = TempWorkspace::new("cptool-example-packages");

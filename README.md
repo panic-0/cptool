@@ -92,7 +92,13 @@ programs:
       compile_args: [-O2, -std=c++14]
     time_limit_secs: 3.0
     memory_limit_mb: 512.0
+  val:
+    info: !cpp
+      path: ./src/val.cpp
+    time_limit_secs: 3.0
+    memory_limit_mb: 512.0
 solution: std
+validator: val
 output:
   allow_empty: false
 test:
@@ -133,7 +139,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 
 + Syzoj export is not fully supported yet.
 + `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.7.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
-+ `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, and `brute` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits.
++ `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, `brute`, and `val` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits. New packages include a self-contained `src/testlib.h` and placeholder `src/val.cpp`; update `val.cpp` to match the problem's real input format before publishing data.
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
 + `clean` removes generated data and local cache without running generation. With no flags it removes `data/*.in`, `data/*.ans`, and `.cptool/cache`; use `--data` or `--cache` to target only one side. It refuses to remove data while a generation lock or staging directory exists.
 + `gen`, implicit selector generation in `run`, `check`, `stress-plan`, and `evidence` support `--wait-for-generation-lock <SECONDS>`. Pass a positive timeout such as `--wait-for-generation-lock 10` to poll every 250ms while another generation is in progress. The wait mode never deletes stale locks; it times out with a retry/prewarm hint.

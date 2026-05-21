@@ -11,7 +11,14 @@ programs:
       compile_args: [-O2, -std=c++14]
     time_limit_secs: 1.0
     memory_limit_mb: 512.0
+  val:
+    info: !cpp
+      path: ./src/val.cpp
+      compile_args: [-O2, -I../assets/testlib/]
+    time_limit_secs: 1.0
+    memory_limit_mb: 512.0
 solution: std
+validator: val
 test:
   generator: gen
   type: min

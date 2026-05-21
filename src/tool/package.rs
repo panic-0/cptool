@@ -1,5 +1,16 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+
+const TESTLIB_H: &str = include_str!("../../assets/testlib/testlib.h");
+const DEFAULT_VALIDATOR_CPP: &str = r#"#include "testlib.h"
+
+int main(int argc, char *argv[]) {
+    registerValidation(argc, argv);
+    inf.readEof();
+    return 0;
+}
+"#;
+
 pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     let slug = slugify(id)?;
     let problem_dir = problems_dir_for_root(root).join(slug);
@@ -19,11 +30,16 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     std::fs::write(problem_dir.join("src").join("std.cpp"), "")?;
     std::fs::write(problem_dir.join("src").join("brute.cpp"), "")?;
     std::fs::write(problem_dir.join("src").join("gen.cpp"), "")?;
+    std::fs::write(
+        problem_dir.join("src").join("val.cpp"),
+        DEFAULT_VALIDATOR_CPP,
+    )?;
+    std::fs::write(problem_dir.join("src").join("testlib.h"), TESTLIB_H)?;
     let yaml_name = serde_yml::to_string(id)?.trim_end().to_string();
     std::fs::write(
         problem_dir.join("problem.yaml"),
         format!(
-            "name: {yaml_name}\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\nsolution: std\ntest:\n  generator: gen\n  type: min\n  bundles:\n    sample:\n      cases:\n      - []\n  tasks:\n  - name: sample\n    score: 100.0\n    bundles: [sample]\n",
+            "name: {yaml_name}\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  val:\n    info: !cpp\n      path: ./src/val.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\nsolution: std\nvalidator: val\ntest:\n  generator: gen\n  type: min\n  bundles:\n    sample:\n      cases:\n      - []\n  tasks:\n  - name: sample\n    score: 100.0\n    bundles: [sample]\n",
         ),
     )?;
     Ok(problem_dir)

@@ -83,6 +83,8 @@ mod tests {
         assert!(problem_dir.join("src").join("std.cpp").exists());
         assert!(problem_dir.join("src").join("brute.cpp").exists());
         assert!(problem_dir.join("src").join("gen.cpp").exists());
+        assert!(problem_dir.join("src").join("val.cpp").exists());
+        assert!(problem_dir.join("src").join("testlib.h").exists());
         assert!(problem_dir.join("tests").join("failures").is_dir());
         assert!(problem_dir.join(".gitignore").exists());
         assert!(!problem_dir.join("quality_report.md").exists());
@@ -92,6 +94,13 @@ mod tests {
         assert_eq!(problem.programs["gen"].time_limit_secs, 3.0);
         assert_eq!(problem.programs["std"].time_limit_secs, 3.0);
         assert_eq!(problem.programs["brute"].time_limit_secs, 3.0);
+        assert_eq!(problem.validator_name.as_deref(), Some("val"));
+        match &problem.programs["val"].info {
+            ProgramInfo::Cpp(program) => {
+                assert_eq!(program.path, std::path::PathBuf::from("./src/val.cpp"))
+            }
+            other => panic!("expected val to be a C++ program, got {other:?}"),
+        }
 
         std::fs::remove_dir_all(root).unwrap();
     }
