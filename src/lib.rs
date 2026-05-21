@@ -1,5 +1,6 @@
 pub mod export;
-mod support;
+#[doc(hidden)]
+pub mod support;
 pub mod tool;
 
 #[doc(hidden)]

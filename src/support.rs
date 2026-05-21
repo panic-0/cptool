@@ -15,6 +15,14 @@ pub(crate) fn temp_suffix() -> String {
     format!("{}-{}-{counter}", std::process::id(), unix_epoch_nanos())
 }
 
+pub fn count_lines(bytes: &[u8]) -> usize {
+    if bytes.is_empty() {
+        0
+    } else {
+        bytes.iter().filter(|byte| **byte == b'\n').count() + usize::from(!bytes.ends_with(b"\n"))
+    }
+}
+
 pub(crate) fn python_available() -> bool {
     let python = std::env::var("PYTHON").unwrap_or_else(|_| "python".to_string());
     std::process::Command::new(python)

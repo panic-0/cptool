@@ -1,3 +1,4 @@
+use crate::support::count_lines;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_yml::Value;
 use sha2::{Digest, Sha256};
@@ -91,14 +92,6 @@ impl RunResult {
             self.stderr_bytes.len(),
             !self.stderr_bytes.is_empty(),
         )
-    }
-}
-
-fn count_lines(bytes: &[u8]) -> usize {
-    if bytes.is_empty() {
-        0
-    } else {
-        bytes.iter().filter(|byte| **byte == b'\n').count() + usize::from(!bytes.ends_with(b"\n"))
     }
 }
 

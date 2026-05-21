@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use cptool::export::{Exporter, OnlineJudge, syzoj};
+use cptool::support::count_lines;
 use cptool::tool::{self, DEFAULT_OUTPUT_LIMIT_BYTES, RunOptions};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -248,10 +249,7 @@ enum Commands {
 pub fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init { id, root } => {
-            let path = tool::init_package(&root, &id)?;
-            println!("created {}", path.display());
-        }
+        Commands::Init { id, root } => handle_init(id, root)?,
         Commands::Run {
             program,
             case,
@@ -267,48 +265,22 @@ pub fn run() -> anyhow::Result<()> {
             json,
             hide_stdout,
             args,
-        } => {
-            let (program, selector) = normalize_run_positionals(program, case);
-            let result = tool::run(RunOptions {
-                work_dir,
-                program,
-                source,
-                selector,
-                stdin_text,
-                stdin_path,
-                stdout_path: stdout_path.clone(),
-                stderr_path: stderr_path.clone(),
-                args,
-                output_limit_bytes,
-                generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
-            })?;
-            if json {
-                print_json(&RunJsonSummary::from(&result))?;
-            } else if summary_only {
-                println!("{}", result.summary_line());
-                if !result.ok {
-                    eprintln!(
-                        "hint: rerun without --summary-only or use --stdout-path/--stderr-path to save full output"
-                    );
-                }
-            } else {
-                println!("{}", result.status_line());
-            }
-            if !json
-                && !summary_only
-                && !hide_stdout
-                && stdout_path.is_none()
-                && !result.stdout.is_empty()
-            {
-                print!("{}", result.stdout);
-            }
-            if !json && !summary_only && stderr_path.is_none() && !result.stderr.is_empty() {
-                eprint!("{}", result.stderr);
-            }
-            if !result.ok {
-                std::process::exit(2);
-            }
-        }
+        } => handle_run(RunCommandOptions {
+            program,
+            case,
+            work_dir,
+            source,
+            stdin_text,
+            stdin_path,
+            stdout_path,
+            stderr_path,
+            output_limit_bytes,
+            wait_for_generation_lock,
+            summary_only,
+            json,
+            hide_stdout,
+            args,
+        })?,
         Commands::Gen {
             work_dir,
             bundle,
@@ -319,29 +291,17 @@ pub fn run() -> anyhow::Result<()> {
             clean,
             summary_only,
             json,
-        } => {
-            let options = tool::GenerateOptions {
-                work_dir,
-                bundle,
-                selector: case,
-                output_dir,
-                output_limit_bytes,
-                clean,
-                generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
-            };
-            if json {
-                let report = tool::generate_data_report_with_options(options)?;
-                print_json(&report)?;
-            } else if summary_only {
-                let report = tool::generate_data_report_with_options(options)?;
-                println!("{}", report.summary_line());
-            } else {
-                let generated = tool::generate_data_with_options(options)?;
-                for path in generated {
-                    println!("generated {}", path.display());
-                }
-            }
-        }
+        } => handle_gen(GenCommandOptions {
+            work_dir,
+            bundle,
+            case,
+            output_dir,
+            output_limit_bytes,
+            wait_for_generation_lock,
+            clean,
+            summary_only,
+            json,
+        })?,
         Commands::Stress {
             work_dir,
             generator,
@@ -351,36 +311,16 @@ pub fn run() -> anyhow::Result<()> {
             failure_dir,
             json,
             args,
-        } => {
-            if json {
-                let summary = tool::stress_with_options(tool::StressOptions {
-                    work_dir: &work_dir,
-                    generator: &generator,
-                    against: &against,
-                    cases,
-                    args: &args,
-                    failure_dir: failure_dir.as_deref(),
-                    output_limit_bytes,
-                    print_progress: false,
-                    print_warnings: false,
-                })?;
-                print_json(&StressJsonSummary::from(&summary))?;
-            } else {
-                let summary = tool::stress_with_summary(
-                    &work_dir,
-                    &generator,
-                    &against,
-                    cases,
-                    &args,
-                    failure_dir.as_deref(),
-                    output_limit_bytes,
-                )?;
-                println!(
-                    "stress passed: {} cases unique_input_hashes={}",
-                    summary.cases, summary.unique_input_hashes
-                );
-            }
-        }
+        } => handle_stress(StressCommandOptions {
+            work_dir,
+            generator,
+            against,
+            cases,
+            output_limit_bytes,
+            failure_dir,
+            json,
+            args,
+        })?,
         Commands::StressPlan {
             work_dir,
             name,
@@ -391,49 +331,22 @@ pub fn run() -> anyhow::Result<()> {
             positive_only,
             negative_only,
             json,
-        } => {
-            let options = tool::StressPlanOptions {
-                work_dir: &work_dir,
-                name: name.as_deref(),
-                failure_dir: failure_dir.as_deref(),
-                output_limit_bytes,
-                summary_only,
-                filter: stress_plan_filter(positive_only, negative_only),
-                generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
-            };
-            if json {
-                let summaries = tool::stress_plan_collect_with_options(options)?;
-                let report = StressPlanJsonReport {
-                    plans: summaries
-                        .iter()
-                        .map(StressJsonSummary::from)
-                        .collect::<Vec<_>>(),
-                };
-                print_json(&report)?;
-            } else {
-                tool::stress_plan_with_options(options)?;
-            }
-        }
+        } => handle_stress_plan(StressPlanCommandOptions {
+            work_dir,
+            name,
+            output_limit_bytes,
+            failure_dir,
+            wait_for_generation_lock,
+            summary_only,
+            positive_only,
+            negative_only,
+            json,
+        })?,
         Commands::Check {
             work_dir,
             wait_for_generation_lock,
             json,
-        } => {
-            let report = tool::check_problem_package_with_options(
-                &work_dir,
-                tool::CheckOptions {
-                    generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
-                },
-            );
-            if json {
-                print_json(&CheckJsonReport::from(&report))?;
-            } else {
-                print!("{}", report.render_text());
-            }
-            if report.has_errors() {
-                std::process::exit(2);
-            }
-        }
+        } => handle_check(work_dir, wait_for_generation_lock, json)?,
         Commands::Evidence {
             work_dir,
             output_limit_bytes,
@@ -442,60 +355,313 @@ pub fn run() -> anyhow::Result<()> {
             reuse_existing_stress_plan,
             wait_for_generation_lock,
             json,
-        } => {
-            let report = tool::collect_evidence(tool::EvidenceOptions {
-                work_dir,
-                output_limit_bytes,
-                skip_gen,
-                skip_stress_plan,
-                reuse_existing_stress_plan,
-                generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
-            });
-            if json {
-                print_json(&report)?;
-            } else {
-                print!("{}", report.render_text());
-            }
-            if report.has_errors() {
-                std::process::exit(2);
-            }
-        }
-        Commands::Export { work_dir, oj } => {
-            let start = Instant::now();
-            let work_dir = if work_dir.is_absolute() {
-                work_dir
-            } else {
-                std::env::current_dir()?.join(work_dir)
-            };
-            let data_dir = work_dir.join("data");
-            let problem = tool::load_problem(&work_dir)?;
-            tool::generate_data(
-                &work_dir,
-                None,
-                None,
-                Some(&data_dir),
-                DEFAULT_OUTPUT_LIMIT_BYTES,
-            )?;
+        } => handle_evidence(EvidenceCommandOptions {
+            work_dir,
+            output_limit_bytes,
+            skip_gen,
+            skip_stress_plan,
+            reuse_existing_stress_plan,
+            wait_for_generation_lock,
+            json,
+        })?,
+        Commands::Export { work_dir, oj } => handle_export(work_dir, oj)?,
+    }
+    Ok(())
+}
 
-            match oj {
-                OnlineJudge::Syzoj => {
-                    let export_dir = work_dir.join("export").join("syzoj");
-                    if export_dir.exists() {
-                        std::fs::remove_dir_all(&export_dir)?;
-                    }
-                    std::fs::create_dir_all(&export_dir)?;
-                    syzoj::SyzojExporter::export(&problem, &work_dir, &data_dir, &export_dir)?;
-                    println!("exported {}", export_dir.display());
-                }
-            }
-            let elapsed = start.elapsed();
-            println!(
-                "elapsed: {}.{:03}s",
-                elapsed.as_secs(),
-                elapsed.subsec_millis()
+fn handle_init(id: String, root: PathBuf) -> anyhow::Result<()> {
+    let path = tool::init_package(&root, &id)?;
+    println!("created {}", path.display());
+    Ok(())
+}
+
+struct RunCommandOptions {
+    program: Option<String>,
+    case: Option<String>,
+    work_dir: PathBuf,
+    source: Option<PathBuf>,
+    stdin_text: Option<String>,
+    stdin_path: Option<PathBuf>,
+    stdout_path: Option<PathBuf>,
+    stderr_path: Option<PathBuf>,
+    output_limit_bytes: usize,
+    wait_for_generation_lock: Option<u64>,
+    summary_only: bool,
+    json: bool,
+    hide_stdout: bool,
+    args: Vec<String>,
+}
+
+fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
+    let RunCommandOptions {
+        program,
+        case,
+        work_dir,
+        source,
+        stdin_text,
+        stdin_path,
+        stdout_path,
+        stderr_path,
+        output_limit_bytes,
+        wait_for_generation_lock,
+        summary_only,
+        json,
+        hide_stdout,
+        args,
+    } = options;
+    let (program, selector) = normalize_run_positionals(program, case);
+    let result = tool::run(RunOptions {
+        work_dir,
+        program,
+        source,
+        selector,
+        stdin_text,
+        stdin_path,
+        stdout_path: stdout_path.clone(),
+        stderr_path: stderr_path.clone(),
+        args,
+        output_limit_bytes,
+        generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
+    })?;
+    if json {
+        print_json(&RunJsonSummary::from(&result))?;
+    } else if summary_only {
+        println!("{}", result.summary_line());
+        if !result.ok {
+            eprintln!(
+                "hint: rerun without --summary-only or use --stdout-path/--stderr-path to save full output"
             );
         }
+    } else {
+        println!("{}", result.status_line());
     }
+    if !json && !summary_only && !hide_stdout && stdout_path.is_none() && !result.stdout.is_empty()
+    {
+        print!("{}", result.stdout);
+    }
+    if !json && !summary_only && stderr_path.is_none() && !result.stderr.is_empty() {
+        eprint!("{}", result.stderr);
+    }
+    if !result.ok {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+struct GenCommandOptions {
+    work_dir: PathBuf,
+    bundle: Option<String>,
+    case: Option<String>,
+    output_dir: Option<PathBuf>,
+    output_limit_bytes: usize,
+    wait_for_generation_lock: Option<u64>,
+    clean: bool,
+    summary_only: bool,
+    json: bool,
+}
+
+fn handle_gen(options: GenCommandOptions) -> anyhow::Result<()> {
+    let GenCommandOptions {
+        work_dir,
+        bundle,
+        case,
+        output_dir,
+        output_limit_bytes,
+        wait_for_generation_lock,
+        clean,
+        summary_only,
+        json,
+    } = options;
+    let options = tool::GenerateOptions {
+        work_dir,
+        bundle,
+        selector: case,
+        output_dir,
+        output_limit_bytes,
+        clean,
+        generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
+    };
+    if json {
+        let report = tool::generate_data_report_with_options(options)?;
+        print_json(&report)?;
+    } else if summary_only {
+        let report = tool::generate_data_report_with_options(options)?;
+        println!("{}", report.summary_line());
+    } else {
+        let generated = tool::generate_data_with_options(options)?;
+        for path in generated {
+            println!("generated {}", path.display());
+        }
+    }
+    Ok(())
+}
+
+struct StressCommandOptions {
+    work_dir: PathBuf,
+    generator: String,
+    against: Vec<String>,
+    cases: usize,
+    output_limit_bytes: usize,
+    failure_dir: Option<PathBuf>,
+    json: bool,
+    args: Vec<String>,
+}
+
+fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
+    if options.json {
+        let summary = tool::stress_with_options(tool::StressOptions {
+            work_dir: &options.work_dir,
+            generator: &options.generator,
+            against: &options.against,
+            cases: options.cases,
+            args: &options.args,
+            failure_dir: options.failure_dir.as_deref(),
+            output_limit_bytes: options.output_limit_bytes,
+            print_progress: false,
+            print_warnings: false,
+        })?;
+        print_json(&StressJsonSummary::from(&summary))?;
+    } else {
+        let summary = tool::stress_with_summary(
+            &options.work_dir,
+            &options.generator,
+            &options.against,
+            options.cases,
+            &options.args,
+            options.failure_dir.as_deref(),
+            options.output_limit_bytes,
+        )?;
+        println!(
+            "stress passed: {} cases unique_input_hashes={}",
+            summary.cases, summary.unique_input_hashes
+        );
+    }
+    Ok(())
+}
+
+struct StressPlanCommandOptions {
+    work_dir: PathBuf,
+    name: Option<String>,
+    output_limit_bytes: usize,
+    failure_dir: Option<PathBuf>,
+    wait_for_generation_lock: Option<u64>,
+    summary_only: bool,
+    positive_only: bool,
+    negative_only: bool,
+    json: bool,
+}
+
+fn handle_stress_plan(options: StressPlanCommandOptions) -> anyhow::Result<()> {
+    let stress_options = tool::StressPlanOptions {
+        work_dir: &options.work_dir,
+        name: options.name.as_deref(),
+        failure_dir: options.failure_dir.as_deref(),
+        output_limit_bytes: options.output_limit_bytes,
+        summary_only: options.summary_only,
+        filter: stress_plan_filter(options.positive_only, options.negative_only),
+        generation_lock_timeout: generation_lock_timeout(options.wait_for_generation_lock),
+    };
+    if options.json {
+        let summaries = tool::stress_plan_collect_with_options(stress_options)?;
+        let report = StressPlanJsonReport {
+            plans: summaries
+                .iter()
+                .map(StressJsonSummary::from)
+                .collect::<Vec<_>>(),
+        };
+        print_json(&report)?;
+    } else {
+        tool::stress_plan_with_options(stress_options)?;
+    }
+    Ok(())
+}
+
+fn handle_check(
+    work_dir: PathBuf,
+    wait_for_generation_lock: Option<u64>,
+    json: bool,
+) -> anyhow::Result<()> {
+    let report = tool::check_problem_package_with_options(
+        &work_dir,
+        tool::CheckOptions {
+            generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
+        },
+    );
+    if json {
+        print_json(&CheckJsonReport::from(&report))?;
+    } else {
+        print!("{}", report.render_text());
+    }
+    if report.has_errors() {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+struct EvidenceCommandOptions {
+    work_dir: PathBuf,
+    output_limit_bytes: usize,
+    skip_gen: bool,
+    skip_stress_plan: bool,
+    reuse_existing_stress_plan: Option<PathBuf>,
+    wait_for_generation_lock: Option<u64>,
+    json: bool,
+}
+
+fn handle_evidence(options: EvidenceCommandOptions) -> anyhow::Result<()> {
+    let report = tool::collect_evidence(tool::EvidenceOptions {
+        work_dir: options.work_dir,
+        output_limit_bytes: options.output_limit_bytes,
+        skip_gen: options.skip_gen,
+        skip_stress_plan: options.skip_stress_plan,
+        reuse_existing_stress_plan: options.reuse_existing_stress_plan,
+        generation_lock_timeout: generation_lock_timeout(options.wait_for_generation_lock),
+    });
+    if options.json {
+        print_json(&report)?;
+    } else {
+        print!("{}", report.render_text());
+    }
+    if report.has_errors() {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+fn handle_export(work_dir: PathBuf, oj: OnlineJudge) -> anyhow::Result<()> {
+    let start = Instant::now();
+    let work_dir = if work_dir.is_absolute() {
+        work_dir
+    } else {
+        std::env::current_dir()?.join(work_dir)
+    };
+    let data_dir = work_dir.join("data");
+    let problem = tool::load_problem(&work_dir)?;
+    tool::generate_data(
+        &work_dir,
+        None,
+        None,
+        Some(&data_dir),
+        DEFAULT_OUTPUT_LIMIT_BYTES,
+    )?;
+
+    match oj {
+        OnlineJudge::Syzoj => {
+            let export_dir = work_dir.join("export").join("syzoj");
+            if export_dir.exists() {
+                std::fs::remove_dir_all(&export_dir)?;
+            }
+            std::fs::create_dir_all(&export_dir)?;
+            syzoj::SyzojExporter::export(&problem, &work_dir, &data_dir, &export_dir)?;
+            println!("exported {}", export_dir.display());
+        }
+    }
+    let elapsed = start.elapsed();
+    println!(
+        "elapsed: {}.{:03}s",
+        elapsed.as_secs(),
+        elapsed.subsec_millis()
+    );
     Ok(())
 }
 
@@ -623,14 +789,6 @@ fn positive_seconds(value: &str) -> Result<u64, String> {
 
 fn generation_lock_timeout(seconds: Option<u64>) -> Option<Duration> {
     seconds.map(Duration::from_secs)
-}
-
-fn count_lines(bytes: &[u8]) -> usize {
-    if bytes.is_empty() {
-        0
-    } else {
-        bytes.iter().filter(|byte| **byte == b'\n').count() + usize::from(!bytes.ends_with(b"\n"))
-    }
 }
 
 fn print_json<T: Serialize>(value: &T) -> anyhow::Result<()> {
