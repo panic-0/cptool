@@ -69,6 +69,20 @@ enum Commands {
         #[arg(
             long,
             value_name = "SECONDS",
+            value_parser = positive_f64,
+            help = "Override this run's configured time limit in seconds"
+        )]
+        time_limit_secs: Option<f64>,
+        #[arg(
+            long,
+            value_name = "MB",
+            value_parser = positive_f64,
+            help = "Override this run's configured memory limit in megabytes"
+        )]
+        memory_limit_mb: Option<f64>,
+        #[arg(
+            long,
+            value_name = "SECONDS",
             value_parser = positive_seconds,
             help = "Wait up to SECONDS for an in-progress data generation lock"
         )]
@@ -260,6 +274,8 @@ pub fn run() -> anyhow::Result<()> {
             stdout_path,
             stderr_path,
             output_limit_bytes,
+            time_limit_secs,
+            memory_limit_mb,
             wait_for_generation_lock,
             summary_only,
             json,
@@ -275,6 +291,8 @@ pub fn run() -> anyhow::Result<()> {
             stdout_path,
             stderr_path,
             output_limit_bytes,
+            time_limit_secs,
+            memory_limit_mb,
             wait_for_generation_lock,
             summary_only,
             json,
@@ -385,6 +403,8 @@ struct RunCommandOptions {
     stdout_path: Option<PathBuf>,
     stderr_path: Option<PathBuf>,
     output_limit_bytes: usize,
+    time_limit_secs: Option<f64>,
+    memory_limit_mb: Option<f64>,
     wait_for_generation_lock: Option<u64>,
     summary_only: bool,
     json: bool,
@@ -403,6 +423,8 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
         stdout_path,
         stderr_path,
         output_limit_bytes,
+        time_limit_secs,
+        memory_limit_mb,
         wait_for_generation_lock,
         summary_only,
         json,
@@ -422,6 +444,8 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
         args,
         output_limit_bytes,
         generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
+        time_limit_secs,
+        memory_limit_mb,
     })?;
     if json {
         print_json(&RunJsonSummary::from(&result))?;
@@ -787,6 +811,16 @@ fn positive_seconds(value: &str) -> Result<u64, String> {
     Ok(seconds)
 }
 
+fn positive_f64(value: &str) -> Result<f64, String> {
+    let number = value
+        .parse::<f64>()
+        .map_err(|_| format!("`{value}` is not a positive finite number"))?;
+    if !number.is_finite() || number <= 0.0 {
+        return Err("value must be a positive finite number".to_string());
+    }
+    Ok(number)
+}
+
 fn generation_lock_timeout(seconds: Option<u64>) -> Option<Duration> {
     seconds.map(Duration::from_secs)
 }
@@ -822,6 +856,17 @@ mod tests {
         assert!(positive_seconds("0").is_err());
         assert!(positive_seconds("1.5").is_err());
         assert!(positive_seconds("abc").is_err());
+    }
+
+    #[test]
+    fn positive_f64_rejects_non_positive_and_non_finite_values() {
+        assert_eq!(positive_f64("1"), Ok(1.0));
+        assert_eq!(positive_f64("0.25"), Ok(0.25));
+        assert!(positive_f64("0").is_err());
+        assert!(positive_f64("-1").is_err());
+        assert!(positive_f64("NaN").is_err());
+        assert!(positive_f64("inf").is_err());
+        assert!(positive_f64("abc").is_err());
     }
 
     #[test]

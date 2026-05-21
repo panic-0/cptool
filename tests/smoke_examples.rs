@@ -207,6 +207,8 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(run_stdout.contains("--summary-only"));
     assert!(run_stdout.contains("Print only status"));
     assert!(run_stdout.contains("--json"));
+    assert!(run_stdout.contains("--time-limit-secs"));
+    assert!(run_stdout.contains("--memory-limit-mb"));
     assert!(run_stdout.contains("--wait-for-generation-lock"));
 
     let check = run_cptool(["check", "--help"], None);

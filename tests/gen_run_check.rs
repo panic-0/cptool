@@ -83,6 +83,67 @@ fn run_json_prints_machine_readable_summary_without_program_stdout() {
     assert!(value.get("stdout").is_none());
     assert!(!String::from_utf8_lossy(&output.stdout).contains("7\n"));
 }
+
+#[test]
+fn run_can_override_time_and_memory_limits() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-run-limit-override");
+    run_cptool(["init", "run_limit_problem", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("run_limit_problem");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("solve.py"),
+        r#"import sys
+import time
+
+time.sleep(0.2)
+a, b = map(int, sys.stdin.read().split())
+sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+
+    let low_limit = run_cptool_allow_failure(
+        [
+            "run",
+            "std",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--stdin-text",
+            "3 4\n",
+            "--time-limit-secs",
+            "0.05",
+            "--summary-only",
+        ],
+        None,
+    );
+    let low_stdout = String::from_utf8_lossy(&low_limit.stdout);
+    assert!(!low_limit.status.success());
+    assert!(low_stdout.contains("std: timeout exit=none"));
+
+    let high_limit = run_cptool(
+        [
+            "run",
+            "std",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--stdin-text",
+            "3 4\n",
+            "--time-limit-secs",
+            "2",
+            "--memory-limit-mb",
+            "256",
+        ],
+        None,
+    );
+    let high_stdout = String::from_utf8_lossy(&high_limit.stdout);
+    assert!(high_stdout.contains("std: ok exit=0"));
+    assert!(high_stdout.contains("\n7\n"));
+}
+
 #[test]
 fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
     if !python_available() {

@@ -9,12 +9,18 @@ pub fn run(options: RunOptions) -> Result<RunResult> {
     }
     let work_dir = normalize_work_dir(&options.work_dir)?;
     let problem = load_problem(&work_dir)?;
-    let spec = resolve_run_spec(
+    let mut spec = resolve_run_spec(
         &work_dir,
         &problem,
         options.program.as_deref(),
         options.source.as_deref(),
     )?;
+    if let Some(time_limit_secs) = options.time_limit_secs {
+        spec.time_limit_secs = time_limit_secs;
+    }
+    if let Some(memory_limit_mb) = options.memory_limit_mb {
+        spec.memory_limit_mb = memory_limit_mb;
+    }
     let input = resolve_run_input(
         &work_dir,
         &problem,

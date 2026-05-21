@@ -39,6 +39,9 @@ CP Tool is a command line tool for competitive programming.
 # print a machine-readable run summary
 ./cptool run std sample[0] -w ./example/a_plus_b --json
 
+# temporarily override configured run limits while debugging
+./cptool run std sample[0] -w ./example/a_plus_b --time-limit-secs 5 --memory-limit-mb 1024
+
 # stress test programs with generated temporary inputs
 ./cptool stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10
 ./cptool stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- {seed} {case}

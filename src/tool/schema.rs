@@ -28,6 +28,8 @@ pub struct RunOptions {
     pub args: Vec<String>,
     pub output_limit_bytes: usize,
     pub generation_lock_timeout: Option<Duration>,
+    pub time_limit_secs: Option<f64>,
+    pub memory_limit_mb: Option<f64>,
 }
 
 #[derive(Clone, Debug)]
