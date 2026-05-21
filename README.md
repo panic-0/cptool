@@ -89,6 +89,7 @@ output:
   allow_empty: false
 test:
   generator: gen
+  type: min
   bundles:
     sample:
       cases:
@@ -103,11 +104,9 @@ test:
   tasks:
   - name: sample
     score: 1.0
-    type: min
     bundles: [sample]
   - name: main
     score: 99.0
-    type: min
     bundles: [main]
     dependencies: [sample]
 stress:
@@ -120,7 +119,7 @@ stress:
     seed_base: 20260519
 ```
 
-Programs can also use `!command` or `!python`; omitted C++ compile args default to C++20 with warnings. Test cases can use any of these equivalent spellings: full form (`generator: gen`, `args: [...]`), args-only mapping (`args: [...]`) with a bundle or test default generator, or args-only shorthand (`- [...]`) with a bundle or test default generator. A bundle-level `generator` overrides `test.generator`, and a full case `generator` overrides both defaults. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
+Programs can also use `!command` or `!python`; omitted C++ compile args default to C++20 with warnings. Test cases can use any of these equivalent spellings: full form (`generator: gen`, `args: [...]`), args-only mapping (`args: [...]`) with a bundle or test default generator, or args-only shorthand (`- [...]`) with a bundle or test default generator. A bundle-level `generator` overrides `test.generator`, and a full case `generator` overrides both defaults. Tasks can omit `type` when `test.type` is declared; a task-level `type` overrides that default. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
 
 ## Notes
 

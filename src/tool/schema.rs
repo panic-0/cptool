@@ -159,7 +159,7 @@ pub struct TestBundle {
     pub cases: Vec<TestCase>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TestTaskType {
     #[serde(rename = "sum")]
     Sum,
@@ -188,8 +188,10 @@ pub struct Test {
 struct RawTest {
     #[serde(default)]
     generator: Option<String>,
+    #[serde(default, rename = "type")]
+    task_type: Option<TestTaskType>,
     bundles: HashMap<String, RawTestBundle>,
-    tasks: Vec<TestTask>,
+    tasks: Vec<RawTestTask>,
 }
 
 #[derive(Deserialize)]
@@ -211,6 +213,17 @@ enum RawTestCase {
     },
 }
 
+#[derive(Deserialize)]
+struct RawTestTask {
+    name: String,
+    score: f64,
+    #[serde(default, rename = "type")]
+    task_type: Option<TestTaskType>,
+    bundles: Vec<String>,
+    #[serde(default)]
+    dependencies: Vec<String>,
+}
+
 impl<'de> Deserialize<'de> for Test {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -218,6 +231,7 @@ impl<'de> Deserialize<'de> for Test {
     {
         let raw = RawTest::deserialize(deserializer)?;
         let global_generator = raw.generator;
+        let global_task_type = raw.task_type;
         let bundles = raw
             .bundles
             .into_iter()
@@ -239,12 +253,37 @@ impl<'de> Deserialize<'de> for Test {
                 Ok((bundle_name, TestBundle { cases }))
             })
             .collect::<Result<HashMap<_, _>, D::Error>>()?;
+        let tasks = raw
+            .tasks
+            .into_iter()
+            .enumerate()
+            .map(|(task_index, task)| normalize_test_task(task, global_task_type, task_index))
+            .collect::<Result<Vec<_>, D::Error>>()?;
 
-        Ok(Self {
-            bundles,
-            tasks: raw.tasks,
-        })
+        Ok(Self { bundles, tasks })
     }
+}
+
+fn normalize_test_task<E>(
+    task: RawTestTask,
+    default_task_type: Option<TestTaskType>,
+    task_index: usize,
+) -> Result<TestTask, E>
+where
+    E: de::Error,
+{
+    let task_type = task.task_type.or(default_task_type).ok_or_else(|| {
+        E::custom(format!(
+            "test.tasks[{task_index}] is missing `type` and no default type is declared for test"
+        ))
+    })?;
+    Ok(TestTask {
+        name: task.name,
+        score: task.score,
+        task_type,
+        bundles: task.bundles,
+        dependencies: task.dependencies,
+    })
 }
 
 fn normalize_test_case<E>(
@@ -459,6 +498,7 @@ mod tests {
         let test: Test = serde_yml::from_str(
             r#"
 generator: gen
+type: min
 bundles:
   global:
     cases:
@@ -477,7 +517,6 @@ bundles:
 tasks:
 - name: main
   score: 100.0
-  type: min
   bundles: [global, local, explicit]
 "#,
         )
@@ -492,6 +531,55 @@ tasks:
             test.bundles["explicit"].cases[0].generator_name,
             "special_gen"
         );
+        assert_eq!(test.tasks[0].task_type, TestTaskType::Min);
+    }
+
+    #[test]
+    fn tasks_accept_global_type_and_task_override() {
+        let test: Test = serde_yml::from_str(
+            r#"
+generator: gen
+type: min
+bundles:
+  main:
+    cases:
+    - []
+tasks:
+- name: base
+  score: 40.0
+  bundles: [main]
+- name: bonus
+  score: 60.0
+  type: sum
+  bundles: [main]
+  dependencies: [base]
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(test.tasks[0].task_type, TestTaskType::Min);
+        assert_eq!(test.tasks[1].task_type, TestTaskType::Sum);
+    }
+
+    #[test]
+    fn task_type_requires_global_or_task_value() {
+        let err = serde_yml::from_str::<Test>(
+            r#"
+generator: gen
+bundles:
+  sample:
+    cases:
+    - []
+tasks:
+- name: sample
+  score: 100.0
+  bundles: [sample]
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("missing `type`"));
     }
 
     #[test]

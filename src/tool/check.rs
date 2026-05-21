@@ -377,7 +377,7 @@ fn check_unknown_yaml_fields(report: &mut CheckReport, work_dir: &Path) {
             &path,
             test,
             "test",
-            &["generator", "bundles", "tasks"],
+            &["generator", "type", "bundles", "tasks"],
         );
         if let Some(bundles) = mapping_get(test, "bundles").and_then(value_mapping) {
             for (bundle_name, bundle_value) in string_entries(bundles) {

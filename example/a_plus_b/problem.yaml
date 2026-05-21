@@ -13,26 +13,22 @@ programs:
     memory_limit_mb: 512.0
 solution: std
 test:
+  generator: gen
+  type: min
   bundles:
     sample:
       cases:
-      - generator: gen
-        args: [20]
+      - [20]
     main:
       cases:
-      - generator: gen
-        args: [10]
-      - generator: gen
-        args: [10000000]
-      - generator: gen
-        args: [1000000000]
+      - [10]
+      - [10000000]
+      - [1000000000]
   tasks:
   - name: sample
     score: 1.0
-    type: min
     bundles: [sample]
   - name: main
     score: 99.0
-    type: min
     bundles: [main]
     dependencies: [sample]

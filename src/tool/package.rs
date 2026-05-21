@@ -23,7 +23,7 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     std::fs::write(
         problem_dir.join("problem.yaml"),
         format!(
-            "name: {yaml_name}\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\nsolution: std\ntest:\n  bundles:\n    sample:\n      cases:\n      - generator: gen\n        args: []\n  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n",
+            "name: {yaml_name}\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\nsolution: std\ntest:\n  generator: gen\n  type: min\n  bundles:\n    sample:\n      cases:\n      - []\n  tasks:\n  - name: sample\n    score: 100.0\n    bundles: [sample]\n",
         ),
     )?;
     Ok(problem_dir)

@@ -29,6 +29,8 @@ checker: chk
 test:
   # Generator defaults can be declared globally for all bundles.
   generator: gen
+  # Task type defaults can be declared globally for all tasks.
+  type: min
   bundles:
     s1:
       cases:
@@ -57,15 +59,15 @@ test:
       - generator: gen
         args: [2000000, 1000000000]
   tasks:
+  # Omitting type uses test.type.
   - name: s1
     score: 10.0
-    type: min
     bundles: [s1]
   - name: s2
     score: 30.0
-    type: min
     bundles: [s2]
     dependencies: [s1]
+  # Explicit task type remains valid when a task needs its own behavior.
   - name: s3
     score: 60.0
     type: min
