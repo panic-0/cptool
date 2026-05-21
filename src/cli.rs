@@ -137,6 +137,17 @@ enum Commands {
         #[arg(long, help = "Print the generation report as JSON")]
         json: bool,
     },
+    #[command(about = "Clean generated data and local cptool cache")]
+    Clean {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Clean generated data files from data/")]
+        data: bool,
+        #[arg(long, help = "Clean local cptool cache from .cptool/cache")]
+        cache: bool,
+        #[arg(long, help = "Print the clean report as JSON")]
+        json: bool,
+    },
     #[command(
         about = "Stress test several programs on temporary generated inputs",
         long_about = "Stress test several programs on temporary generated inputs. Generator args after -- support {seed}, {case}, and {case0}; {case} is 1-based, {case0} is 0-based, and {seed} is deterministic."
@@ -320,6 +331,12 @@ pub fn run() -> anyhow::Result<()> {
             summary_only,
             json,
         })?,
+        Commands::Clean {
+            work_dir,
+            data,
+            cache,
+            json,
+        } => handle_clean(work_dir, data, cache, json)?,
         Commands::Stress {
             work_dir,
             generator,
@@ -516,6 +533,20 @@ fn handle_gen(options: GenCommandOptions) -> anyhow::Result<()> {
         for path in generated {
             println!("generated {}", path.display());
         }
+    }
+    Ok(())
+}
+
+fn handle_clean(work_dir: PathBuf, data: bool, cache: bool, json: bool) -> anyhow::Result<()> {
+    let report = tool::clean_package_with_options(tool::CleanOptions {
+        work_dir,
+        data,
+        cache,
+    })?;
+    if json {
+        print_json(&report)?;
+    } else {
+        println!("{}", report.summary_line());
     }
     Ok(())
 }

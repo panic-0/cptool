@@ -1,4 +1,5 @@
 mod check;
+mod clean;
 mod data;
 mod evidence;
 mod package;
@@ -15,6 +16,7 @@ pub use check::{
     CheckIssue, CheckOptions, CheckReport, CheckSeverity, check_problem_package,
     check_problem_package_with_options,
 };
+pub use clean::{CleanOptions, CleanReport, clean_package_with_options};
 pub use data::{
     GenerateOptions, GenerateReport, GenerateWarning, GenerateWarningKind, generate_data,
     generate_data_report_with_options, generate_data_with_options,

@@ -23,6 +23,11 @@ CP Tool is a command line tool for competitive programming.
 # clean selected stale data before publishing newly generated data
 ./cptool gen -w ./example/a_plus_b --bundle main --clean
 
+# clean generated data and local cptool cache
+./cptool clean -w ./example/a_plus_b
+./cptool clean -w ./example/a_plus_b --data
+./cptool clean -w ./example/a_plus_b --cache
+
 # wait up to 10 seconds for an in-progress generation lock
 ./cptool gen -w ./example/a_plus_b --wait-for-generation-lock 10
 
@@ -130,6 +135,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 + `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.6.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
 + `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, and `brute` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits.
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
++ `clean` removes generated data and local cache without running generation. With no flags it removes `data/*.in`, `data/*.ans`, and `.cptool/cache`; use `--data` or `--cache` to target only one side. It refuses to remove data while a generation lock or staging directory exists.
 + `gen`, implicit selector generation in `run`, `check`, `stress-plan`, and `evidence` support `--wait-for-generation-lock <SECONDS>`. Pass a positive timeout such as `--wait-for-generation-lock 10` to poll every 250ms while another generation is in progress. The wait mode never deletes stale locks; it times out with a retry/prewarm hint.
 + `run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.
 + `run`, `gen`, `stress`, `stress-plan`, and `check` support `--json` for machine-readable evidence. `--json` can be combined with `--summary-only` where that flag exists; JSON mode suppresses progress/raw-output text on stdout so the result can be parsed directly.

@@ -190,6 +190,7 @@ fn cli_help_describes_new_workflow_commands() {
     let top_stdout = String::from_utf8_lossy(&top.stdout);
 
     assert!(top_stdout.contains("check"));
+    assert!(top_stdout.contains("clean"));
     assert!(top_stdout.contains("evidence"));
     assert!(top_stdout.contains("stress-plan"));
 
@@ -216,6 +217,12 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(check_stdout.contains("Check common package structure"));
     assert!(check_stdout.contains("--json"));
     assert!(check_stdout.contains("--wait-for-generation-lock"));
+
+    let clean = run_cptool(["clean", "--help"], None);
+    let clean_stdout = String::from_utf8_lossy(&clean.stdout);
+    assert!(clean_stdout.contains("--data"));
+    assert!(clean_stdout.contains("--cache"));
+    assert!(clean_stdout.contains("--json"));
 
     let evidence = run_cptool(["evidence", "--help"], None);
     let evidence_stdout = String::from_utf8_lossy(&evidence.stdout);

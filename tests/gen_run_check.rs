@@ -442,6 +442,117 @@ fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
         "7\n"
     );
 }
+
+#[test]
+fn clean_command_removes_data_files_and_cache() {
+    let temp = TempWorkspace::new("cptool-clean-command");
+    run_cptool(
+        ["init", "clean_command_problem", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("clean_command_problem");
+    let data_dir = problem_dir.join("data");
+    let cache_dir = problem_dir.join(".cptool").join("cache");
+    std::fs::create_dir_all(&cache_dir).unwrap();
+    std::fs::write(data_dir.join("sample-0.in"), "input").unwrap();
+    std::fs::write(data_dir.join("sample-0.ans"), "answer").unwrap();
+    std::fs::write(data_dir.join("notes.txt"), "keep").unwrap();
+    std::fs::write(cache_dir.join("artifact"), "cached").unwrap();
+
+    let output = run_cptool(
+        ["clean", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(value["data_files_removed"], 2);
+    assert_eq!(value["cache_removed"], true);
+    assert!(!data_dir.join("sample-0.in").exists());
+    assert!(!data_dir.join("sample-0.ans").exists());
+    assert_eq!(
+        std::fs::read_to_string(data_dir.join("notes.txt")).unwrap(),
+        "keep"
+    );
+    assert!(!cache_dir.exists());
+}
+
+#[test]
+fn clean_command_can_target_only_data_or_cache() {
+    let temp = TempWorkspace::new("cptool-clean-targets");
+    run_cptool(
+        ["init", "clean_targets_problem", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("clean_targets_problem");
+    let data_dir = problem_dir.join("data");
+    let cache_dir = problem_dir.join(".cptool").join("cache");
+    std::fs::create_dir_all(&cache_dir).unwrap();
+    std::fs::write(data_dir.join("sample-0.in"), "input").unwrap();
+    std::fs::write(cache_dir.join("artifact"), "cached").unwrap();
+
+    let data_only = run_cptool(
+        ["clean", "-w", problem_dir.to_str().unwrap(), "--data"],
+        None,
+    );
+    assert!(String::from_utf8_lossy(&data_only.stdout).contains("data_files=1"));
+    assert!(!data_dir.join("sample-0.in").exists());
+    assert!(cache_dir.exists());
+
+    std::fs::write(data_dir.join("sample-0.ans"), "answer").unwrap();
+    let cache_only = run_cptool(
+        ["clean", "-w", problem_dir.to_str().unwrap(), "--cache"],
+        None,
+    );
+    assert!(String::from_utf8_lossy(&cache_only.stdout).contains("cache_removed=true"));
+    assert!(data_dir.join("sample-0.ans").exists());
+    assert!(!cache_dir.exists());
+}
+
+#[test]
+fn clean_command_refuses_during_data_generation() {
+    let temp = TempWorkspace::new("cptool-clean-lock");
+    run_cptool(["init", "clean_lock_problem", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("clean_lock_problem");
+    let data_dir = problem_dir.join("data");
+    std::fs::write(data_dir.join("sample-0.in"), "input").unwrap();
+    std::fs::write(data_dir.join("sample-0.ans"), "answer").unwrap();
+    std::fs::create_dir_all(data_dir.join(".cptool-gen.lock")).unwrap();
+
+    let output = run_cptool_allow_failure(
+        ["clean", "-w", problem_dir.to_str().unwrap(), "--data"],
+        None,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("data generation is in progress"));
+    assert!(data_dir.join("sample-0.in").exists());
+    assert!(data_dir.join("sample-0.ans").exists());
+}
+
+#[test]
+fn clean_command_refuses_when_staging_dir_exists() {
+    let temp = TempWorkspace::new("cptool-clean-staging");
+    run_cptool(
+        ["init", "clean_staging_problem", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("clean_staging_problem");
+    let data_dir = problem_dir.join("data");
+    std::fs::write(data_dir.join("sample-0.in"), "input").unwrap();
+    std::fs::create_dir_all(data_dir.join(".cptool-gen-leftover")).unwrap();
+
+    let output = run_cptool_allow_failure(
+        ["clean", "-w", problem_dir.to_str().unwrap(), "--data"],
+        None,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("data generation is in progress"));
+    assert!(data_dir.join("sample-0.in").exists());
+}
+
 #[test]
 fn gen_waits_for_generation_lock_when_requested() {
     if !python_available() {

@@ -36,6 +36,43 @@ struct GenerateContext<'a> {
     output_limit_bytes: usize,
 }
 
+struct StagingDirGuard {
+    path: Option<PathBuf>,
+}
+
+impl StagingDirGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path: Some(path) }
+    }
+
+    fn path(&self) -> &Path {
+        self.path
+            .as_deref()
+            .expect("staging dir guard path should be present")
+    }
+
+    fn cleanup(mut self) -> Result<()> {
+        let path = self
+            .path
+            .take()
+            .expect("staging dir guard path should be present");
+        std::fs::remove_dir_all(&path).with_context(|| {
+            format!(
+                "generated data but failed to remove staging dir {}",
+                path.display()
+            )
+        })
+    }
+}
+
+impl Drop for StagingDirGuard {
+    fn drop(&mut self) {
+        if let Some(path) = &self.path {
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct GeneratedFile {
     staging_path: PathBuf,
@@ -186,7 +223,7 @@ fn generate_data_report_impl(
     let selected_cases = select_cases(&problem, bundle.as_deref(), selector.as_deref())?;
     let clean_scope =
         clean.then(|| clean_scope_for(&problem, bundle.as_deref(), selector.as_deref()));
-    let staging_dir = create_staging_dir(&output_dir)?;
+    let staging_dir = StagingDirGuard::new(create_staging_dir(&output_dir)?);
     let programs = build_program_specs(&work_dir, &problem)?;
     let solution = programs
         .get(&problem.solution_name)
@@ -207,7 +244,7 @@ fn generate_data_report_impl(
         solution,
         validator,
         final_output_dir: &output_dir,
-        staging_dir: &staging_dir,
+        staging_dir: staging_dir.path(),
         output_limit_bytes,
     };
 
@@ -230,16 +267,12 @@ fn generate_data_report_impl(
             context.validator.is_some(),
         ))
     })();
-    let cleanup_result = std::fs::remove_dir_all(&staging_dir);
-    match (generated, cleanup_result) {
-        (Ok(report), Ok(())) => Ok(report),
-        (Ok(_), Err(err)) => Err(err).with_context(|| {
-            format!(
-                "generated data but failed to remove staging dir {}",
-                staging_dir.display()
-            )
-        }),
-        (Err(err), _) => Err(err),
+    match generated {
+        Ok(report) => {
+            staging_dir.cleanup()?;
+            Ok(report)
+        }
+        Err(err) => Err(err),
     }
 }
 
