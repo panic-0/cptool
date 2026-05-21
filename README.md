@@ -132,7 +132,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 ## Notes
 
 + Syzoj export is not fully supported yet.
-+ `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.6.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
++ `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.7.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
 + `init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, and `brute` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits.
 + `gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
 + `clean` removes generated data and local cache without running generation. With no flags it removes `data/*.in`, `data/*.ans`, and `.cptool/cache`; use `--data` or `--cache` to target only one side. It refuses to remove data while a generation lock or staging directory exists.
@@ -152,7 +152,7 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 On Windows, publish a GitHub release from a clean checkout with:
 
 ```powershell
-.\scripts\release.ps1 -Version 0.6.0
+.\scripts\release.ps1 -Version 0.7.0
 ```
 
-Replace `0.6.0` with the current `Cargo.toml` version. The script checks `fmt`, tests, clippy, builds release artifacts with `scripts/build-release.ps1`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.
+Replace `0.7.0` with the current `Cargo.toml` version. The script checks `fmt`, tests, clippy, builds release artifacts with `scripts/build-release.ps1`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.
