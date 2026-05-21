@@ -85,6 +85,40 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
 }
 
 #[test]
+fn example_problem_packages_generate_and_check() {
+    let temp = TempWorkspace::new("cptool-example-packages");
+    let example_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("example");
+    let example_dst = temp.path().join("example");
+    copy_example_tree(&example_src, &example_dst);
+
+    let mut checked = Vec::new();
+    for entry in std::fs::read_dir(&example_dst).unwrap() {
+        let problem_dir = entry.unwrap().path();
+        if !problem_dir.join("problem.yaml").is_file() {
+            continue;
+        }
+        let work_dir = problem_dir.to_str().unwrap();
+        let gen_output = run_cptool(["gen", "-w", work_dir, "--summary-only"], None);
+        let gen_stdout = String::from_utf8_lossy(&gen_output.stdout);
+        assert!(gen_stdout.contains("gen: ok"));
+
+        let check = run_cptool(["check", "-w", work_dir], None);
+        let check_stdout = String::from_utf8_lossy(&check.stdout);
+        assert!(check_stdout.contains("status: `PASS`"));
+        checked.push(
+            problem_dir
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+        );
+    }
+
+    checked.sort();
+    assert_eq!(checked, vec!["a_plus_b".to_string(), "sum".to_string()]);
+}
+
+#[test]
 fn unicode_paths_and_utf8_data_flow_through_cli() {
     if !python_available() {
         return;
@@ -1942,6 +1976,37 @@ fn run_cptool_slice_allow_failure(args: &[&str], trailing_path: Option<&Path>) -
         command.arg(path);
     }
     command.output().unwrap()
+}
+
+fn copy_example_tree(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let source_path = entry.path();
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+        let target_path = dst.join(&file_name);
+
+        if source_path.is_dir() {
+            if matches!(
+                name.as_ref(),
+                ".cptool" | "data" | "export" | "output" | "tmp" | "failures"
+            ) {
+                continue;
+            }
+            copy_example_tree(&source_path, &target_path);
+        } else {
+            if matches!(
+                source_path
+                    .extension()
+                    .and_then(|extension| extension.to_str()),
+                Some("exe" | "tmp")
+            ) {
+                continue;
+            }
+            std::fs::copy(&source_path, &target_path).unwrap();
+        }
+    }
 }
 
 struct TempWorkspace {
