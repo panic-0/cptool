@@ -9,10 +9,12 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 mod markdown_sample;
+mod package_audit;
 mod report;
 mod yaml_shape;
 
 use markdown_sample::{check_statement_sample_output, find_sample_bundle};
+use package_audit::{check_package_text_audit, check_report_stress_plan_classification};
 pub use report::{CheckIssue, CheckOptions, CheckReport, CheckSeverity};
 use yaml_shape::check_unknown_yaml_fields;
 
@@ -33,6 +35,7 @@ pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions
 
     check_required_files(&mut report, &work_dir);
     check_unknown_yaml_fields(&mut report, &work_dir);
+    check_package_text_audit(&mut report, &work_dir);
 
     let problem = match load_problem(&work_dir) {
         Ok(problem) => problem,
@@ -51,6 +54,7 @@ pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions
     check_problem_structure(&mut report, &work_dir, &problem);
     check_validator_declaration(&mut report, &work_dir, &problem);
     check_stress_plans(&mut report, &work_dir, &problem);
+    check_report_stress_plan_classification(&mut report, &work_dir, &problem);
     let data_dir = work_dir.join("data");
     let generation_status = if let Some(timeout) = options.generation_lock_timeout {
         wait_for_generation_status(&data_dir, timeout)
@@ -817,6 +821,43 @@ mod tests {
         assert_issue(&report, "stress_plan_empty", CheckSeverity::Error);
         assert_issue(&report, "stress_plan_against_too_few", CheckSeverity::Error);
         assert_issue(&report, "stress_plan_program_missing", CheckSeverity::Error);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_reports_text_audit_issues() {
+        let root = temp_test_dir("cptool-check-text-audit");
+        let problem_dir = create_minimal_check_package(&root, None, Some("simple input"));
+        let yaml_path = problem_dir.join("problem.yaml");
+        let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+        yaml.push_str(
+            "stress:\n  plans:\n  - name: wrong-proof\n    generator: gen\n    against: [std, gen]\n    cases: 1\n    expect: fail\n",
+        );
+        std::fs::write(&yaml_path, yaml).unwrap();
+        std::fs::create_dir_all(problem_dir.join("pkg")).unwrap();
+        std::fs::write(
+            problem_dir.join("pkg").join("problem.yaml"),
+            "name: nested\n",
+        )
+        .unwrap();
+        std::fs::write(
+            problem_dir.join("quality_report.md"),
+            "正向覆盖 wrong-proof\nmissing tests/failures/nope.txt\nrate limit\n",
+        )
+        .unwrap();
+
+        let report = check_problem_package(&problem_dir);
+
+        assert_issue(&report, "placeholder_text", CheckSeverity::Warning);
+        assert_issue(&report, "double_nested_problem_dir", CheckSeverity::Warning);
+        assert_issue(&report, "service_side_noise", CheckSeverity::Warning);
+        assert_issue(&report, "missing_failure_reference", CheckSeverity::Warning);
+        assert_issue(
+            &report,
+            "negative_plan_counted_as_positive",
+            CheckSeverity::Warning,
+        );
 
         std::fs::remove_dir_all(root).unwrap();
     }
