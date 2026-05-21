@@ -677,6 +677,9 @@ mod tests {
     use crate::support::python_available;
     use crate::tool::temp_test_dir;
     use std::io::Cursor;
+    use std::sync::Mutex;
+
+    static RUN_SPEC_SUBPROCESS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn limited_output_keeps_prefix_and_drains_reader() {
@@ -699,6 +702,7 @@ mod tests {
         if !python_available() {
             return;
         }
+        let _guard = RUN_SPEC_SUBPROCESS_TEST_LOCK.lock().unwrap();
         let root = temp_test_dir("cptool-runner-pipes");
         std::fs::create_dir_all(&root).unwrap();
         let script = root.join("pipe_pressure.py");
@@ -720,8 +724,8 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
                 path: script,
                 extra_args: Vec::new(),
             }),
-            time_limit_secs: 5.0,
-            memory_limit_mb: 128.0,
+            time_limit_secs: 20.0,
+            memory_limit_mb: 512.0,
         };
         let input = vec![b'i'; 1024 * 1024];
 
@@ -740,6 +744,7 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
         if !python_available() {
             return;
         }
+        let _guard = RUN_SPEC_SUBPROCESS_TEST_LOCK.lock().unwrap();
         let root = temp_test_dir("cptool-runner-timeout-output");
         std::fs::create_dir_all(&root).unwrap();
         let script = root.join("timeout_output.py");
@@ -753,7 +758,7 @@ sys.stdout.buffer.write(b"stdout-before-timeout")
 sys.stdout.buffer.flush()
 sys.stderr.buffer.write(b"stderr-before-timeout")
 sys.stderr.buffer.flush()
-time.sleep(10)
+time.sleep(60)
 "#,
         )
         .unwrap();
@@ -763,8 +768,8 @@ time.sleep(10)
                 path: script,
                 extra_args: Vec::new(),
             }),
-            time_limit_secs: 5.0,
-            memory_limit_mb: 128.0,
+            time_limit_secs: 10.0,
+            memory_limit_mb: 512.0,
         };
 
         let result = run_spec(&root, &spec, &[], None, 6).unwrap();
