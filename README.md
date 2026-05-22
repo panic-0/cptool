@@ -159,6 +159,16 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 + C++ compilation automatically adds the source file's directory to the include path, so `#include "common.hpp"` works for headers beside the source even though cptool compiles a cached copy. On Windows, effective compile args also include `-static` unless already present, avoiding MinGW runtime DLL lookup failures in CI and other clean environments. Compile failures include compiler path/version, flags, static-link status, cache key, and cache exe path. Windows runtime errors for common NTSTATUS exit codes include a diagnostic hint in failure reports.
 + `run`, `gen`, `stress`, and `stress-plan` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it where supported.
 
+## Development Checks
+
+Run the same checks locally that CI runs:
+
+```powershell
+python scripts/check.py
+```
+
+The script runs formatting, clippy, and the full test suite in order, stopping at the first failure.
+
 ## Release
 
 On Windows, publish a GitHub release from a clean checkout with:
@@ -167,4 +177,4 @@ On Windows, publish a GitHub release from a clean checkout with:
 .\scripts\release.ps1 -Version 0.7.0
 ```
 
-Replace `0.7.0` with the current `Cargo.toml` version. The script checks `fmt`, tests, clippy, builds release artifacts with `scripts/build-release.ps1`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.
+Replace `0.7.0` with the current `Cargo.toml` version. The script runs `scripts/check.py`, builds release artifacts with `scripts/build-release.ps1`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.

@@ -87,9 +87,7 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 if (-not $SkipChecks) {
-    Assert-CommandOk { cargo fmt --check }
-    Assert-CommandOk { cargo test }
-    Assert-CommandOk { cargo clippy --all-targets --all-features -- -D warnings }
+    Assert-CommandOk { python scripts/check.py }
 }
 
 if (-not $SkipBuild) {
