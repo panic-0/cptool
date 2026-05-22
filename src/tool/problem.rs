@@ -104,6 +104,8 @@ pub(crate) fn case_file_stem(selector: &CaseSelector) -> String {
 }
 
 fn validate_problem(problem: &Problem) -> Result<()> {
+    validate_positive_finite(problem.time_limit_secs, "time_limit_secs")?;
+    validate_positive_finite(problem.memory_limit_mb, "memory_limit_mb")?;
     if problem.programs.is_empty() {
         anyhow::bail!("programs cannot be empty");
     }
@@ -239,6 +241,9 @@ mod tests {
         programs.insert("std".to_string(), cpp_program());
         Problem {
             name: "sample".to_string(),
+            time_limit_secs: 1.0,
+            memory_limit_mb: 512.0,
+            cpp_compile_args: crate::tool::schema::default_compile_args(),
             output: Default::default(),
             stress: Default::default(),
             programs,

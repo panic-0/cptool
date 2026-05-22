@@ -388,9 +388,15 @@ pub enum StressPlanExpectation {
     Fail,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Problem {
     pub name: String,
+    #[serde(default = "default_problem_time_limit_secs")]
+    pub time_limit_secs: f64,
+    #[serde(default = "default_problem_memory_limit_mb")]
+    pub memory_limit_mb: f64,
+    #[serde(default = "default_compile_args")]
+    pub cpp_compile_args: Vec<String>,
     #[serde(default)]
     pub output: OutputConfig,
     #[serde(default)]
@@ -405,6 +411,109 @@ pub struct Problem {
     pub validator_omitted_reason: Option<String>,
     #[serde(rename = "checker")]
     pub checker_name: Option<String>,
+}
+
+fn default_problem_time_limit_secs() -> f64 {
+    DEFAULT_TIME_LIMIT_SECS
+}
+
+fn default_problem_memory_limit_mb() -> f64 {
+    DEFAULT_MEMORY_LIMIT_MB
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RawProblem {
+    name: String,
+    #[serde(default = "default_problem_time_limit_secs")]
+    time_limit_secs: f64,
+    #[serde(default = "default_problem_memory_limit_mb")]
+    memory_limit_mb: f64,
+    #[serde(default = "default_compile_args")]
+    cpp_compile_args: Vec<String>,
+    #[serde(default)]
+    output: OutputConfig,
+    #[serde(default)]
+    stress: Stress,
+    programs: HashMap<String, RawProgram>,
+    test: Test,
+    #[serde(rename = "solution")]
+    solution_name: String,
+    #[serde(rename = "validator")]
+    validator_name: Option<String>,
+    #[serde(default)]
+    validator_omitted_reason: Option<String>,
+    #[serde(rename = "checker")]
+    checker_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RawProgram {
+    info: RawProgramInfo,
+    time_limit_secs: Option<f64>,
+    memory_limit_mb: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+enum RawProgramInfo {
+    #[serde(rename = "command")]
+    Command(CommandProgram),
+    #[serde(rename = "cpp")]
+    Cpp(RawCppProgram),
+    #[serde(rename = "python")]
+    Python(CommandProgram),
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RawCppProgram {
+    path: PathBuf,
+    compile_args: Option<Vec<String>>,
+}
+
+impl<'de> Deserialize<'de> for Problem {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawProblem::deserialize(deserializer)?;
+        let programs = raw
+            .programs
+            .into_iter()
+            .map(|(name, program)| {
+                let info = match program.info {
+                    RawProgramInfo::Command(command) => ProgramInfo::Command(command),
+                    RawProgramInfo::Python(command) => ProgramInfo::Python(command),
+                    RawProgramInfo::Cpp(cpp) => ProgramInfo::Cpp(CppProgram {
+                        path: cpp.path,
+                        compile_args: cpp
+                            .compile_args
+                            .unwrap_or_else(|| raw.cpp_compile_args.clone()),
+                    }),
+                };
+                (
+                    name,
+                    Program {
+                        info,
+                        time_limit_secs: program.time_limit_secs.unwrap_or(raw.time_limit_secs),
+                        memory_limit_mb: program.memory_limit_mb.unwrap_or(raw.memory_limit_mb),
+                    },
+                )
+            })
+            .collect();
+        Ok(Problem {
+            name: raw.name,
+            time_limit_secs: raw.time_limit_secs,
+            memory_limit_mb: raw.memory_limit_mb,
+            cpp_compile_args: raw.cpp_compile_args,
+            output: raw.output,
+            stress: raw.stress,
+            programs,
+            test: raw.test,
+            solution_name: raw.solution_name,
+            validator_name: raw.validator_name,
+            validator_omitted_reason: raw.validator_omitted_reason,
+            checker_name: raw.checker_name,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -459,6 +568,59 @@ mod tests {
 
         assert!(result.summary_line().contains("stdout_lines=0"));
         assert!(result.summary_line().contains("stderr_nonempty=false"));
+    }
+
+    #[test]
+    fn problem_program_limits_inherit_global_defaults() {
+        let problem: Problem = serde_yml::from_str(
+            r#"
+name: inherited limits
+time_limit_secs: 3.0
+memory_limit_mb: 512.0
+cpp_compile_args: [-O2, -std=c++20]
+programs:
+  gen:
+    info: !cpp
+      path: ./src/gen.cpp
+  std:
+    info: !cpp
+      path: ./src/std.cpp
+    time_limit_secs: 5.0
+  custom:
+    info: !cpp
+      path: ./src/custom.cpp
+      compile_args: [-O0, -std=c++17]
+solution: std
+test:
+  generator: gen
+  bundles:
+    sample:
+      cases:
+      - []
+  tasks:
+  - name: sample
+    score: 100.0
+    type: min
+    bundles: [sample]
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(problem.time_limit_secs, 3.0);
+        assert_eq!(problem.memory_limit_mb, 512.0);
+        assert_eq!(problem.cpp_compile_args, ["-O2", "-std=c++20"]);
+        assert_eq!(problem.programs["gen"].time_limit_secs, 3.0);
+        assert_eq!(problem.programs["gen"].memory_limit_mb, 512.0);
+        let ProgramInfo::Cpp(generator) = &problem.programs["gen"].info else {
+            panic!("expected C++ gen");
+        };
+        assert_eq!(generator.compile_args, ["-O2", "-std=c++20"]);
+        assert_eq!(problem.programs["std"].time_limit_secs, 5.0);
+        assert_eq!(problem.programs["std"].memory_limit_mb, 512.0);
+        let ProgramInfo::Cpp(custom) = &problem.programs["custom"].info else {
+            panic!("expected C++ custom");
+        };
+        assert_eq!(custom.compile_args, ["-O0", "-std=c++17"]);
     }
 
     #[test]

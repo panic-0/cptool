@@ -3,12 +3,10 @@ use super::schema::{
     TestBundle, TestCase, TestTask, TestTaskType,
 };
 use anyhow::{Context, Result};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_ADD_TIME_LIMIT_SECS: f64 = 3.0;
 const DEFAULT_ADD_MEMORY_LIMIT_MB: f64 = 512.0;
-const DEFAULT_ADD_CPP_COMPILE_ARGS: &[&str] = &["-O2", "-std=c++20"];
 
 mod generated_builtin_checkers {
     include!(concat!(env!("OUT_DIR"), "/builtin_checkers.rs"));
@@ -104,6 +102,7 @@ pub fn add_program(options: AddProgramOptions) -> Result<()> {
         options.time_limit_secs,
         options.memory_limit_mb,
         &options.compile_args,
+        &problem.cpp_compile_args,
     );
     problem.programs.insert(options.name, program);
     write_problem(&work_dir, &problem)
@@ -198,6 +197,7 @@ pub fn add_validator(options: AddValidatorOptions) -> Result<()> {
             options.time_limit_secs,
             options.memory_limit_mb,
             &options.compile_args,
+            &problem.cpp_compile_args,
         ),
     );
     problem.validator_name = Some(options.name);
@@ -259,6 +259,7 @@ pub fn add_checker(options: AddCheckerOptions) -> Result<()> {
             options.time_limit_secs,
             options.memory_limit_mb,
             &options.compile_args,
+            &problem.cpp_compile_args,
         ),
     );
     problem.checker_name = Some(options.name);
@@ -294,15 +295,13 @@ fn program_from_parts(
     time_limit_secs: Option<f64>,
     memory_limit_mb: Option<f64>,
     compile_args: &[String],
+    default_cpp_compile_args: &[String],
 ) -> Program {
     let info = match kind {
         AddProgramKind::Cpp => ProgramInfo::Cpp(CppProgram {
             path,
             compile_args: if compile_args.is_empty() {
-                DEFAULT_ADD_CPP_COMPILE_ARGS
-                    .iter()
-                    .map(|arg| (*arg).to_string())
-                    .collect()
+                default_cpp_compile_args.to_vec()
             } else {
                 compile_args.to_vec()
             },
@@ -436,8 +435,20 @@ fn resolve_path(work_dir: &Path, path: &Path) -> PathBuf {
 fn render_problem(problem: &Problem) -> String {
     let mut out = String::new();
     out.push_str(&format!("name: {}\n", q(&problem.name)));
+    out.push_str(&format!(
+        "time_limit_secs: {}\n",
+        format_f64(problem.time_limit_secs)
+    ));
+    out.push_str(&format!(
+        "memory_limit_mb: {}\n",
+        format_f64(problem.memory_limit_mb)
+    ));
+    out.push_str(&format!(
+        "cpp_compile_args: {}\n",
+        inline_list(&problem.cpp_compile_args)
+    ));
     render_output(&mut out, &problem.output);
-    render_programs(&mut out, &problem.programs);
+    render_programs(&mut out, problem);
     out.push_str(&format!(
         "solution: {}\n",
         key_or_string(&problem.solution_name)
@@ -462,8 +473,9 @@ fn render_output(out: &mut String, output: &OutputConfig) {
     }
 }
 
-fn render_programs(out: &mut String, programs: &HashMap<String, Program>) {
+fn render_programs(out: &mut String, problem: &Problem) {
     out.push_str("programs:\n");
+    let programs = &problem.programs;
     let mut names = programs.keys().collect::<Vec<_>>();
     names.sort();
     for name in names {
@@ -473,10 +485,12 @@ fn render_programs(out: &mut String, programs: &HashMap<String, Program>) {
             ProgramInfo::Cpp(cpp) => {
                 out.push_str("    info: !cpp\n");
                 out.push_str(&format!("      path: {}\n", q_path(&cpp.path)));
-                out.push_str(&format!(
-                    "      compile_args: {}\n",
-                    inline_list(&cpp.compile_args)
-                ));
+                if cpp.compile_args != problem.cpp_compile_args {
+                    out.push_str(&format!(
+                        "      compile_args: {}\n",
+                        inline_list(&cpp.compile_args)
+                    ));
+                }
             }
             ProgramInfo::Python(command) => {
                 out.push_str("    info: !python\n");
@@ -499,14 +513,18 @@ fn render_programs(out: &mut String, programs: &HashMap<String, Program>) {
                 }
             }
         }
-        out.push_str(&format!(
-            "    time_limit_secs: {}\n",
-            format_f64(program.time_limit_secs)
-        ));
-        out.push_str(&format!(
-            "    memory_limit_mb: {}\n",
-            format_f64(program.memory_limit_mb)
-        ));
+        if program.time_limit_secs != problem.time_limit_secs {
+            out.push_str(&format!(
+                "    time_limit_secs: {}\n",
+                format_f64(program.time_limit_secs)
+            ));
+        }
+        if program.memory_limit_mb != problem.memory_limit_mb {
+            out.push_str(&format!(
+                "    memory_limit_mb: {}\n",
+                format_f64(program.memory_limit_mb)
+            ));
+        }
     }
 }
 

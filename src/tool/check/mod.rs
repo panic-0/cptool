@@ -1020,6 +1020,9 @@ mod tests {
 
         Problem {
             name: "samples fallback".to_string(),
+            time_limit_secs: 1.0,
+            memory_limit_mb: 512.0,
+            cpp_compile_args: crate::tool::schema::default_compile_args(),
             output: Default::default(),
             stress: Default::default(),
             programs,

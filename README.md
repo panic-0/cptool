@@ -90,23 +90,20 @@ CP Tool is a command line tool for competitive programming.
 
 ```yaml
 name: a_plus_b
+time_limit_secs: 3.0
+memory_limit_mb: 512.0
+cpp_compile_args: [-O2, -std=c++20]
 programs:
   gen:
     info: !cpp
       path: ./src/gen.cpp
-    time_limit_secs: 3.0
-    memory_limit_mb: 512.0
   std:
     info: !cpp
       path: ./src/std.cpp
       compile_args: [-O2, -std=c++14]
-    time_limit_secs: 3.0
-    memory_limit_mb: 512.0
   val:
     info: !cpp
       path: ./src/val.cpp
-    time_limit_secs: 3.0
-    memory_limit_mb: 512.0
 solution: std
 validator: val
 output:
@@ -143,14 +140,14 @@ stress:
     seed_base: 20260519
 ```
 
-Programs can also use `!command` or `!python`; omitted C++ compile args default to C++20 with warnings. Test cases can use any of these equivalent spellings: full form (`generator: gen`, `args: [...]`), args-only mapping (`args: [...]`) with a bundle or test default generator, or args-only shorthand (`- [...]`) with a bundle or test default generator. A bundle-level `generator` overrides `test.generator`, and a full case `generator` overrides both defaults. Tasks can omit `type` when `test.type` is declared; a task-level `type` overrides that default. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
+Programs can also use `!command` or `!python`; omitted program limits inherit top-level `time_limit_secs` and `memory_limit_mb`, and omitted C++ compile args inherit top-level `cpp_compile_args`. Test cases can use any of these equivalent spellings: full form (`generator: gen`, `args: [...]`), args-only mapping (`args: [...]`) with a bundle or test default generator, or args-only shorthand (`- [...]`) with a bundle or test default generator. A bundle-level `generator` overrides `test.generator`, and a full case `generator` overrides both defaults. Tasks can omit `type` when `test.type` is declared; a task-level `type` overrides that default. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
 
 ## Notes
 
 + Syzoj export is not fully supported yet.
 + `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.9.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
 + Commands are grouped by task: `pkg` manages lifecycle/check/clean/export, `config add` edits package configuration and simple source scaffolds, `case` generates official data and runs programs, `test` runs validator/checker/stress workflows, and `report` collects evidence.
-+ `pkg init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, `brute`, and `val` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits. New packages include a self-contained `src/testlib.h`, a testlib `src/gen.cpp` placeholder, and a testlib `src/val.cpp` placeholder; update both placeholders to match the problem before publishing data.
++ `pkg init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold writes top-level defaults `time_limit_secs: 3.0`, `memory_limit_mb: 512.0`, and `cpp_compile_args: [-O2, -std=c++20]`; add per-program limits or `compile_args` in `problem.yaml` only when a package needs tighter, looser, or program-specific settings. New packages include a self-contained `src/testlib.h`, a testlib `src/gen.cpp` placeholder, and a testlib `src/val.cpp` placeholder; update both placeholders to match the problem before publishing data.
 + C++ generators should include `testlib.h`, call `registerGen(argc, argv, 1)`, parse fixed arguments with `opt<T>(index)`, and use `rnd`/`println`. `registerGen` seeds `rnd` uniquely from the full command line, so generators should not read a seed argument and reseed `std::mt19937` by hand.
 + `config add validator` registers `validator: <name>` and a matching program. It follows the same source detection as `config add program`: use `src/<name>.cpp`, `src/<name>.py`, or `src/<name>` when exactly one exists, otherwise create an empty `src/<name>.cpp`. If a matching program already exists, it only sets the top-level validator field.
 + `config add checker` registers `checker: <name>` and a matching program. With `--builtin <id>`, it copies a built-in testlib checker to `src/<name>.cpp`. Without `--builtin`, it follows the same source detection as `config add program`: use `src/<name>.cpp`, `src/<name>.py`, or `src/<name>` when exactly one exists, otherwise create an empty `src/<name>.cpp`.

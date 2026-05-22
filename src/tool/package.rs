@@ -49,7 +49,7 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     std::fs::write(
         problem_dir.join("problem.yaml"),
         format!(
-            "name: {yaml_name}\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\n  val:\n    info: !cpp\n      path: ./src/val.cpp\n    time_limit_secs: 3.0\n    memory_limit_mb: 512.0\nsolution: std\nvalidator: val\ntest:\n  generator: gen\n  type: min\n  bundles:\n    sample:\n      cases:\n      - []\n  tasks:\n  - name: sample\n    score: 100.0\n    bundles: [sample]\n",
+            "name: {yaml_name}\ntime_limit_secs: 3.0\nmemory_limit_mb: 512.0\ncpp_compile_args: [-O2, -std=c++20]\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n  val:\n    info: !cpp\n      path: ./src/val.cpp\nsolution: std\nvalidator: val\ntest:\n  generator: gen\n  type: min\n  bundles:\n    sample:\n      cases:\n      - []\n  tasks:\n  - name: sample\n    score: 100.0\n    bundles: [sample]\n",
         ),
     )?;
     Ok(problem_dir)

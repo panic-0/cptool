@@ -106,9 +106,20 @@ mod tests {
         assert!(!problem_dir.join("problem.md").exists());
 
         let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.time_limit_secs, 3.0);
+        assert_eq!(problem.memory_limit_mb, 512.0);
+        assert_eq!(problem.cpp_compile_args, ["-O2", "-std=c++20"]);
         assert_eq!(problem.programs["gen"].time_limit_secs, 3.0);
         assert_eq!(problem.programs["std"].time_limit_secs, 3.0);
         assert_eq!(problem.programs["brute"].time_limit_secs, 3.0);
+        let yaml = std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap();
+        assert!(yaml.contains("time_limit_secs: 3.0\n"));
+        assert!(yaml.contains("memory_limit_mb: 512.0\n"));
+        assert!(yaml.contains("cpp_compile_args: [-O2, -std=c++20]\n"));
+        assert!(!yaml.contains(
+            "programs:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n    time_limit_secs"
+        ));
+        assert!(!yaml.contains("      compile_args:"));
         assert_eq!(problem.validator_name.as_deref(), Some("val"));
         match &problem.programs["val"].info {
             ProgramInfo::Cpp(program) => {
