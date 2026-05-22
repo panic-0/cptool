@@ -360,6 +360,35 @@ pub(super) enum AddCommands {
         #[arg(long, help = "Replace an existing task")]
         replace: bool,
     },
+    #[command(about = "Register a validator program")]
+    Validator {
+        #[arg(default_value = "val", help = "Validator program key; defaults to val")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            value_parser = positive_f64,
+            help = "Configured validator time limit in seconds"
+        )]
+        time_limit_secs: Option<f64>,
+        #[arg(
+            long,
+            value_name = "MB",
+            value_parser = positive_f64,
+            help = "Configured validator memory limit in megabytes"
+        )]
+        memory_limit_mb: Option<f64>,
+        #[arg(
+            long,
+            value_name = "ARG",
+            help = "C++ compile arg; replaces defaults when present"
+        )]
+        compile_arg: Vec<String>,
+        #[arg(long, help = "Replace existing validator config or program")]
+        replace: bool,
+    },
     #[command(about = "Register a checker program, optionally copying a built-in testlib checker")]
     Checker {
         #[arg(default_value = "chk", help = "Checker program key; defaults to chk")]

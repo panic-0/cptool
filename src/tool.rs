@@ -16,7 +16,8 @@ mod stress_plan;
 pub(crate) use crate::support::{temp_suffix, unix_epoch_nanos};
 pub use add::{
     AddBundleOptions, AddCheckerOptions, AddProgramKind, AddProgramOptions, AddTaskOptions,
-    add_bundle, add_checker, add_program, add_task, builtin_checker_ids,
+    AddValidatorOptions, add_bundle, add_checker, add_program, add_task, add_validator,
+    builtin_checker_ids,
 };
 pub use check::{
     CheckIssue, CheckOptions, CheckReport, CheckSeverity, check_problem_package,

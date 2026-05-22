@@ -190,6 +190,73 @@ fn example_problem_packages_generate_and_check() {
     checked.sort();
     assert_eq!(checked, vec!["a_plus_b".to_string(), "sum".to_string()]);
 }
+
+#[test]
+fn add_validator_registers_detected_source_and_check_accepts_package() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-add-validator-cli");
+    run_cptool(["init", "validator_cli", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("validator_cli");
+    configure_python_problem(&problem_dir);
+    std::fs::remove_file(problem_dir.join("src").join("val.cpp")).unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("val.py"),
+        r#"import sys
+data = sys.stdin.read().strip().split()
+if len(data) != 2:
+    raise SystemExit(1)
+int(data[0])
+int(data[1])
+"#,
+    )
+    .unwrap();
+
+    run_cptool(
+        [
+            "add",
+            "validator",
+            "val",
+            "-w",
+            problem_dir.to_str().unwrap(),
+        ],
+        None,
+    );
+
+    let problem_yaml = std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap();
+    assert!(problem_yaml.contains("validator: val\n"));
+    assert!(problem_yaml.contains("path: \"./src/val.py\""));
+
+    let gen_output = run_cptool(
+        [
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let gen_value: serde_json::Value = serde_json::from_slice(&gen_output.stdout).unwrap();
+    assert_eq!(gen_value["validator_configured"], true);
+    assert_eq!(gen_value["validator_calls"], 1);
+    let check = run_cptool(
+        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        None,
+    );
+    let value: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
+    assert_eq!(value["status"], "pass");
+    assert!(
+        !value["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["code"] == "validator_missing")
+    );
+}
+
 #[test]
 fn unicode_paths_and_utf8_data_flow_through_cli() {
     if !python_available() {
@@ -309,6 +376,11 @@ fn cli_help_describes_new_workflow_commands() {
     let add_checker_stdout = String::from_utf8_lossy(&add_checker.stdout);
     assert!(add_checker_stdout.contains("optionally copying a built-in"));
     assert!(add_checker_stdout.contains("--builtin"));
+    let add_validator = run_cptool(["add", "validator", "--help"], None);
+    let add_validator_stdout = String::from_utf8_lossy(&add_validator.stdout);
+    assert!(add_validator_stdout.contains("Register a validator"));
+    assert!(add_validator_stdout.contains("--replace"));
+    assert!(add_validator_stdout.contains("--time-limit-secs"));
 
     let clean = run_cptool(["clean", "--help"], None);
     let clean_stdout = String::from_utf8_lossy(&clean.stdout);

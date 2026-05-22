@@ -603,6 +603,21 @@ fn handle_add(command: AddCommands) -> anyhow::Result<()> {
             dependencies,
             replace,
         })?,
+        AddCommands::Validator {
+            name,
+            work_dir,
+            time_limit_secs,
+            memory_limit_mb,
+            compile_arg,
+            replace,
+        } => tool::add_validator(tool::AddValidatorOptions {
+            work_dir,
+            name,
+            time_limit_secs,
+            memory_limit_mb,
+            compile_args: compile_arg,
+            replace,
+        })?,
         AddCommands::Checker {
             name,
             work_dir,

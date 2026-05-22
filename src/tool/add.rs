@@ -54,6 +54,16 @@ pub struct AddTaskOptions {
 }
 
 #[derive(Clone, Debug)]
+pub struct AddValidatorOptions {
+    pub work_dir: PathBuf,
+    pub name: String,
+    pub time_limit_secs: Option<f64>,
+    pub memory_limit_mb: Option<f64>,
+    pub compile_args: Vec<String>,
+    pub replace: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct AddCheckerOptions {
     pub work_dir: PathBuf,
     pub name: String,
@@ -154,6 +164,44 @@ pub fn add_task(options: AddTaskOptions) -> Result<()> {
         bundles: options.bundles,
         dependencies: options.dependencies,
     });
+    write_problem(&work_dir, &problem)
+}
+
+pub fn add_validator(options: AddValidatorOptions) -> Result<()> {
+    let work_dir = normalize_work_dir(&options.work_dir)?;
+    let mut problem = read_problem(&work_dir)?;
+    if problem.validator_name.is_some() && !options.replace {
+        anyhow::bail!("validator is already configured; pass --replace to overwrite");
+    }
+
+    if problem.programs.contains_key(&options.name) && !options.replace {
+        problem.validator_name = Some(options.name);
+        problem.validator_omitted_reason = None;
+        return write_problem(&work_dir, &problem);
+    }
+
+    let (kind, source_path, should_create) =
+        resolve_program_path(&work_dir, &options.name, None, None)?;
+    if should_create {
+        let abs_source = resolve_path(&work_dir, &source_path);
+        if let Some(parent) = abs_source.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&abs_source, "")?;
+    }
+
+    problem.programs.insert(
+        options.name.clone(),
+        program_from_parts(
+            kind,
+            source_path,
+            options.time_limit_secs,
+            options.memory_limit_mb,
+            &options.compile_args,
+        ),
+    );
+    problem.validator_name = Some(options.name);
+    problem.validator_omitted_reason = None;
     write_problem(&work_dir, &problem)
 }
 
@@ -331,7 +379,7 @@ fn resolve_program_path(
         )),
         [(kind, path)] => Ok((*kind, path.clone(), false)),
         _ => anyhow::bail!(
-            "multiple source candidates found for `{name}`; pass --path or --kind to disambiguate"
+            "multiple source candidates found for `{name}`; use `add program {name} --path ...` or `--kind ...` first, then register the role"
         ),
     }
 }
@@ -702,6 +750,129 @@ mod tests {
         let problem = load_problem(&problem_dir).unwrap();
         assert_eq!(problem.checker_name.as_deref(), Some("chk"));
         assert!(problem.programs.contains_key("chk"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn add_validator_registers_existing_custom_source_without_replacing_it() {
+        let root = temp_test_dir("cptool-add-validator-existing-custom");
+        let problem_dir = init_package(&root, "Add Validator Existing Custom").unwrap();
+        let mut problem = read_problem(&problem_dir).unwrap();
+        problem.validator_name = None;
+        problem.programs.remove("val");
+        write_problem(&problem_dir, &problem).unwrap();
+        let custom_source =
+            "#include \"testlib.h\"\nint main() { registerValidation(); inf.readEof(); }\n";
+        std::fs::write(problem_dir.join("src").join("val.cpp"), custom_source).unwrap();
+
+        add_validator(AddValidatorOptions {
+            work_dir: problem_dir.clone(),
+            name: "val".to_string(),
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap();
+
+        let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.validator_name.as_deref(), Some("val"));
+        assert!(matches!(problem.programs["val"].info, ProgramInfo::Cpp(_)));
+        let source = std::fs::read_to_string(problem_dir.join("src").join("val.cpp")).unwrap();
+        assert_eq!(source, custom_source);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn add_validator_creates_default_cpp_without_source() {
+        let root = temp_test_dir("cptool-add-validator-create");
+        let problem_dir = init_package(&root, "Add Validator Create").unwrap();
+        let mut problem = read_problem(&problem_dir).unwrap();
+        problem.validator_name = None;
+        problem.programs.remove("val");
+        write_problem(&problem_dir, &problem).unwrap();
+        std::fs::remove_file(problem_dir.join("src").join("val.cpp")).unwrap();
+
+        add_validator(AddValidatorOptions {
+            work_dir: problem_dir.clone(),
+            name: "val".to_string(),
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap();
+
+        let source_path = problem_dir.join("src").join("val.cpp");
+        assert!(source_path.is_file());
+        assert_eq!(std::fs::read_to_string(source_path).unwrap(), "");
+        let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.validator_name.as_deref(), Some("val"));
+        assert!(matches!(problem.programs["val"].info, ProgramInfo::Cpp(_)));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn add_validator_can_mark_existing_program_and_clears_omitted_reason() {
+        let root = temp_test_dir("cptool-add-validator-existing-program");
+        let problem_dir = init_package(&root, "Add Validator Existing Program").unwrap();
+        let mut problem = read_problem(&problem_dir).unwrap();
+        problem.validator_name = None;
+        problem.validator_omitted_reason = Some("temporary fixture".to_string());
+        write_problem(&problem_dir, &problem).unwrap();
+
+        add_validator(AddValidatorOptions {
+            work_dir: problem_dir.clone(),
+            name: "val".to_string(),
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap();
+
+        let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.validator_name.as_deref(), Some("val"));
+        assert!(problem.validator_omitted_reason.is_none());
+        let yaml = std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap();
+        assert!(!yaml.contains("validator_omitted_reason"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn add_validator_requires_replace_when_already_configured() {
+        let root = temp_test_dir("cptool-add-validator-replace");
+        let problem_dir = init_package(&root, "Add Validator Replace").unwrap();
+
+        let err = add_validator(AddValidatorOptions {
+            work_dir: problem_dir.clone(),
+            name: "val".to_string(),
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("validator is already configured"));
+
+        add_validator(AddValidatorOptions {
+            work_dir: problem_dir.clone(),
+            name: "val".to_string(),
+            time_limit_secs: Some(2.0),
+            memory_limit_mb: Some(256.0),
+            compile_args: vec!["-O2".to_string()],
+            replace: true,
+        })
+        .unwrap();
+        let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.validator_name.as_deref(), Some("val"));
+        assert_eq!(problem.programs["val"].time_limit_secs, 2.0);
+        assert_eq!(problem.programs["val"].memory_limit_mb, 256.0);
 
         std::fs::remove_dir_all(root).unwrap();
     }
