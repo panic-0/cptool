@@ -1,5 +1,6 @@
+use super::data::read_file_generator_input;
 use super::judge::run_configured_checker_on_bytes;
-use super::problem::{load_problem, normalize_work_dir, resolve_path};
+use super::problem::{FILE_GENERATOR_NAME, load_problem, normalize_work_dir, resolve_path};
 use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
 use super::schema::RunResult;
 use super::stress_args::direct_stress_args_by_case;
@@ -249,7 +250,13 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     }
     let work_dir = normalize_work_dir(work_dir)?;
     let problem = load_problem(&work_dir)?;
-    let generator = resolve_named_or_source(&work_dir, &problem, generator)?;
+    let generator = if generator == FILE_GENERATOR_NAME {
+        StressGenerator::File
+    } else if generator.starts_with('$') {
+        anyhow::bail!("generator `{generator}` is an unknown built-in generator");
+    } else {
+        StressGenerator::Program(resolve_named_or_source(&work_dir, &problem, generator)?)
+    };
     let targets = against
         .iter()
         .map(|item| resolve_named_or_source(&work_dir, &problem, item))
@@ -394,6 +401,11 @@ struct StressCaseOutcome {
     all_empty_stdout: bool,
 }
 
+enum StressGenerator {
+    Program(ProgramSpec),
+    File,
+}
+
 struct StressFailure {
     case_index: usize,
     reason: String,
@@ -466,26 +478,33 @@ impl From<StressCheckerArtifact> for ExpectedCheckerOutput {
 
 fn run_stress_case(
     work_dir: &Path,
-    generator: &ProgramSpec,
+    generator: &StressGenerator,
     targets: &[ProgramSpec],
     problem: &super::schema::Problem,
     args: &[String],
     index: usize,
     output_limit_bytes: usize,
 ) -> Result<StressCaseOutcome> {
-    let gen_result = run_spec(work_dir, generator, args, None, output_limit_bytes)?;
-    if !gen_result.ok {
-        anyhow::bail!(
-            "{}",
-            gen_result.failure_report(&format!("generator failed on stress case {index}"))
-        );
-    }
-    if gen_result.truncated_stdout {
-        anyhow::bail!(
-            "generator output on stress case {index} exceeded --output-limit-bytes ({output_limit_bytes})"
-        );
-    }
-    let input = gen_result.stdout_bytes;
+    let input = match generator {
+        StressGenerator::Program(generator) => {
+            let gen_result = run_spec(work_dir, generator, args, None, output_limit_bytes)?;
+            if !gen_result.ok {
+                anyhow::bail!(
+                    "{}",
+                    gen_result.failure_report(&format!("generator failed on stress case {index}"))
+                );
+            }
+            if gen_result.truncated_stdout {
+                anyhow::bail!(
+                    "generator output on stress case {index} exceeded --output-limit-bytes ({output_limit_bytes})"
+                );
+            }
+            gen_result.stdout_bytes
+        }
+        StressGenerator::File => {
+            read_file_generator_input(work_dir, args, &format!("stress case {index}"))?.bytes
+        }
+    };
     let input_hash = Sha256::digest(&input).to_vec();
     let mut results = Vec::new();
     for target in targets {

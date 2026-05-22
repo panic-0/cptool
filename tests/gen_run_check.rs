@@ -262,6 +262,209 @@ if data != {expected}:
 }
 
 #[test]
+fn gen_file_generator_copies_fixture_and_writes_answer() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-file-generator");
+    run_cptool(
+        ["pkg", "init", "file_generator", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("file_generator");
+    configure_python_problem(&problem_dir);
+    let yaml_path = problem_dir.join("problem.yaml");
+    std::fs::write(
+        &yaml_path,
+        r#"name: file_generator
+programs:
+  std:
+    info: !python
+      path: ./src/solve.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+solution: std
+validator_omitted_reason: "file generator smoke test"
+test:
+  bundles:
+    corner:
+      cases:
+      - generator: "$file"
+        args: [tests/corner/small.in]
+  tasks:
+  - name: corner
+    score: 100.0
+    type: min
+    bundles: [corner]
+"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(problem_dir.join("tests").join("corner")).unwrap();
+    std::fs::write(
+        problem_dir.join("tests").join("corner").join("small.in"),
+        "2 5\n",
+    )
+    .unwrap();
+
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
+
+    let expected_input = if cfg!(windows) { "2 5\r\n" } else { "2 5\n" };
+    assert_eq!(
+        std::fs::read_to_string(problem_dir.join("data").join("corner-0.in")).unwrap(),
+        expected_input
+    );
+    assert_eq!(
+        std::fs::read_to_string(problem_dir.join("data").join("corner-0.ans")).unwrap(),
+        "7\n"
+    );
+}
+
+#[test]
+fn gen_file_generator_can_be_problem_default_and_normalizes_copied_input() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-file-generator-default");
+    run_cptool(
+        ["pkg", "init", "file_generator_default", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("file_generator_default");
+    configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("problem.yaml"),
+        r#"name: file_generator_default
+programs:
+  std:
+    info: !python
+      path: ./src/solve.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  val:
+    info: !cpp
+      path: ./src/val.cpp
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+solution: std
+validator: val
+generator: "$file"
+test:
+  bundles:
+    sample:
+      cases:
+      - [tests/validator/strict.in]
+  tasks:
+  - name: sample
+    score: 100.0
+    type: min
+    bundles: [sample]
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("val.cpp"),
+        r#"#include "testlib.h"
+
+int main(int argc, char *argv[]) {
+    registerValidation(argc, argv);
+    std::string line = inf.readLine();
+    ensuref(line == "2 5", "unexpected line");
+    inf.readEof();
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+    let fixture = problem_dir
+        .join("tests")
+        .join("validator")
+        .join("strict.in");
+    std::fs::write(&fixture, b"2 5").unwrap();
+
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
+
+    let native = if cfg!(windows) {
+        b"2 5\r\n".as_slice()
+    } else {
+        b"2 5\n".as_slice()
+    };
+    assert_eq!(
+        std::fs::read(problem_dir.join("data").join("sample-0.in")).unwrap(),
+        native
+    );
+    assert_eq!(std::fs::read(&fixture).unwrap(), b"2 5");
+}
+
+#[test]
+fn gen_file_generator_reports_bad_arguments_and_missing_files() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-file-generator-errors");
+    run_cptool(
+        ["pkg", "init", "file_generator_errors", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("file_generator_errors");
+    configure_python_problem(&problem_dir);
+
+    for (case_line, expected) in [
+        (
+            r#"      - generator: "$file"
+        args: []
+"#,
+            "expects exactly one input path argument, got 0",
+        ),
+        (
+            r#"      - generator: "$file"
+        args: [missing.in, extra.in]
+"#,
+            "expects exactly one input path argument, got 2",
+        ),
+        (
+            r#"      - generator: "$file"
+        args: [missing.in]
+"#,
+            "failed to read `$file` input",
+        ),
+    ] {
+        std::fs::write(
+            problem_dir.join("problem.yaml"),
+            format!(
+                r#"name: file_generator_errors
+programs:
+  std:
+    info: !python
+      path: ./src/solve.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+solution: std
+validator_omitted_reason: "file generator error smoke test"
+test:
+  bundles:
+    sample:
+      cases:
+{case_line}  tasks:
+  - name: sample
+    score: 100.0
+    type: min
+    bundles: [sample]
+"#
+            ),
+        )
+        .unwrap();
+
+        let output = run_cptool_allow_failure(["case", "gen", "-w"], Some(&problem_dir));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(stderr.contains(expected), "{stderr}");
+    }
+}
+
+#[test]
 fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
     if !python_available() {
         return;

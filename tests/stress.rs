@@ -632,6 +632,62 @@ fn stress_plan_expands_seed_and_case_placeholders() {
     assert!(stdout.contains("plan `seeded` case 2 ok"));
     assert!(stdout.contains("stress plan `seeded` passed: 2 cases"));
 }
+
+#[test]
+fn stress_plan_can_use_file_generator_with_case_placeholder() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-plan-file-generator");
+    run_cptool(
+        ["pkg", "init", "stress_plan_file_generator", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp
+        .path()
+        .join("problems")
+        .join("stress_plan_file_generator");
+    configure_python_problem(&problem_dir);
+    let corner_dir = problem_dir.join("tests").join("corner");
+    std::fs::create_dir_all(&corner_dir).unwrap();
+    std::fs::write(corner_dir.join("1.in"), "1 2\n").unwrap();
+    std::fs::write(corner_dir.join("2.in"), "3 4\n").unwrap();
+    let yaml_path = problem_dir.join("problem.yaml");
+    let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    yaml.push_str(
+        r#"stress:
+  plans:
+  - name: file-corners
+    generator: "$file"
+    args: ["tests/corner/{case}.in"]
+    against: [std, brute]
+    cases: 2
+    expect: pass
+"#,
+    );
+    std::fs::write(yaml_path, yaml).unwrap();
+
+    let output = run_cptool(
+        [
+            "test",
+            "plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "file-corners",
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(value["plans"][0]["plan_name"], "file-corners");
+    assert_eq!(value["plans"][0]["cases"], 2);
+    assert_eq!(value["plans"][0]["unique_input_hashes"], 2);
+}
+
 #[test]
 fn stress_plan_expect_fail_treats_wrong_answer_as_success() {
     if !python_available() {

@@ -103,8 +103,9 @@ mod tests {
         assert_eq!(std_source, crate::tool::package::DEFAULT_PROGRAM_CPP);
         assert_eq!(brute_source, crate::tool::package::DEFAULT_PROGRAM_CPP);
         assert!(std_source.contains("#include <bits/stdc++.h>"));
+        let normalized_std_source = std_source.replace("\r\n", "\n");
         assert!(
-            std_source
+            normalized_std_source
                 .contains("cin.tie(nullptr);\n    ios::sync_with_stdio(false);\n\n    return 0;")
         );
         let generator_source =

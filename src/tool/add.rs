@@ -694,8 +694,10 @@ mod tests {
         let source = std::fs::read_to_string(problem_dir.join("src").join("foo.cpp")).unwrap();
         assert_eq!(source, DEFAULT_PROGRAM_CPP);
         assert!(source.contains("int main(int argc, char *argv[])"));
+        let normalized_source = source.replace("\r\n", "\n");
         assert!(
-            source.contains("cin.tie(nullptr);\n    ios::sync_with_stdio(false);\n\n    return 0;")
+            normalized_source
+                .contains("cin.tie(nullptr);\n    ios::sync_with_stdio(false);\n\n    return 0;")
         );
         let problem = load_problem(&problem_dir).unwrap();
         let ProgramInfo::Cpp(cpp) = &problem.programs["foo"].info else {

@@ -4,6 +4,8 @@ use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+pub(crate) const FILE_GENERATOR_NAME: &str = "$file";
 pub fn load_problem(work_dir: &Path) -> Result<Problem> {
     let path = work_dir.join("problem.yaml");
     let yaml = std::fs::read_to_string(&path)
@@ -127,12 +129,12 @@ fn validate_problem(problem: &Problem) -> Result<()> {
         ensure_program_exists(problem, name, "checker")?;
     }
     if let Some(name) = &problem.generator_name {
-        ensure_program_exists(problem, name, "generator")?;
+        ensure_generator_exists(problem, name, "generator")?;
     }
 
     for (bundle_name, bundle) in &problem.test.bundles {
         for (case_index, case) in bundle.cases.iter().enumerate() {
-            ensure_program_exists(
+            ensure_generator_exists(
                 problem,
                 &case.generator_name,
                 &format!("generator for {bundle_name}[{case_index}]"),
@@ -140,7 +142,7 @@ fn validate_problem(problem: &Problem) -> Result<()> {
         }
     }
     for plan in &problem.stress.plans {
-        ensure_program_exists(
+        ensure_generator_exists(
             problem,
             &plan.generator,
             &format!("generator for stress plan `{}`", plan.name),
@@ -180,6 +182,16 @@ fn ensure_program_exists(problem: &Problem, name: &str, role: &str) -> Result<()
         anyhow::bail!("{role} `{name}` is not defined in programs");
     }
     Ok(())
+}
+
+fn ensure_generator_exists(problem: &Problem, name: &str, role: &str) -> Result<()> {
+    if name == FILE_GENERATOR_NAME {
+        return Ok(());
+    }
+    if name.starts_with('$') {
+        anyhow::bail!("{role} `{name}` is an unknown built-in generator");
+    }
+    ensure_program_exists(problem, name, role)
 }
 
 fn validate_positive_finite(value: f64, label: &str) -> Result<()> {
@@ -233,6 +245,27 @@ mod tests {
         let err = validate_problem(&problem).unwrap_err().to_string();
 
         assert!(err.contains("generator for sample[0] `missing`"));
+    }
+
+    #[test]
+    fn validate_problem_accepts_file_generator_without_program() {
+        let mut problem = valid_problem();
+        problem.generator_name = Some(FILE_GENERATOR_NAME.to_string());
+        problem.test.bundles.get_mut("sample").unwrap().cases[0].generator_name =
+            FILE_GENERATOR_NAME.to_string();
+
+        validate_problem(&problem).unwrap();
+    }
+
+    #[test]
+    fn validate_problem_rejects_unknown_builtin_generator() {
+        let mut problem = valid_problem();
+        problem.test.bundles.get_mut("sample").unwrap().cases[0].generator_name =
+            "$unknown".to_string();
+
+        let err = validate_problem(&problem).unwrap_err().to_string();
+
+        assert!(err.contains("unknown built-in generator"));
     }
 
     #[test]

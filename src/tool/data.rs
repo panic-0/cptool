@@ -1,5 +1,7 @@
+use super::judge::fix_validator_input_line_endings;
 use super::problem::{
-    case_file_stem, load_problem, normalize_work_dir, parse_case_selector, resolve_path,
+    FILE_GENERATOR_NAME, case_file_stem, load_problem, normalize_work_dir, parse_case_selector,
+    resolve_path,
 };
 use super::program::{ProgramSpec, absolutize_program_info, run_spec};
 use super::schema::{CaseSelector, Problem};
@@ -86,6 +88,12 @@ struct GeneratedCase {
     answer_bytes: usize,
     validator_calls: usize,
     warnings: Vec<GenerateWarning>,
+}
+
+pub(crate) struct GeneratorInput {
+    pub(crate) label: String,
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) stderr_bytes: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -410,10 +418,6 @@ fn generate_one_case(
         .cases
         .get(selector.index)
         .with_context(|| format!("case `{}` not found", selector.index))?;
-    let generator = context
-        .programs
-        .get(&case.generator_name)
-        .with_context(|| format!("generator `{}` not found", case.generator_name))?;
     let case_stem = case_file_stem(selector);
     let staging_stem = context.staging_dir.join(&case_stem);
     let final_stem = context.final_output_dir.join(case_stem);
@@ -421,42 +425,26 @@ fn generate_one_case(
     let answer_path = staging_stem.with_extension("ans");
     let final_input_path = final_stem.with_extension("in");
     let final_answer_path = final_stem.with_extension("ans");
-    let generated = run_spec(
+    let generated = generate_case_input(
         context.work_dir,
-        generator,
+        context.programs,
+        &case.generator_name,
         &case.args,
-        None,
         context.output_limit_bytes,
+        &format!("{}[{}]", selector.bundle, selector.index),
     )?;
-    if !generated.ok {
-        anyhow::bail!(
-            "{}",
-            generated.failure_report(&format!(
-                "generator failed for {}[{}]",
-                selector.bundle, selector.index
-            ))
-        );
-    }
-    if generated.truncated_stdout {
-        anyhow::bail!(
-            "generator output for {}[{}] exceeded --output-limit-bytes ({})",
-            selector.bundle,
-            selector.index,
-            context.output_limit_bytes
-        );
-    }
     let mut warnings = Vec::new();
-    if generated.stdout_bytes.is_empty() {
+    if generated.bytes.is_empty() {
         warnings.push(GenerateWarning {
             kind: GenerateWarningKind::GeneratorOutputSuspicious,
             bundle: selector.bundle.clone(),
             case_index: selector.index,
-            program: generator.label.clone(),
+            program: generated.label.clone(),
             stdout_bytes: 0,
-            stderr_bytes: generated.stderr_bytes.len(),
+            stderr_bytes: generated.stderr_bytes,
         });
     }
-    std::fs::write(&input_path, &generated.stdout_bytes).with_context(|| {
+    std::fs::write(&input_path, &generated.bytes).with_context(|| {
         format!(
             "failed to write generated input for {}[{}] to {}",
             selector.bundle,
@@ -471,7 +459,7 @@ fn generate_one_case(
             context.work_dir,
             validator,
             &[],
-            Some(&generated.stdout_bytes),
+            Some(&generated.bytes),
             context.output_limit_bytes,
         )?;
         if !validation.ok {
@@ -492,7 +480,7 @@ fn generate_one_case(
         context.work_dir,
         context.solution,
         &[],
-        Some(&generated.stdout_bytes),
+        Some(&generated.bytes),
         context.output_limit_bytes,
     )?;
     if !answer.ok {
@@ -510,7 +498,7 @@ fn generate_one_case(
         );
     }
     if !context.problem.output.allow_empty
-        && !generated.stdout_bytes.is_empty()
+        && !generated.bytes.is_empty()
         && answer.stdout_bytes.is_empty()
     {
         warnings.push(GenerateWarning {
@@ -547,10 +535,72 @@ fn generate_one_case(
             },
         ],
         selector: selector.clone(),
-        input_bytes: generated.stdout_bytes.len(),
+        input_bytes: generated.bytes.len(),
         answer_bytes: answer.stdout_bytes.len(),
         validator_calls,
         warnings,
+    })
+}
+
+pub(crate) fn generate_case_input(
+    work_dir: &Path,
+    programs: &HashMap<String, ProgramSpec>,
+    generator_name: &str,
+    args: &[String],
+    output_limit_bytes: usize,
+    context: &str,
+) -> Result<GeneratorInput> {
+    if generator_name == FILE_GENERATOR_NAME {
+        return read_file_generator_input(work_dir, args, context);
+    }
+    if generator_name.starts_with('$') {
+        anyhow::bail!("generator `{generator_name}` is an unknown built-in generator");
+    }
+    let generator = programs
+        .get(generator_name)
+        .with_context(|| format!("generator `{generator_name}` not found"))?;
+    let generated = run_spec(work_dir, generator, args, None, output_limit_bytes)?;
+    if !generated.ok {
+        anyhow::bail!(
+            "{}",
+            generated.failure_report(&format!("generator failed for {context}"))
+        );
+    }
+    if generated.truncated_stdout {
+        anyhow::bail!(
+            "generator output for {context} exceeded --output-limit-bytes ({output_limit_bytes})"
+        );
+    }
+    Ok(GeneratorInput {
+        label: generator.label.clone(),
+        bytes: generated.stdout_bytes,
+        stderr_bytes: generated.stderr_bytes.len(),
+    })
+}
+
+pub(crate) fn read_file_generator_input(
+    work_dir: &Path,
+    args: &[String],
+    context: &str,
+) -> Result<GeneratorInput> {
+    if args.len() != 1 {
+        anyhow::bail!(
+            "generator `{FILE_GENERATOR_NAME}` for {context} expects exactly one input path argument, got {}",
+            args.len()
+        );
+    }
+    let source_path = resolve_path(work_dir, Path::new(&args[0]));
+    let mut bytes = std::fs::read(&source_path).with_context(|| {
+        format!(
+            "failed to read `{FILE_GENERATOR_NAME}` input for {context}: {}",
+            source_path.display()
+        )
+    })?;
+    let _ = fix_validator_input_line_endings(&mut bytes);
+    Ok(GeneratorInput {
+        label: FILE_GENERATOR_NAME.to_string(),
+        bytes,
+        stderr_bytes: 0,
     })
 }
 

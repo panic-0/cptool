@@ -275,7 +275,7 @@ fn report_from_result(
     }
 }
 
-fn fix_validator_input_line_endings(input: &mut Vec<u8>) -> Vec<JudgeWarning> {
+pub(crate) fn fix_validator_input_line_endings(input: &mut Vec<u8>) -> Vec<JudgeWarning> {
     let sample = line_ending_sample(input, 8);
     if !sample.needs_normalization() {
         return Vec::new();
@@ -351,7 +351,7 @@ fn line_ending_sample(input: &[u8], lines: usize) -> LineEndingSample {
     }
 
     let mut sample = LineEndingSample {
-        missing_final_eol: !endings.is_empty() && !matches!(input.last(), Some(b'\n' | b'\r')),
+        missing_final_eol: !input.is_empty() && !matches!(input.last(), Some(b'\n' | b'\r')),
         ..LineEndingSample::default()
     };
     let tail_start = endings.len().saturating_sub(lines);
