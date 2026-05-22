@@ -150,7 +150,8 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 + Syzoj export is not fully supported yet.
 + `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.9.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
 + Commands are grouped by task: `pkg` manages lifecycle/check/clean/export, `config add` edits package configuration and simple source scaffolds, `case` generates official data and runs programs, `test` runs validator/checker/stress workflows, and `report` collects evidence.
-+ `pkg init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, `brute`, and `val` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits. New packages include a self-contained `src/testlib.h` and placeholder `src/val.cpp`; update `val.cpp` to match the problem's real input format before publishing data.
++ `pkg init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `tests/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold sets `gen`, `std`, `brute`, and `val` time limits to 3 seconds; adjust per program in `problem.yaml` when a package needs tighter or looser limits. New packages include a self-contained `src/testlib.h`, a testlib `src/gen.cpp` placeholder, and a testlib `src/val.cpp` placeholder; update both placeholders to match the problem before publishing data.
++ C++ generators should include `testlib.h`, call `registerGen(argc, argv, 1)`, parse fixed arguments with `opt<T>(index)`, and use `rnd`/`println`. `registerGen` seeds `rnd` uniquely from the full command line, so generators should not read a seed argument and reseed `std::mt19937` by hand.
 + `config add validator` registers `validator: <name>` and a matching program. It follows the same source detection as `config add program`: use `src/<name>.cpp`, `src/<name>.py`, or `src/<name>` when exactly one exists, otherwise create an empty `src/<name>.cpp`. If a matching program already exists, it only sets the top-level validator field.
 + `config add checker` registers `checker: <name>` and a matching program. With `--builtin <id>`, it copies a built-in testlib checker to `src/<name>.cpp`. Without `--builtin`, it follows the same source detection as `config add program`: use `src/<name>.cpp`, `src/<name>.py`, or `src/<name>` when exactly one exists, otherwise create an empty `src/<name>.cpp`.
 + `case gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Use `--clean` to remove stale `.in/.ans` files for the selected case, bundle, or known bundles before publishing the newly generated files. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
@@ -168,13 +169,13 @@ Programs can also use `!command` or `!python`; omitted C++ compile args default 
 
 ## Development Checks
 
-Run the same checks locally that CI runs:
+Before considering any cptool change complete, run the cptool script-level full check from the cptool repository root:
 
 ```powershell
 python scripts/check.py
 ```
 
-The script runs formatting, clippy, and the full test suite in order, stopping at the first failure.
+This is the canonical local verification entrypoint. It runs formatting, clippy, and the full Rust test suite in order, stopping at the first failure. Do not treat a change as verified after only running individual `cargo` commands unless `python scripts/check.py` has also passed.
 
 ## Release
 

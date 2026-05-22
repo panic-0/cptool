@@ -96,6 +96,10 @@ mod tests {
         assert!(problem_dir.join("src").join("gen.cpp").exists());
         assert!(problem_dir.join("src").join("val.cpp").exists());
         assert!(problem_dir.join("src").join("testlib.h").exists());
+        let generator_source =
+            std::fs::read_to_string(problem_dir.join("src").join("gen.cpp")).unwrap();
+        assert!(generator_source.contains("#include \"testlib.h\""));
+        assert!(generator_source.contains("registerGen(argc, argv, 1);"));
         assert!(problem_dir.join("tests").join("failures").is_dir());
         assert!(problem_dir.join(".gitignore").exists());
         assert!(!problem_dir.join("quality_report.md").exists());

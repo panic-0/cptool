@@ -1,30 +1,21 @@
-#include <iostream>
-#include <random>
-#include <string>
-
-std::mt19937 rnd;
+#include "testlib.h"
+#include <vector>
 
 void generate(int argc, char *argv[]) {
-    const int N = atoi(argv[1]);
-    const int V = atoi(argv[2]);
+    const int n = opt<int>(1);
+    const int v = opt<int>(2);
 
-    std::cout << N << "\n";
+    println(n);
 
-    std::uniform_int_distribution<int> dist(0, V);
-    for (int i = 0; i < N; ++i) {
-        std::cout << dist(rnd) << " \n"[i == N - 1];
+    std::vector<int> a;
+    for (int i = 0; i < n; ++i) {
+        a.push_back(rnd.next(0, v));
     }
+    println(a.begin(), a.end());
 }
 
 int main(int argc, char *argv[]) {
-    std::cin.tie(nullptr)->sync_with_stdio(false);
-
-    std::string seedString;
-    for (int i = 1; i < argc; ++i) {
-        seedString += argv[i];
-        seedString += " ";
-    }
-    rnd.seed(std::hash<std::string>{}(seedString));
+    registerGen(argc, argv, 1);
 
     generate(argc, argv);
 

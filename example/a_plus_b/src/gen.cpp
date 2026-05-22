@@ -1,12 +1,10 @@
-#include <iostream>
-#include <random>
+#include "testlib.h"
 
 int main(int argc, char *argv[]) {
-    const int V = std::atoi(argv[1]);
+    registerGen(argc, argv, 1);
 
-    std::mt19937 rnd;
-    std::uniform_int_distribution<int> dist(1, V);
-    std::cout << dist(rnd) << " " << dist(rnd) << "\n";
+    const int v = opt<int>(1);
+    println(rnd.next(1, v), rnd.next(1, v));
 
     return 0;
 }

@@ -2,6 +2,13 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 const TESTLIB_H: &str = include_str!("../../assets/testlib/testlib.h");
+const DEFAULT_GENERATOR_CPP: &str = r#"#include "testlib.h"
+
+int main(int argc, char *argv[]) {
+    registerGen(argc, argv, 1);
+    return 0;
+}
+"#;
 const DEFAULT_VALIDATOR_CPP: &str = r#"#include "testlib.h"
 
 int main(int argc, char *argv[]) {
@@ -29,7 +36,10 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     )?;
     std::fs::write(problem_dir.join("src").join("std.cpp"), "")?;
     std::fs::write(problem_dir.join("src").join("brute.cpp"), "")?;
-    std::fs::write(problem_dir.join("src").join("gen.cpp"), "")?;
+    std::fs::write(
+        problem_dir.join("src").join("gen.cpp"),
+        DEFAULT_GENERATOR_CPP,
+    )?;
     std::fs::write(
         problem_dir.join("src").join("val.cpp"),
         DEFAULT_VALIDATOR_CPP,
