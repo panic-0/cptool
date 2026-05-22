@@ -32,6 +32,7 @@ pub(super) fn check_unknown_yaml_fields(report: &mut CheckReport, work_dir: &Pat
             "validator",
             "validator_omitted_reason",
             "checker",
+            "generator",
         ],
     );
 

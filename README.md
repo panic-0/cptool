@@ -107,22 +107,20 @@ programs:
       path: ./src/val.cpp
 solution: std
 validator: val
+generator: gen
 output:
   allow_empty: false
 test:
-  generator: gen
   type: min
   bundles:
     sample:
       cases:
       - [20]
     main:
-      generator: gen
       cases:
       - [10]
       - args: [10000000]
-      - generator: gen
-        args: [1000000000]
+      - [1000000000]
   tasks:
   - name: sample
     score: 1.0
@@ -134,14 +132,13 @@ test:
 stress:
   plans:
   - name: small
-    generator: gen
     args: ["10", "{seed}", "{case}"]
     against: [std, brute]
     cases: 100
     seed_base: 20260519
 ```
 
-Programs can also use `!command` or `!python`; omitted program limits inherit top-level `time_limit_secs` and `memory_limit_mb`, and omitted C++ compile args inherit top-level `cpp_compile_args`. Individual programs can override any inherited value, such as the `std` time limit above. Test cases can use any of these equivalent spellings: full form (`generator: gen`, `args: [...]`), args-only mapping (`args: [...]`) with a bundle or test default generator, or args-only shorthand (`- [...]`) with a bundle or test default generator. A bundle-level `generator` overrides `test.generator`, and a full case `generator` overrides both defaults. Tasks can omit `type` when `test.type` is declared; a task-level `type` overrides that default. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
+Programs can also use `!command` or `!python`; omitted program limits inherit top-level `time_limit_secs` and `memory_limit_mb`, and omitted C++ compile args inherit top-level `cpp_compile_args`. Individual programs can override any inherited value, such as the `std` time limit above. The top-level `generator` is shared by official data cases and stress plans. Test cases should use args-only shorthand (`- [...]`) or args-only mapping (`args: [...]`) when they use the default generator; write full form (`generator: other_gen`, `args: [...]`) only when a case needs a different generator. A bundle-level `generator` overrides the top-level generator for that bundle, and a full case `generator` overrides both defaults. Stress plans may omit `generator` to use the top-level default. Tasks can omit `type` when `test.type` is declared; a task-level `type` overrides that default. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
 
 ## Notes
 

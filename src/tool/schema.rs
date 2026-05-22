@@ -224,39 +224,43 @@ impl<'de> Deserialize<'de> for Test {
     where
         D: Deserializer<'de>,
     {
-        let raw = RawTest::deserialize(deserializer)?;
-        let global_generator = raw.generator;
-        let global_task_type = raw.task_type;
-        let bundles = raw
-            .bundles
-            .into_iter()
-            .map(|(bundle_name, bundle)| {
-                let bundle_generator = bundle.generator.or_else(|| global_generator.clone());
-                let cases = bundle
-                    .cases
-                    .into_iter()
-                    .enumerate()
-                    .map(|(case_index, case)| {
-                        normalize_test_case(
-                            case,
-                            bundle_generator.as_deref(),
-                            &bundle_name,
-                            case_index,
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok((bundle_name, TestBundle { cases }))
-            })
-            .collect::<Result<HashMap<_, _>, D::Error>>()?;
-        let tasks = raw
-            .tasks
-            .into_iter()
-            .enumerate()
-            .map(|(task_index, task)| normalize_test_task(task, global_task_type, task_index))
-            .collect::<Result<Vec<_>, D::Error>>()?;
-
-        Ok(Self { bundles, tasks })
+        normalize_test(RawTest::deserialize(deserializer)?, None)
     }
+}
+
+fn normalize_test<E>(raw: RawTest, problem_default_generator: Option<&str>) -> Result<Test, E>
+where
+    E: de::Error,
+{
+    let test_generator = raw.generator;
+    let global_task_type = raw.task_type;
+    let bundles = raw
+        .bundles
+        .into_iter()
+        .map(|(bundle_name, bundle)| {
+            let bundle_generator = bundle
+                .generator
+                .or_else(|| test_generator.clone())
+                .or_else(|| problem_default_generator.map(str::to_string));
+            let cases = bundle
+                .cases
+                .into_iter()
+                .enumerate()
+                .map(|(case_index, case)| {
+                    normalize_test_case(case, bundle_generator.as_deref(), &bundle_name, case_index)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((bundle_name, TestBundle { cases }))
+        })
+        .collect::<Result<HashMap<_, _>, E>>()?;
+    let tasks = raw
+        .tasks
+        .into_iter()
+        .enumerate()
+        .map(|(task_index, task)| normalize_test_task(task, global_task_type, task_index))
+        .collect::<Result<Vec<_>, E>>()?;
+
+    Ok(Test { bundles, tasks })
 }
 
 fn normalize_test_task<E>(
@@ -354,13 +358,13 @@ fn raw_arg_to_string(value: Value) -> Option<String> {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Stress {
     #[serde(default)]
     pub plans: Vec<StressPlan>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StressPlan {
     pub name: String,
     pub generator: String,
@@ -388,6 +392,68 @@ pub enum StressPlanExpectation {
     Fail,
 }
 
+#[derive(Default, Deserialize)]
+struct RawStress {
+    #[serde(default)]
+    plans: Vec<RawStressPlan>,
+}
+
+#[derive(Deserialize)]
+struct RawStressPlan {
+    name: String,
+    #[serde(default)]
+    generator: Option<String>,
+    #[serde(default)]
+    args: Vec<String>,
+    against: Vec<String>,
+    #[serde(default = "default_stress_cases")]
+    cases: usize,
+    #[serde(default)]
+    seed_base: Option<u64>,
+    #[serde(default)]
+    expect: StressPlanExpectation,
+}
+
+impl<'de> Deserialize<'de> for Stress {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        normalize_stress(RawStress::deserialize(deserializer)?, None)
+    }
+}
+
+fn normalize_stress<E>(raw: RawStress, default_generator: Option<&str>) -> Result<Stress, E>
+where
+    E: de::Error,
+{
+    let plans = raw
+        .plans
+        .into_iter()
+        .enumerate()
+        .map(|(plan_index, plan)| {
+            let generator = plan
+                .generator
+                .or_else(|| default_generator.map(str::to_string))
+                .ok_or_else(|| {
+                    E::custom(format!(
+                        "stress.plans[{plan_index}] is missing `generator` and no default generator is declared for the problem"
+                    ))
+                })?;
+            Ok(StressPlan {
+                name: plan.name,
+                generator,
+                args: plan.args,
+                against: plan.against,
+                cases: plan.cases,
+                seed_base: plan.seed_base,
+                expect: plan.expect,
+            })
+        })
+        .collect::<Result<Vec<_>, E>>()?;
+    Ok(Stress { plans })
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Problem {
     pub name: String,
@@ -399,6 +465,8 @@ pub struct Problem {
     pub cpp_compile_args: Vec<String>,
     #[serde(default)]
     pub output: OutputConfig,
+    #[serde(rename = "generator")]
+    pub generator_name: Option<String>,
     #[serde(default)]
     pub stress: Stress,
     pub programs: HashMap<String, Program>,
@@ -421,7 +489,7 @@ fn default_problem_memory_limit_mb() -> f64 {
     DEFAULT_MEMORY_LIMIT_MB
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Deserialize)]
 struct RawProblem {
     name: String,
     #[serde(default = "default_problem_time_limit_secs")]
@@ -433,9 +501,12 @@ struct RawProblem {
     #[serde(default)]
     output: OutputConfig,
     #[serde(default)]
-    stress: Stress,
+    #[serde(rename = "generator")]
+    generator_name: Option<String>,
+    #[serde(default)]
+    stress: RawStress,
     programs: HashMap<String, RawProgram>,
-    test: Test,
+    test: RawTest,
     #[serde(rename = "solution")]
     solution_name: String,
     #[serde(rename = "validator")]
@@ -475,6 +546,8 @@ impl<'de> Deserialize<'de> for Problem {
         D: Deserializer<'de>,
     {
         let raw = RawProblem::deserialize(deserializer)?;
+        let test = normalize_test(raw.test, raw.generator_name.as_deref())?;
+        let stress = normalize_stress(raw.stress, raw.generator_name.as_deref())?;
         let programs = raw
             .programs
             .into_iter()
@@ -505,9 +578,10 @@ impl<'de> Deserialize<'de> for Problem {
             memory_limit_mb: raw.memory_limit_mb,
             cpp_compile_args: raw.cpp_compile_args,
             output: raw.output,
-            stress: raw.stress,
+            generator_name: raw.generator_name,
+            stress,
             programs,
-            test: raw.test,
+            test,
             solution_name: raw.solution_name,
             validator_name: raw.validator_name,
             validator_omitted_reason: raw.validator_omitted_reason,
@@ -689,6 +763,47 @@ tasks:
             "special_gen"
         );
         assert_eq!(test.tasks[0].task_type, TestTaskType::Min);
+    }
+
+    #[test]
+    fn problem_generator_defaults_test_cases_and_stress_plans() {
+        let problem: Problem = serde_yml::from_str(
+            r#"
+name: demo
+programs:
+  gen:
+    info: !cpp
+      path: ./src/gen.cpp
+  std:
+    info: !cpp
+      path: ./src/std.cpp
+solution: std
+generator: gen
+test:
+  type: min
+  bundles:
+    sample:
+      cases:
+      - [sample]
+  tasks:
+  - name: main
+    score: 100.0
+    bundles: [sample]
+stress:
+  plans:
+  - name: small
+    args: [small, "{case}"]
+    against: [std, std]
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(problem.generator_name.as_deref(), Some("gen"));
+        assert_eq!(
+            problem.test.bundles["sample"].cases[0].generator_name,
+            "gen"
+        );
+        assert_eq!(problem.stress.plans[0].generator, "gen");
     }
 
     #[test]

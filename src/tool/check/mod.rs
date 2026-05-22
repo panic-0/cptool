@@ -1062,6 +1062,7 @@ mod tests {
             memory_limit_mb: 512.0,
             cpp_compile_args: crate::tool::schema::default_compile_args(),
             output: Default::default(),
+            generator_name: Some("gen".to_string()),
             stress: Default::default(),
             programs,
             test: Test {

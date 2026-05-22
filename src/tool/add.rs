@@ -1,6 +1,6 @@
 use super::schema::{
-    CommandProgram, CppProgram, OutputConfig, Problem, Program, ProgramInfo, Stress, Test,
-    TestBundle, TestCase, TestTask, TestTaskType,
+    CommandProgram, CppProgram, OutputConfig, Problem, Program, ProgramInfo, TestBundle, TestCase,
+    TestTask, TestTaskType,
 };
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
@@ -462,8 +462,11 @@ fn render_problem(problem: &Problem) -> String {
     if let Some(checker) = &problem.checker_name {
         out.push_str(&format!("checker: {}\n", key_or_string(checker)));
     }
-    render_test(&mut out, &problem.test);
-    render_stress(&mut out, &problem.stress);
+    if let Some(generator) = &problem.generator_name {
+        out.push_str(&format!("generator: {}\n", key_or_string(generator)));
+    }
+    render_test(&mut out, problem);
+    render_stress(&mut out, problem);
     out
 }
 
@@ -528,18 +531,23 @@ fn render_programs(out: &mut String, problem: &Problem) {
     }
 }
 
-fn render_test(out: &mut String, test: &Test) {
+fn render_test(out: &mut String, problem: &Problem) {
+    let test = &problem.test;
     out.push_str("test:\n  bundles:\n");
     let mut bundle_names = test.bundles.keys().collect::<Vec<_>>();
     bundle_names.sort();
     for name in bundle_names {
         out.push_str(&format!("    {}:\n      cases:\n", key_or_string(name)));
         for case in &test.bundles[name].cases {
-            out.push_str(&format!(
-                "      - generator: {}\n",
-                key_or_string(&case.generator_name)
-            ));
-            out.push_str(&format!("        args: {}\n", inline_list(&case.args)));
+            if problem.generator_name.as_deref() == Some(case.generator_name.as_str()) {
+                out.push_str(&format!("      - {}\n", inline_list(&case.args)));
+            } else {
+                out.push_str(&format!(
+                    "      - generator: {}\n",
+                    key_or_string(&case.generator_name)
+                ));
+                out.push_str(&format!("        args: {}\n", inline_list(&case.args)));
+            }
         }
     }
     out.push_str("  tasks:\n");
@@ -557,17 +565,20 @@ fn render_test(out: &mut String, test: &Test) {
     }
 }
 
-fn render_stress(out: &mut String, stress: &Stress) {
+fn render_stress(out: &mut String, problem: &Problem) {
+    let stress = &problem.stress;
     if stress.plans.is_empty() {
         return;
     }
     out.push_str("stress:\n  plans:\n");
     for plan in &stress.plans {
         out.push_str(&format!("  - name: {}\n", key_or_string(&plan.name)));
-        out.push_str(&format!(
-            "    generator: {}\n",
-            key_or_string(&plan.generator)
-        ));
+        if problem.generator_name.as_deref() != Some(plan.generator.as_str()) {
+            out.push_str(&format!(
+                "    generator: {}\n",
+                key_or_string(&plan.generator)
+            ));
+        }
         out.push_str(&format!("    args: {}\n", inline_list(&plan.args)));
         out.push_str(&format!("    against: {}\n", inline_list(&plan.against)));
         out.push_str(&format!("    cases: {}\n", plan.cases));

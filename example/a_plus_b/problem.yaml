@@ -15,8 +15,8 @@ programs:
       path: ./src/val.cpp
 solution: std
 validator: val
+generator: gen
 test:
-  generator: gen
   type: min
   bundles:
     sample:

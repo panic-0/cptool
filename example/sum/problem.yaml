@@ -28,38 +28,31 @@ programs:
 solution: std
 validator: val
 checker: chk
+generator: gen
 test:
-  # Generator defaults can be declared globally for all bundles.
-  generator: gen
+  # The top-level generator is the default for all bundles and stress plans.
   # Task type defaults can be declared globally for all tasks.
   type: min
   bundles:
     s1:
       cases:
-      # Args-only shorthand; uses test.generator.
+      # Args-only shorthand; uses the top-level generator.
       - [998, 10]
-      # Args-only mapping; also uses test.generator.
+      # Args-only mapping; also uses the top-level generator.
       - args: [999, 1000000000]
-      # Full case form; use this escape hatch when a case needs its own generator.
-      - generator: gen
-        args: [1000, 1000000000]
+      - [1000, 1000000000]
     s2:
-      # Bundle defaults override test.generator for this bundle.
-      generator: gen
       cases:
-      # Args-only shorthand; uses this bundle's generator.
+      # Args-only shorthand; uses the top-level generator.
       - [49998, 10]
       - [49999, 1000000000]
       - [50000, 1000000000]
     s3:
       cases:
-      # Full case form remains valid and is the most explicit spelling.
-      - generator: gen
-        args: [199998, 10]
-      - generator: gen
-        args: [199999, 1000000000]
-      - generator: gen
-        args: [200000, 1000000000]
+      # Prefer args-only cases when the top-level generator is used.
+      - [199998, 10]
+      - [199999, 1000000000]
+      - [200000, 1000000000]
   tasks:
   # Omitting type uses test.type.
   - name: s1
