@@ -1,6 +1,6 @@
 #include "testlib.h"
 
-constexpr int N = 2e6;
+constexpr int N = 2e5;
 constexpr int V = 1e9;
 
 int main(int argc, char *argv[]) {

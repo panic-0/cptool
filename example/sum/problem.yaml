@@ -14,7 +14,8 @@ programs:
   val:
     info: !cpp
       path: ./src/val.cpp
-      compile_args: [-O2, -I../assets/testlib/]
+      # testlib validators are compile-heavy; O0 keeps smoke/CI cold builds fast.
+      compile_args: [-O0, -I../assets/testlib/]
     time_limit_secs: 5.0
     memory_limit_mb: 512.0
   chk:
@@ -53,11 +54,11 @@ test:
       cases:
       # Full case form remains valid and is the most explicit spelling.
       - generator: gen
-        args: [1999998, 10]
+        args: [199998, 10]
       - generator: gen
-        args: [1999999, 1000000000]
+        args: [199999, 1000000000]
       - generator: gen
-        args: [2000000, 1000000000]
+        args: [200000, 1000000000]
   tasks:
   # Omitting type uses test.type.
   - name: s1
