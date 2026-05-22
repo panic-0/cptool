@@ -305,6 +305,11 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(judge_validator_stdout.contains("--expect"));
     assert!(!judge_validator_stdout.contains("--stdin-text"));
 
+    let add_checker = run_cptool(["add", "checker", "--help"], None);
+    let add_checker_stdout = String::from_utf8_lossy(&add_checker.stdout);
+    assert!(add_checker_stdout.contains("optionally copying a built-in"));
+    assert!(add_checker_stdout.contains("--builtin"));
+
     let clean = run_cptool(["clean", "--help"], None);
     let clean_stdout = String::from_utf8_lossy(&clean.stdout);
     assert!(clean_stdout.contains("--data"));

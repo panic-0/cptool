@@ -360,14 +360,14 @@ pub(super) enum AddCommands {
         #[arg(long, help = "Replace an existing task")]
         replace: bool,
     },
-    #[command(about = "Register a checker, copying a built-in testlib checker into src/")]
+    #[command(about = "Register a checker program, optionally copying a built-in testlib checker")]
     Checker {
         #[arg(default_value = "chk", help = "Checker program key; defaults to chk")]
         name: String,
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
         #[arg(long, help = "Built-in testlib checker id to copy, e.g. wcmp")]
-        builtin: String,
+        builtin: Option<String>,
         #[arg(
             long,
             value_name = "SECONDS",

@@ -57,7 +57,7 @@ pub struct AddTaskOptions {
 pub struct AddCheckerOptions {
     pub work_dir: PathBuf,
     pub name: String,
-    pub builtin: String,
+    pub builtin: Option<String>,
     pub time_limit_secs: Option<f64>,
     pub memory_limit_mb: Option<f64>,
     pub compile_args: Vec<String>,
@@ -160,34 +160,53 @@ pub fn add_task(options: AddTaskOptions) -> Result<()> {
 pub fn add_checker(options: AddCheckerOptions) -> Result<()> {
     let work_dir = normalize_work_dir(&options.work_dir)?;
     let mut problem = read_problem(&work_dir)?;
+    if problem.checker_name.is_some() && !options.replace {
+        anyhow::bail!("checker is already configured; pass --replace to overwrite");
+    }
+
+    if options.builtin.is_none() && problem.programs.contains_key(&options.name) && !options.replace
+    {
+        problem.checker_name = Some(options.name);
+        return write_problem(&work_dir, &problem);
+    }
+
     if problem.programs.contains_key(&options.name) && !options.replace {
         anyhow::bail!(
             "program `{}` already exists; pass --replace to overwrite",
             options.name
         );
     }
-    if problem.checker_name.is_some() && !options.replace {
-        anyhow::bail!("checker is already configured; pass --replace to overwrite");
-    }
 
-    let source_path = PathBuf::from(format!("./src/{}.cpp", options.name));
-    let abs_source = resolve_path(&work_dir, &source_path);
-    if abs_source.exists() && !options.replace {
-        anyhow::bail!(
-            "checker source {} already exists; pass --replace to overwrite",
-            abs_source.display()
-        );
+    let (kind, source_path, should_create) = if let Some(builtin) = &options.builtin {
+        let source_path = PathBuf::from(format!("./src/{}.cpp", options.name));
+        let abs_source = resolve_path(&work_dir, &source_path);
+        if abs_source.exists() && !options.replace {
+            anyhow::bail!(
+                "checker source {} already exists; omit --builtin to register the existing source, or pass --replace to overwrite it with the built-in checker",
+                abs_source.display()
+            );
+        }
+        let source = checker_source(builtin)?;
+        if let Some(parent) = abs_source.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&abs_source, source)?;
+        (AddProgramKind::Cpp, source_path, false)
+    } else {
+        resolve_program_path(&work_dir, &options.name, None, None)?
+    };
+    if should_create {
+        let abs_source = resolve_path(&work_dir, &source_path);
+        if let Some(parent) = abs_source.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&abs_source, "")?;
     }
-    let source = checker_source(&options.builtin)?;
-    if let Some(parent) = abs_source.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&abs_source, source)?;
 
     problem.programs.insert(
         options.name.clone(),
         program_from_parts(
-            AddProgramKind::Cpp,
+            kind,
             source_path,
             options.time_limit_secs,
             options.memory_limit_mb,
@@ -670,7 +689,7 @@ mod tests {
         add_checker(AddCheckerOptions {
             work_dir: problem_dir.clone(),
             name: "chk".to_string(),
-            builtin: "wcmp".to_string(),
+            builtin: Some("wcmp".to_string()),
             time_limit_secs: None,
             memory_limit_mb: None,
             compile_args: Vec::new(),
@@ -683,6 +702,92 @@ mod tests {
         let problem = load_problem(&problem_dir).unwrap();
         assert_eq!(problem.checker_name.as_deref(), Some("chk"));
         assert!(problem.programs.contains_key("chk"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn add_checker_registers_existing_custom_source_without_builtin() {
+        let root = temp_test_dir("cptool-add-checker-existing-custom");
+        let problem_dir = init_package(&root, "Add Checker Existing Custom").unwrap();
+        let custom_source = "#include \"testlib.h\"\nint main(int argc, char** argv) { registerTestlibCmd(argc, argv); quitf(_ok, \"ok\"); }\n";
+        std::fs::write(problem_dir.join("src").join("chk.cpp"), custom_source).unwrap();
+
+        add_checker(AddCheckerOptions {
+            work_dir: problem_dir.clone(),
+            name: "chk".to_string(),
+            builtin: None,
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap();
+
+        let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.checker_name.as_deref(), Some("chk"));
+        assert!(matches!(problem.programs["chk"].info, ProgramInfo::Cpp(_)));
+        let source = std::fs::read_to_string(problem_dir.join("src").join("chk.cpp")).unwrap();
+        assert_eq!(source, custom_source);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn add_checker_creates_default_cpp_without_builtin_or_source() {
+        let root = temp_test_dir("cptool-add-checker-create");
+        let problem_dir = init_package(&root, "Add Checker Create").unwrap();
+
+        add_checker(AddCheckerOptions {
+            work_dir: problem_dir.clone(),
+            name: "chk".to_string(),
+            builtin: None,
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap();
+
+        let source_path = problem_dir.join("src").join("chk.cpp");
+        assert!(source_path.is_file());
+        assert_eq!(std::fs::read_to_string(source_path).unwrap(), "");
+        let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.checker_name.as_deref(), Some("chk"));
+        assert!(matches!(problem.programs["chk"].info, ProgramInfo::Cpp(_)));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn add_checker_can_mark_existing_program_as_checker() {
+        let root = temp_test_dir("cptool-add-checker-existing-program");
+        let problem_dir = init_package(&root, "Add Checker Existing Program").unwrap();
+        add_program(AddProgramOptions {
+            work_dir: problem_dir.clone(),
+            name: "chk".to_string(),
+            kind: Some(AddProgramKind::Cpp),
+            path: None,
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap();
+
+        add_checker(AddCheckerOptions {
+            work_dir: problem_dir.clone(),
+            name: "chk".to_string(),
+            builtin: None,
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap();
+
+        let problem = load_problem(&problem_dir).unwrap();
+        assert_eq!(problem.checker_name.as_deref(), Some("chk"));
 
         std::fs::remove_dir_all(root).unwrap();
     }
