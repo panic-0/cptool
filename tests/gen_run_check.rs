@@ -974,6 +974,7 @@ fn gen_json_reports_validator_stats() {
     assert_eq!(value["validator_configured"], true);
     assert_eq!(value["validator_calls"], 1);
 }
+
 #[test]
 fn gen_validator_failure_reports_case_and_generator_args() {
     if !python_available() {
@@ -1206,12 +1207,18 @@ fn check_json_reports_missing_and_stale_generated_data() {
     );
     let missing_value: Value = serde_json::from_slice(&missing.stdout).unwrap();
     assert!(!missing.status.success());
+    let missing_issue = find_issue(&missing_value, "generated_data_missing");
+    assert_eq!(missing_issue["severity"], "error");
+    assert_eq!(missing_issue["kind"], "not_generated");
     assert!(
-        missing_value["issues"]
-            .as_array()
+        missing_issue["message"]
+            .as_str()
             .unwrap()
-            .iter()
-            .any(|issue| issue["code"] == "generated_data_missing" && issue["severity"] == "error")
+            .contains("no generated .in/.ans files are present")
+    );
+    assert_eq!(
+        missing_issue["next_action"],
+        format!("cptool case gen -w {} --clean", problem_dir.display())
     );
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
@@ -1240,6 +1247,37 @@ fn check_json_reports_missing_and_stale_generated_data() {
             .iter()
             .any(|issue| issue["code"] == "stale_data_file" && issue["severity"] == "warning")
     );
+    let stale_issue = find_issue(&stale_value, "stale_data_file");
+    assert_eq!(stale_issue["kind"], "stale");
+    assert_eq!(
+        stale_issue["next_action"],
+        format!("cptool case gen -w {} --clean", problem_dir.display())
+    );
+}
+
+#[test]
+fn check_text_reports_generated_data_next_action() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-check-data-next-action");
+    run_cptool(
+        ["pkg", "init", "check_data_next_action", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("check_data_next_action");
+    configure_python_problem(&problem_dir);
+
+    let output = run_cptool_allow_failure(["pkg", "check", "-w"], Some(&problem_dir));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(!output.status.success());
+    assert!(stdout.contains("generated_data_missing"));
+    assert!(stdout.contains(&format!(
+        "next action: `cptool case gen -w {} --clean`",
+        problem_dir.display()
+    )));
 }
 
 fn json_object_keys(value: &Value) -> BTreeSet<&str> {

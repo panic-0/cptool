@@ -32,6 +32,8 @@ pub struct CheckIssue {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_after: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<String>,
 }
 
@@ -105,6 +107,9 @@ impl CheckReport {
             if let Some(path) = &issue.path {
                 let _ = write!(out, " (`{}`)", path.display());
             }
+            if let Some(next_action) = &issue.next_action {
+                let _ = write!(out, "; next action: `{next_action}`");
+            }
             let _ = writeln!(out);
         }
     }
@@ -124,6 +129,7 @@ impl CheckReport {
             kind: None,
             transient: None,
             retry_after: None,
+            next_action: None,
             location: None,
         });
     }
@@ -144,7 +150,51 @@ impl CheckReport {
             kind: None,
             transient: None,
             retry_after: None,
+            next_action: None,
             location: Some(location.into()),
+        });
+    }
+
+    pub(super) fn action_error_at(
+        &mut self,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        path: Option<PathBuf>,
+        location: impl Into<String>,
+        kind: impl Into<String>,
+        next_action: impl Into<String>,
+    ) {
+        self.issues.push(CheckIssue {
+            severity: CheckSeverity::Error,
+            code: code.into(),
+            message: message.into(),
+            path,
+            kind: Some(kind.into()),
+            transient: None,
+            retry_after: None,
+            next_action: Some(next_action.into()),
+            location: Some(location.into()),
+        });
+    }
+
+    pub(super) fn action_warning(
+        &mut self,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        path: Option<PathBuf>,
+        kind: impl Into<String>,
+        next_action: impl Into<String>,
+    ) {
+        self.issues.push(CheckIssue {
+            severity: CheckSeverity::Warning,
+            code: code.into(),
+            message: message.into(),
+            path,
+            kind: Some(kind.into()),
+            transient: None,
+            retry_after: None,
+            next_action: Some(next_action.into()),
+            location: None,
         });
     }
 
@@ -162,6 +212,7 @@ impl CheckReport {
             kind: Some("lock".to_string()),
             transient: Some(true),
             retry_after: Some("wait_for_generation_then_retry".to_string()),
+            next_action: None,
             location: None,
         });
     }

@@ -229,16 +229,34 @@ fn check_generated_data(report: &mut CheckReport, work_dir: &Path, problem: &Pro
 
 fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
     let data_dir = work_dir.join("data");
+    let existing_data_files = count_data_io_files(&data_dir);
+    let missing_kind = if existing_data_files == 0 {
+        "not_generated"
+    } else {
+        "missing"
+    };
+    let next_action = format!("cptool case gen -w {} --clean", work_dir.display());
     for (bundle_name, bundle) in &problem.test.bundles {
         for case_index in 0..bundle.cases.len() {
             for extension in ["in", "ans"] {
                 let path = data_dir.join(format!("{bundle_name}-{case_index}.{extension}"));
                 if !path.is_file() {
-                    report.error_at(
+                    let message = if missing_kind == "not_generated" {
+                        format!(
+                            "generated data file `{bundle_name}-{case_index}.{extension}` is missing because no generated .in/.ans files are present"
+                        )
+                    } else {
+                        format!(
+                            "generated data file `{bundle_name}-{case_index}.{extension}` is missing from an existing generated data set"
+                        )
+                    };
+                    report.action_error_at(
                         codes::GENERATED_DATA_MISSING,
-                        format!("generated data file `{bundle_name}-{case_index}.{extension}` is missing"),
+                        message,
                         Some(path),
                         format!("test.bundles.{bundle_name}.cases[{case_index}]"),
+                        missing_kind,
+                        next_action.clone(),
                     );
                 }
             }
@@ -251,6 +269,7 @@ fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &P
     let Ok(entries) = std::fs::read_dir(&data_dir) else {
         return;
     };
+    let next_action = format!("cptool case gen -w {} --clean", work_dir.display());
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_file() || !is_data_io_file(&path) {
@@ -260,26 +279,32 @@ fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &P
             continue;
         };
         let Some((bundle_name, case_index)) = parse_data_file_stem(stem) else {
-            report.warning(
+            report.action_warning(
                 codes::STALE_DATA_FILE,
                 "data file does not match `<bundle>-<index>.in/.ans` naming",
                 Some(path),
+                "stale",
+                next_action.clone(),
             );
             continue;
         };
         let Some(bundle) = problem.test.bundles.get(bundle_name) else {
-            report.warning(
+            report.action_warning(
                 codes::STALE_DATA_FILE,
                 format!("data file references unknown bundle `{bundle_name}`"),
                 Some(path),
+                "stale",
+                next_action.clone(),
             );
             continue;
         };
         if case_index >= bundle.cases.len() {
-            report.warning(
+            report.action_warning(
                 codes::STALE_DATA_FILE,
                 format!("data file references missing case `{bundle_name}[{case_index}]`"),
                 Some(path),
+                "stale",
+                next_action.clone(),
             );
         }
     }
@@ -451,6 +476,19 @@ fn is_data_io_file(path: &Path) -> bool {
         path.extension().and_then(|extension| extension.to_str()),
         Some("in" | "ans")
     )
+}
+
+fn count_data_io_files(data_dir: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(data_dir) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter(|entry| {
+            let path = entry.path();
+            path.is_file() && is_data_io_file(&path)
+        })
+        .count()
 }
 
 fn parse_data_file_stem(stem: &str) -> Option<(&str, usize)> {
