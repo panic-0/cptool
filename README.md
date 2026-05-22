@@ -61,6 +61,7 @@ CP Tool is a command line tool for competitive programming.
 # stress test programs with generated temporary inputs
 ./cptool test stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10
 ./cptool test stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- {seed} {case}
+./cptool test stress -w ./example/a_plus_b --generator '$file' --against std --against brute --cases 1 -- tests/corner/small.in
 
 # run stress plans declared in problem.yaml
 ./cptool test plan -w ./example/a_plus_b --name small
@@ -121,13 +122,17 @@ test:
       - [10]
       - args: [10000000]
       - [1000000000]
+    corner:
+      cases:
+      - generator: "$file"
+        args: [tests/corner/small.in]
   tasks:
   - name: sample
     score: 1.0
     bundles: [sample]
   - name: main
     score: 99.0
-    bundles: [main]
+    bundles: [main, corner]
     dependencies: [sample]
 stress:
   plans:
@@ -136,9 +141,14 @@ stress:
     against: [std, brute]
     cases: 100
     seed_base: 20260519
+  - name: corner-file
+    generator: "$file"
+    args: ["tests/corner/{case}.in"]
+    against: [std, brute]
+    cases: 3
 ```
 
-Programs can also use `!command` or `!python`; omitted program limits inherit top-level `time_limit_secs` and `memory_limit_mb`, and omitted C++ compile args inherit top-level `cpp_compile_args`. Individual programs can override any inherited value, such as the `std` time limit above. The top-level `generator` is shared by official data cases and stress plans. Test cases should use args-only shorthand (`- [...]`) or args-only mapping (`args: [...]`) when they use the default generator; write full form (`generator: other_gen`, `args: [...]`) only when a case needs a different generator. A bundle-level `generator` overrides the top-level generator for that bundle, and a full case `generator` overrides both defaults. Stress plans may omit `generator` to use the top-level default. Tasks can omit `type` when `test.type` is declared; a task-level `type` overrides that default. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
+Programs can also use `!command` or `!python`; omitted program limits inherit top-level `time_limit_secs` and `memory_limit_mb`, and omitted C++ compile args inherit top-level `cpp_compile_args`. Individual programs can override any inherited value, such as the `std` time limit above. The top-level `generator` is shared by official data cases and stress plans. Test cases should use args-only shorthand (`- [...]`) or args-only mapping (`args: [...]`) when they use the default generator; write full form (`generator: other_gen`, `args: [...]`) only when a case needs a different generator. A bundle-level `generator` overrides the top-level generator for that bundle, and a full case `generator` overrides both defaults. Stress plans may omit `generator` to use the top-level default. Tasks can omit `type` when `test.type` is declared; a task-level `type` overrides that default. The reserved generator name `$file` copies a hand-written input fixture instead of running a program; pass exactly one path argument, resolved relative to the package directory. In PowerShell CLI commands, quote it as `'$file'` so it is not expanded as a variable. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
 
 ## Notes
 
