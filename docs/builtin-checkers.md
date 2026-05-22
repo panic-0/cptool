@@ -1,38 +1,37 @@
 # Built-in Testlib Checkers
 
-`cptool add checker <name> --builtin <id>` copies a checker from `example/assets/testlib/checkers/<id>.cpp` into the problem package and registers it in `problem.yaml`. The copied file starts with an origin comment and includes the package-local `testlib.h`.
+`cptool add checker <name> --builtin <id>` 会把 `example/assets/testlib/checkers/<id>.cpp` 复制进题包并注册到 `problem.yaml`。复制后的文件开头会写来源注释，并使用题包内的 `#include "testlib.h"`。
 
-The built-in list is generated at build time by scanning every `.cpp` file in `example/assets/testlib/checkers/`; this document is the agent-facing guide for choosing one safely.
+内置列表由构建脚本扫描 `example/assets/testlib/checkers/*.cpp` 自动生成。下表按当前源码行为描述；不要只凭名字猜语义。特别注意：`caseicmp`、`casencmp`、`casewcmp` 的 `case` 指输出形如 `Case k:` 的多测试格式，不表示大小写不敏感。
 
-| id | 来源 | 作用 | 适用场景 | 注意事项 |
+| id | 源文件 | 实际比较语义 | 适用场景 | 主要注意事项 |
 |---|---|---|---|---|
-| `acmp` | testlib `acmp.cpp` | 按双精度浮点序列比较，默认绝对/相对误差约 `1e-6` | 普通浮点答案序列 | 不是精确比较；误差策略不匹配时应写专用 checker |
-| `caseicmp` | testlib `caseicmp.cpp` | 大小写不敏感比较整数 token | 整数答案但题面允许大小写变体的特殊输出 | 整数题通常优先用 `icmp`；确认题面确实允许大小写差异 |
-| `casencmp` | testlib `casencmp.cpp` | 大小写不敏感比较整数序列 | 纯整数序列且包装文本大小写不重要 | 不适合浮点；普通整数输出优先 `ncmp`/`icmp` |
-| `casewcmp` | testlib `casewcmp.cpp` | 大小写不敏感按 token 比较 | 字符串 token 答案且题面允许任意大小写 | 题面要求精确大小写时不要用 |
-| `dcmp` | testlib `dcmp.cpp` | 比较 double 值，误差约 `1e-6` | 单个或多个 double 答案 | 与 `rcmp*` 一样属于误差比较，需确认题目误差要求 |
-| `fcmp` | testlib `fcmp.cpp` | 文件式 token 比较 | 传统标准答案比较，忽略常规空白差异 | 和 `wcmp` 都是 token 级精确比较；优先按平台/历史约定选择 |
-| `hcmp` | testlib `hcmp.cpp` | 十六进制整数比较 | 输出为十六进制数 | 不适合十进制整数或字符串 |
-| `icmp` | testlib `icmp.cpp` | 比较整数 token | 单个或多个整数答案 | `icmp` 面向整数 token；`ncmp` 更强调整数序列文件比较，二者都不适合浮点 |
-| `lcmp` | testlib `lcmp.cpp` | 按行比较 token 序列 | 行结构有意义但行内空白不重要 | 不适合允许任意重排的输出 |
-| `ncmp` | testlib `ncmp.cpp` | 比较整数序列 | 纯整数输出 | 不适合浮点；若答案中有非整数 token 不要用 |
-| `nyesno` | testlib `nyesno.cpp` | 比较 NO/YES 风格答案 | 输出为否/是，且需要该 checker 的 NO/YES 约定 | 与 `yesno` 的期望文本顺序不同，使用前检查题面和源码语义 |
-| `pointscmp` | testlib `pointscmp.cpp` | 支持部分分/points 输出比较 | 需要 checker 根据输出给分 | 普通 ACM 式题目不要用；确认评测系统支持部分分反馈 |
-| `pointsinfo` | testlib `pointsinfo.cpp` | 输出 points 信息的辅助 checker | 调试或部分分信息输出 | 普通标准答案比较不要用 |
-| `rcmp` | testlib `rcmp.cpp` | 浮点误差比较，默认相对/绝对误差约 `1e-6` | 浮点题 | 明确题面误差语义；误差不是精确比较 |
-| `rcmp4` | testlib `rcmp4.cpp` | 浮点误差比较，约 `1e-4` | 误差要求较宽的浮点题 | 不要用于要求 `1e-6` 或更严的题 |
-| `rcmp6` | testlib `rcmp6.cpp` | 浮点误差比较，约 `1e-6` | 常见浮点题 | 需与题面误差一致 |
-| `rcmp9` | testlib `rcmp9.cpp` | 浮点误差比较，约 `1e-9` | 高精度浮点题 | 对数值稳定性要求更高；确认正确解可达 |
-| `rncmp` | testlib `rncmp.cpp` | 浮点序列比较，误差约 `1e-6` | 多个实数 token 输出 | 不适合整数精确题 |
-| `uncmp` | testlib `uncmp.cpp` | 无序 token 集合比较 | 输出顺序任意但 token 多重集应一致 | 不检查结构顺序；行结构有意义时不要用 |
-| `wcmp` | testlib `wcmp.cpp` | 按 token 精确比较 | 普通唯一输出、字符串/数字 token | 区分 `YES` 和 `Yes`；浮点题不要用 |
-| `yesno` | testlib `yesno.cpp` | 大小写不敏感比较 YES/NO | 题面允许任意大小写的 YES/NO 输出 | 题面要求精确大写时不要用 |
+| `acmp` | `acmp.cpp` | 只比较第一个 double，绝对误差 `1.5e-6` | 单个实数答案，只要求绝对误差 | 不比较序列；额外输出不会被它主动检查 |
+| `caseicmp` | `caseicmp.cpp` | 比较若干行 `Case k: <int64>`，`Case` 和编号格式必须精确 | 多测试，每个 case 一个整数答案 | 不是大小写不敏感；不适合普通无 `Case k:` 输出 |
+| `casencmp` | `casencmp.cpp` | 比较若干段 `Case k: <int64...>` 的整数序列 | 多测试，每个 case 一串整数 | token `Case` 被当作下一段开始；不适合任意文本 token |
+| `casewcmp` | `casewcmp.cpp` | 比较若干段 `Case k: <token...>` 的 token 序列 | 多测试，每个 case 一串普通 token | token 本身不能是 `Case`；大小写敏感 |
+| `dcmp` | `dcmp.cpp` | 只比较第一个 double，绝对或相对误差 `1e-6` | 单个实数答案，题面接受相对误差 | 不比较序列；额外输出不会被它主动检查 |
+| `fcmp` | `fcmp.cpp` | 逐行完整字符串比较 | 行内容必须完全一致的传统文件比较 | 行内空格也有意义；不是 token 比较；可能不主动拒绝额外行 |
+| `hcmp` | `hcmp.cpp` | 比较单个规范十进制大整数 token | 超出 `int64` 的单个整数答案 | 只接受 `0` 或无前导零的带符号整数；不是十六进制 |
+| `icmp` | `icmp.cpp` | 只比较第一个 32-bit `int` | 单个普通整数答案 | 与 `ncmp` 的关键区别：`icmp` 只读一个 `int`，不检查完整整数序列 |
+| `lcmp` | `lcmp.cpp` | 逐行比较行内 token 序列 | 行划分有意义、行内空白不重要 | token 不能跨行重排；可能不主动拒绝额外行 |
+| `ncmp` | `ncmp.cpp` | 比较完整有序 `int64` 序列，并检查两边长度 | 一个或多个整数 token 的标准输出 | 与 `icmp` 的关键区别：`ncmp` 读到 EOF，适合整数序列 |
+| `nyesno` | `nyesno.cpp` | 比较完整 YES/NO token 序列，大小写不敏感，并检查长度 | 多个 YES/NO 答案 | 单个 YES/NO 用 `yesno` 更直观；题面要求精确大写时不要用 |
+| `pointscmp` | `pointscmp.cpp` | 读一个 double，按 `fabs(ans - out)` 调 `quitp` 给分 | 测试 partial score checker 接口 | 示例性质；普通 ACM/ICPC 式题目不要用 |
+| `pointsinfo` | `pointsinfo.cpp` | 读输出 double 和答案 double，调 `quitpi` 返回 points_info | 测试 points_info 接口 | 示例性质；不是常规正确性 checker |
+| `rcmp` | `rcmp.cpp` | 只比较第一个 double，绝对误差 `1.5e-6` | 单个实数答案，只要求绝对误差 | 名字像相对误差，但源码是单值绝对误差 |
+| `rcmp4` | `rcmp4.cpp` | 比较答案中的 double 序列，绝对或相对误差 `1e-4` | 多个实数 token，误差 `1e-4` | 以答案 EOF 为准读取；确认题面误差匹配 |
+| `rcmp6` | `rcmp6.cpp` | 比较答案中的 double 序列，绝对或相对误差 `1e-6` | 多个实数 token，误差 `1e-6` | 以答案 EOF 为准读取；确认题面误差匹配 |
+| `rcmp9` | `rcmp9.cpp` | 比较答案中的 double 序列，绝对或相对误差 `1e-9` | 多个实数 token，误差 `1e-9` | 精度要求高；确认标准解和输出格式能稳定达到 |
+| `rncmp` | `rncmp.cpp` | 比较答案中的 double 序列，绝对误差 `1.5e-5` | 多个实数 token，只要求绝对误差 | 不适合相对误差题；确认误差宽度 |
+| `uncmp` | `uncmp.cpp` | 比较无序 `int64` 多重集，并检查数量 | 整数输出顺序任意，但元素多重集唯一 | 不保留行结构；不适合非整数或构造合法性验证 |
+| `wcmp` | `wcmp.cpp` | 比较完整 token 序列，大小写敏感，并检查两边 EOF | 普通唯一输出、字符串/整数 token | `YES` 和 `Yes` 不同；浮点误差题不要用 |
+| `yesno` | `yesno.cpp` | 只比较第一个 YES/NO token，大小写不敏感 | 单个 YES/NO 答案且题面允许任意大小写 | 不检查 YES/NO 序列；题面要求精确大写时不要用 |
 
 常用选择：
 
-- 唯一标准输出且大小写敏感：`wcmp`。
-- 行结构有意义：`lcmp`。
-- 纯整数：`icmp` 或 `ncmp`。
-- YES/NO 且题面允许任意大小写：`yesno`。
-- 浮点：按题面误差选择 `rcmp`、`rcmp6`、`rcmp9` 或写专用 checker。
-- 输出顺序任意、答案不唯一、需要验证构造合法性：不要依赖这些简单 checker，写专用 checker。
+- 单个整数：`icmp`；多个整数：`ncmp`；整数顺序任意：`uncmp`。
+- 普通 token 序列：`wcmp`；行结构重要但行内空白不重要：`lcmp`；整行必须完全一致：`fcmp`。
+- 单个 YES/NO 且允许大小写不敏感：`yesno`；多个 YES/NO：`nyesno`。
+- 浮点：单值看 `acmp`/`dcmp`/`rcmp`，序列看 `rcmp4`/`rcmp6`/`rcmp9`/`rncmp`，必须按题面误差选择。
+- 答案不唯一、需要验证构造合法性、需要图/排列/区间等语义检查时，写专用 checker。
