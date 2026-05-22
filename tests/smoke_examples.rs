@@ -391,6 +391,7 @@ fn cli_help_describes_new_workflow_commands() {
     let test_validator_stdout = String::from_utf8_lossy(&test_validator.stdout);
     assert!(test_validator_stdout.contains("--input-path"));
     assert!(test_validator_stdout.contains("--expect"));
+    assert!(test_validator_stdout.contains("--no-fix-line-endings"));
     assert!(!test_validator_stdout.contains("--stdin-text"));
 
     let add_checker = run_cptool(["config", "add", "checker", "--help"], None);

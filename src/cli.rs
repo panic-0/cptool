@@ -120,6 +120,7 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             input_path,
             expect,
             output_limit_bytes,
+            no_fix_line_endings,
             json,
         } => handle_test_validator(
             work_dir,
@@ -127,6 +128,7 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             input_path,
             expect,
             output_limit_bytes,
+            !no_fix_line_endings,
             json,
         )?,
         TestCommands::Checker {
@@ -561,6 +563,7 @@ fn handle_test_validator(
     input_path: PathBuf,
     expect: JudgeExpectationArg,
     output_limit_bytes: usize,
+    fix_line_endings: bool,
     json: bool,
 ) -> anyhow::Result<()> {
     let report = tool::judge_validator(tool::JudgeValidatorOptions {
@@ -569,6 +572,7 @@ fn handle_test_validator(
         input_path,
         expect: convert_judge_expectation(expect),
         output_limit_bytes,
+        fix_line_endings,
     })?;
     print_judge_report(&report, json)?;
     if !report.ok {
@@ -609,6 +613,9 @@ fn print_judge_report(report: &tool::JudgeReport, json: bool) -> anyhow::Result<
     if json {
         self::json::print(&self::json::JudgeJsonSummary::from(report))?;
     } else {
+        for warning in &report.warnings {
+            eprintln!("warning: {} {}", warning.code, warning.message);
+        }
         println!("{}", report.summary_line());
         if !report.ok {
             eprintln!(

@@ -33,7 +33,7 @@ pub use evidence::{
 };
 pub use judge::{
     JudgeCheckerOptions, JudgeExpectation, JudgeKind, JudgeObserved, JudgeReport,
-    JudgeValidatorOptions, judge_checker, judge_validator,
+    JudgeValidatorOptions, JudgeWarning, judge_checker, judge_validator,
 };
 pub use package::{init_package, slugify};
 pub(crate) use problem::resolve_path;

@@ -226,6 +226,11 @@ pub(super) enum TestCommands {
         expect: JudgeExpectationArg,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
+        #[arg(
+            long,
+            help = "Disable automatic native line-ending normalization before running the validator"
+        )]
+        no_fix_line_endings: bool,
         #[arg(long, help = "Print the test result as JSON")]
         json: bool,
     },

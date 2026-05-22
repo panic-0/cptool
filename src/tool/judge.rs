@@ -69,6 +69,7 @@ pub struct JudgeValidatorOptions {
     pub input_path: PathBuf,
     pub expect: JudgeExpectation,
     pub output_limit_bytes: usize,
+    pub fix_line_endings: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -92,6 +93,13 @@ pub struct JudgeReport {
     pub run: RunResult,
     pub report_path: Option<PathBuf>,
     pub report: Option<String>,
+    pub warnings: Vec<JudgeWarning>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct JudgeWarning {
+    pub code: &'static str,
+    pub message: String,
 }
 
 impl JudgeReport {
@@ -126,8 +134,21 @@ pub fn judge_validator(options: JudgeValidatorOptions) -> Result<JudgeReport> {
         .context("validator is not configured; pass --validator or set problem.yaml validator")?;
     let validator = resolve_named_or_source(&work_dir, &problem, &validator_name)?;
     let input_path = resolve_path(&work_dir, &options.input_path);
-    let input = std::fs::read(&input_path)
+    let mut input = std::fs::read(&input_path)
         .with_context(|| format!("failed to read input {}", input_path.display()))?;
+    let warnings = if options.fix_line_endings {
+        fix_validator_input_line_endings(&mut input)
+    } else {
+        Vec::new()
+    };
+    if !warnings.is_empty() {
+        std::fs::write(&input_path, &input).with_context(|| {
+            format!(
+                "failed to normalize validator input {}",
+                input_path.display()
+            )
+        })?;
+    }
     let result = run_spec(
         &work_dir,
         &validator,
@@ -142,6 +163,7 @@ pub fn judge_validator(options: JudgeValidatorOptions) -> Result<JudgeReport> {
         result,
         None,
         None,
+        warnings,
     ))
 }
 
@@ -173,6 +195,7 @@ pub fn judge_checker(options: JudgeCheckerOptions) -> Result<JudgeReport> {
         run.result,
         run.report_path,
         run.report,
+        Vec::new(),
     ))
 }
 
@@ -232,6 +255,7 @@ fn report_from_result(
     run: RunResult,
     report_path: Option<PathBuf>,
     report: Option<String>,
+    warnings: Vec<JudgeWarning>,
 ) -> JudgeReport {
     let observed = if run.ok {
         JudgeObserved::Pass
@@ -247,7 +271,112 @@ fn report_from_result(
         run,
         report_path,
         report,
+        warnings,
     }
+}
+
+fn fix_validator_input_line_endings(input: &mut Vec<u8>) -> Vec<JudgeWarning> {
+    let sample = line_ending_sample(input, 8);
+    if !sample.needs_normalization() {
+        return Vec::new();
+    }
+
+    let mut normalized = Vec::with_capacity(input.len() + native_newline().len());
+    let mut index = 0;
+    while index < input.len() {
+        match input[index] {
+            b'\r' => {
+                if input.get(index + 1) == Some(&b'\n') {
+                    index += 1;
+                }
+                normalized.extend_from_slice(native_newline());
+            }
+            b'\n' => normalized.extend_from_slice(native_newline()),
+            byte => normalized.push(byte),
+        }
+        index += 1;
+    }
+    if sample.missing_final_eol && !normalized.is_empty() {
+        normalized.extend_from_slice(native_newline());
+    }
+    *input = normalized;
+
+    vec![JudgeWarning {
+        code: "input_line_endings_normalized",
+        message: format!(
+            "normalized validator input line endings before running; sampled head/tail lines found crlf={}, lone_lf={}, lone_cr={}, missing_final_eol={}",
+            sample.crlf, sample.lone_lf, sample.lone_cr, sample.missing_final_eol
+        ),
+    }]
+}
+
+#[derive(Default)]
+struct LineEndingSample {
+    crlf: usize,
+    lone_lf: usize,
+    lone_cr: usize,
+    missing_final_eol: bool,
+}
+
+impl LineEndingSample {
+    fn needs_normalization(&self) -> bool {
+        let non_native = if cfg!(windows) {
+            self.lone_lf + self.lone_cr
+        } else {
+            self.crlf + self.lone_cr
+        };
+        non_native > 0 || self.missing_final_eol
+    }
+}
+
+fn line_ending_sample(input: &[u8], lines: usize) -> LineEndingSample {
+    let mut endings = Vec::new();
+    let mut index = 0;
+    while index < input.len() {
+        match input[index] {
+            b'\r' if input.get(index + 1) == Some(&b'\n') => {
+                endings.push(LineEndingKind::Crlf);
+                index += 2;
+            }
+            b'\r' => {
+                endings.push(LineEndingKind::LoneCr);
+                index += 1;
+            }
+            b'\n' => {
+                endings.push(LineEndingKind::LoneLf);
+                index += 1;
+            }
+            _ => index += 1,
+        }
+    }
+
+    let mut sample = LineEndingSample {
+        missing_final_eol: !endings.is_empty() && !matches!(input.last(), Some(b'\n' | b'\r')),
+        ..LineEndingSample::default()
+    };
+    let tail_start = endings.len().saturating_sub(lines);
+    for (idx, ending) in endings.iter().enumerate() {
+        if idx >= lines && idx < tail_start {
+            continue;
+        }
+        match ending {
+            LineEndingKind::Crlf => sample.crlf += 1,
+            LineEndingKind::LoneLf => sample.lone_lf += 1,
+            LineEndingKind::LoneCr => sample.lone_cr += 1,
+        }
+    }
+    sample
+}
+
+#[derive(Clone, Copy)]
+enum LineEndingKind {
+    Crlf,
+    LoneLf,
+    LoneCr,
+}
+
+fn native_newline() -> &'static [u8] {
+    if cfg!(windows) { b"\r\n" } else { b"\n" }
 }
 
 fn run_checker_bytes(

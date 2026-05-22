@@ -51,6 +51,7 @@ pub(super) struct JudgeJsonSummary<'a> {
     run: RunJsonSummary<'a>,
     report_path: Option<&'a PathBuf>,
     report: Option<&'a str>,
+    warnings: &'a [tool::JudgeWarning],
 }
 
 impl<'a> From<&'a tool::JudgeReport> for JudgeJsonSummary<'a> {
@@ -64,6 +65,7 @@ impl<'a> From<&'a tool::JudgeReport> for JudgeJsonSummary<'a> {
             run: RunJsonSummary::from(&report.run),
             report_path: report.report_path.as_ref(),
             report: report.report.as_deref(),
+            warnings: &report.warnings,
         }
     }
 }

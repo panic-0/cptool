@@ -168,6 +168,100 @@ if data != "ok":
 }
 
 #[test]
+fn judge_validator_normalizes_input_line_endings_by_default() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-judge-validator-line-endings");
+    run_cptool(
+        ["pkg", "init", "judge_validator_line_endings", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp
+        .path()
+        .join("problems")
+        .join("judge_validator_line_endings");
+    configure_python_problem(&problem_dir);
+    let expected = if cfg!(windows) {
+        "b'ok\\r\\nnext\\r\\n'"
+    } else {
+        "b'ok\\nnext\\n'"
+    };
+    add_validator_program(
+        &problem_dir,
+        &format!(
+            r#"import sys
+data = sys.stdin.buffer.read()
+if data != {expected}:
+    raise SystemExit(3)
+"#
+        ),
+    );
+    let fixture = problem_dir.join("line_endings.in");
+    if cfg!(windows) {
+        std::fs::write(&fixture, b"ok\nnext\n").unwrap();
+    } else {
+        std::fs::write(&fixture, b"ok\r\nnext\r\n").unwrap();
+    }
+
+    let pass = run_cptool(
+        [
+            "test",
+            "validator",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--input-path",
+            "line_endings.in",
+            "--json",
+        ],
+        None,
+    );
+    let pass_value: Value = serde_json::from_slice(&pass.stdout).unwrap();
+    assert_eq!(pass_value["ok"], true);
+    assert_eq!(
+        pass_value["warnings"][0]["code"],
+        "input_line_endings_normalized"
+    );
+    let native = if cfg!(windows) {
+        b"ok\r\nnext\r\n".as_slice()
+    } else {
+        b"ok\nnext\n".as_slice()
+    };
+    assert_eq!(std::fs::read(&fixture).unwrap(), native);
+
+    let disabled_fixture = problem_dir.join("line_endings_disabled.in");
+    if cfg!(windows) {
+        std::fs::write(&disabled_fixture, b"ok\nnext\n").unwrap();
+    } else {
+        std::fs::write(&disabled_fixture, b"ok\r\nnext\r\n").unwrap();
+    }
+    let disabled = run_cptool_allow_failure(
+        [
+            "test",
+            "validator",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--input-path",
+            "line_endings_disabled.in",
+            "--no-fix-line-endings",
+            "--json",
+        ],
+        None,
+    );
+    assert_eq!(disabled.status.code(), Some(2));
+    let disabled_value: Value = serde_json::from_slice(&disabled.stdout).unwrap();
+    assert_eq!(disabled_value["ok"], false);
+    assert_eq!(disabled_value["warnings"].as_array().unwrap().len(), 0);
+    let non_native = if cfg!(windows) {
+        b"ok\nnext\n".as_slice()
+    } else {
+        b"ok\r\nnext\r\n".as_slice()
+    };
+    assert_eq!(std::fs::read(&disabled_fixture).unwrap(), non_native);
+}
+
+#[test]
 fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
     if !python_available() {
         return;

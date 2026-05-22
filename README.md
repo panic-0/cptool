@@ -46,6 +46,7 @@ CP Tool is a command line tool for competitive programming.
 
 # run validator and checker sanity tests on explicit local files
 ./cptool test validator -w ./example/a_plus_b --input-path ./data/sample-001.in
+./cptool test validator -w ./example/a_plus_b --input-path ./tests/validator/bad.in --expect fail --no-fix-line-endings
 ./cptool test checker -w ./example/a_plus_b --input-path ./data/sample-001.in --output-path ./tmp/std.out --answer-path ./data/sample-001.ans
 
 # print only a compact run summary for large outputs
