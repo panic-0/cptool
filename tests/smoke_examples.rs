@@ -116,6 +116,48 @@ fn init_scaffold_includes_working_testlib_validator() {
 }
 
 #[test]
+fn add_checker_builtin_copies_source_and_check_accepts_package() {
+    let temp = TempWorkspace::new("cptool-add-checker-cli");
+    run_cptool(["init", "checker_cli", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("checker_cli");
+    std::fs::write(
+        problem_dir.join("src").join("gen.cpp"),
+        "int main(){return 0;}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("std.cpp"),
+        "#include <iostream>\nint main(){std::cout << \"OK\\n\";}\n",
+    )
+    .unwrap();
+
+    run_cptool(
+        [
+            "add",
+            "checker",
+            "chk",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--builtin",
+            "wcmp",
+        ],
+        None,
+    );
+
+    let checker_source = std::fs::read_to_string(problem_dir.join("src").join("chk.cpp")).unwrap();
+    assert!(checker_source.starts_with("// Copied from testlib checkers/wcmp.cpp\n"));
+    assert!(checker_source.contains("#include \"testlib.h\""));
+    let problem_yaml = std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap();
+    assert!(problem_yaml.contains("checker: chk\n"));
+    assert!(problem_yaml.contains("path: \"./src/chk.cpp\""));
+
+    run_cptool(["gen", "-w"], Some(&problem_dir));
+    let check = run_cptool(["check", "--json", "-w"], Some(&problem_dir));
+    let value: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
+    assert_eq!(value["status"], "pass");
+}
+
+#[test]
 fn example_problem_packages_generate_and_check() {
     let temp = TempWorkspace::new("cptool-example-packages");
     let example_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("example");

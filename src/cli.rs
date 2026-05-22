@@ -7,12 +7,13 @@ use std::time::{Duration, Instant};
 mod args;
 mod json;
 
-use args::{Cli, Commands};
+use args::{AddCommands, AddProgramKindArg, AddTaskTypeArg, Cli, Commands};
 
 pub fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Init { id, root } => handle_init(id, root)?,
+        Commands::Add { command } => handle_add(command)?,
         Commands::Run {
             program,
             case,
@@ -480,6 +481,101 @@ fn stress_plan_filter(positive_only: bool, negative_only: bool) -> tool::StressP
 
 fn generation_lock_timeout(seconds: Option<u64>) -> Option<Duration> {
     seconds.map(Duration::from_secs)
+}
+
+fn handle_add(command: AddCommands) -> anyhow::Result<()> {
+    match command {
+        AddCommands::Program {
+            name,
+            work_dir,
+            kind,
+            path,
+            time_limit_secs,
+            memory_limit_mb,
+            compile_arg,
+            replace,
+        } => tool::add_program(tool::AddProgramOptions {
+            work_dir,
+            name,
+            kind: kind.map(convert_program_kind),
+            path,
+            time_limit_secs,
+            memory_limit_mb,
+            compile_args: compile_arg,
+            replace,
+        })?,
+        AddCommands::Bundle {
+            name,
+            work_dir,
+            generator,
+            cases,
+            replace,
+        } => tool::add_bundle(tool::AddBundleOptions {
+            work_dir,
+            name,
+            generator,
+            cases: cases.into_iter().map(parse_case_args).collect(),
+            replace,
+        })?,
+        AddCommands::Task {
+            name,
+            work_dir,
+            score,
+            task_type,
+            bundles,
+            dependencies,
+            replace,
+        } => tool::add_task(tool::AddTaskOptions {
+            work_dir,
+            name,
+            score,
+            task_type: convert_task_type(task_type),
+            bundles,
+            dependencies,
+            replace,
+        })?,
+        AddCommands::Checker {
+            name,
+            work_dir,
+            builtin,
+            time_limit_secs,
+            memory_limit_mb,
+            compile_arg,
+            replace,
+        } => tool::add_checker(tool::AddCheckerOptions {
+            work_dir,
+            name,
+            builtin,
+            time_limit_secs,
+            memory_limit_mb,
+            compile_args: compile_arg,
+            replace,
+        })?,
+    }
+    Ok(())
+}
+
+fn parse_case_args(value: String) -> Vec<String> {
+    if value.is_empty() {
+        Vec::new()
+    } else {
+        value.split(',').map(str::to_string).collect()
+    }
+}
+
+fn convert_program_kind(value: AddProgramKindArg) -> tool::AddProgramKind {
+    match value {
+        AddProgramKindArg::Cpp => tool::AddProgramKind::Cpp,
+        AddProgramKindArg::Python => tool::AddProgramKind::Python,
+        AddProgramKindArg::Command => tool::AddProgramKind::Command,
+    }
+}
+
+fn convert_task_type(value: AddTaskTypeArg) -> tool::TestTaskType {
+    match value {
+        AddTaskTypeArg::Min => tool::TestTaskType::Min,
+        AddTaskTypeArg::Sum => tool::TestTaskType::Sum,
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use cptool::export::OnlineJudge;
 use cptool::tool::DEFAULT_OUTPUT_LIMIT_BYTES;
 use std::path::PathBuf;
@@ -27,6 +27,11 @@ pub(super) enum Commands {
             help = "Workspace root that receives problems/, or the problems/ directory itself"
         )]
         root: PathBuf,
+    },
+    #[command(about = "Add programs, bundles, tasks, or checkers to problem.yaml")]
+    Add {
+        #[command(subcommand)]
+        command: AddCommands,
     },
     #[command(about = "Run a configured program or source file on package input")]
     Run {
@@ -271,6 +276,129 @@ pub(super) enum Commands {
         #[arg(long, value_enum, help = "Target online judge format")]
         oj: OnlineJudge,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum AddCommands {
+    #[command(about = "Register a program, auto-creating src/<name>.cpp when needed")]
+    Program {
+        #[arg(help = "Program key to add under problem.yaml programs")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(
+            long,
+            value_enum,
+            help = "Program kind; inferred from path when omitted"
+        )]
+        kind: Option<AddProgramKindArg>,
+        #[arg(long, help = "Program path; defaults to src/<name>.* auto-detection")]
+        path: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            value_parser = positive_f64,
+            help = "Configured program time limit in seconds"
+        )]
+        time_limit_secs: Option<f64>,
+        #[arg(
+            long,
+            value_name = "MB",
+            value_parser = positive_f64,
+            help = "Configured program memory limit in megabytes"
+        )]
+        memory_limit_mb: Option<f64>,
+        #[arg(
+            long,
+            value_name = "ARG",
+            help = "C++ compile arg; replaces defaults when present"
+        )]
+        compile_arg: Vec<String>,
+        #[arg(long, help = "Replace an existing program entry")]
+        replace: bool,
+    },
+    #[command(about = "Register a test bundle")]
+    Bundle {
+        #[arg(help = "Bundle name to add under test.bundles")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Generator program for every added case; defaults to gen")]
+        generator: Option<String>,
+        #[arg(
+            long = "case",
+            required = true,
+            help = "Comma-separated generator args; use an empty string for []"
+        )]
+        cases: Vec<String>,
+        #[arg(long, help = "Replace an existing bundle")]
+        replace: bool,
+    },
+    #[command(about = "Register a test task")]
+    Task {
+        #[arg(help = "Task name to add under test.tasks")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Task score")]
+        score: f64,
+        #[arg(long = "type", value_enum, default_value_t = AddTaskTypeArg::Min, help = "Task scoring aggregation type")]
+        task_type: AddTaskTypeArg,
+        #[arg(
+            long = "bundle",
+            required = true,
+            help = "Bundle included in this task"
+        )]
+        bundles: Vec<String>,
+        #[arg(long = "depends", help = "Task dependency")]
+        dependencies: Vec<String>,
+        #[arg(long, help = "Replace an existing task")]
+        replace: bool,
+    },
+    #[command(about = "Register a checker, copying a built-in testlib checker into src/")]
+    Checker {
+        #[arg(default_value = "chk", help = "Checker program key; defaults to chk")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Built-in testlib checker id to copy, e.g. wcmp")]
+        builtin: String,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            value_parser = positive_f64,
+            help = "Configured checker time limit in seconds"
+        )]
+        time_limit_secs: Option<f64>,
+        #[arg(
+            long,
+            value_name = "MB",
+            value_parser = positive_f64,
+            help = "Configured checker memory limit in megabytes"
+        )]
+        memory_limit_mb: Option<f64>,
+        #[arg(
+            long,
+            value_name = "ARG",
+            help = "C++ compile arg; replaces defaults when present"
+        )]
+        compile_arg: Vec<String>,
+        #[arg(long, help = "Replace existing checker config or source")]
+        replace: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(super) enum AddProgramKindArg {
+    Cpp,
+    Python,
+    Command,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(super) enum AddTaskTypeArg {
+    Min,
+    Sum,
 }
 
 pub(super) fn positive_seconds(value: &str) -> Result<u64, String> {
