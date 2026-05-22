@@ -184,4 +184,4 @@ On Windows, publish a GitHub release from a clean checkout with:
 .\scripts\release.ps1 -Version 0.9.0
 ```
 
-Replace `0.9.0` with the current `Cargo.toml` version. The script runs `scripts/check.py`, builds release artifacts with `scripts/build-release.ps1`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.
+Replace `0.9.0` with the current `Cargo.toml` version. The script runs `scripts/check.py`, builds release artifacts with `scripts/build_release.py`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.

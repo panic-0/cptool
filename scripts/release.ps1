@@ -15,6 +15,11 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
 Set-Location $repoRoot
 
+$Python = $env:PYTHON
+if (-not $Python) {
+    $Python = "python"
+}
+
 function Get-CargoVersion {
     $versionLine = Select-String -Path "Cargo.toml" -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
     if (-not $versionLine) {
@@ -91,7 +96,12 @@ if (-not $SkipChecks) {
 }
 
 if (-not $SkipBuild) {
-    Assert-CommandOk { & (Join-Path $scriptDir "build-release.ps1") -Target $Target -Version $Version }
+    Assert-CommandOk {
+        & $Python (Join-Path $scriptDir "build_release.py") `
+            --usage-name "python scripts/build_release.py" `
+            --target $Target `
+            --version $Version
+    }
 }
 
 $assets = Get-ChildItem -Path (Join-Path $repoRoot "dist") -File |
