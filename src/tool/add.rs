@@ -650,6 +650,23 @@ mod tests {
     use super::*;
     use crate::tool::{init_package, load_problem, temp_test_dir};
 
+    fn remove_default_checker(problem_dir: &Path) {
+        let mut problem = read_problem(problem_dir).unwrap();
+        problem.checker_name = None;
+        problem.programs.remove("chk");
+        write_problem(problem_dir, &problem).unwrap();
+        let source_path = problem_dir.join("src").join("chk.cpp");
+        if source_path.exists() {
+            std::fs::remove_file(source_path).unwrap();
+        }
+    }
+
+    fn clear_default_checker_role(problem_dir: &Path) {
+        let mut problem = read_problem(problem_dir).unwrap();
+        problem.checker_name = None;
+        write_problem(problem_dir, &problem).unwrap();
+    }
+
     #[test]
     fn add_program_creates_default_cpp() {
         let root = temp_test_dir("cptool-add-program");
@@ -762,6 +779,7 @@ mod tests {
     fn add_checker_copies_builtin_with_origin_comment() {
         let root = temp_test_dir("cptool-add-checker");
         let problem_dir = init_package(&root, "Add Checker").unwrap();
+        remove_default_checker(&problem_dir);
 
         add_checker(AddCheckerOptions {
             work_dir: problem_dir.clone(),
@@ -910,6 +928,7 @@ mod tests {
     fn add_checker_registers_existing_custom_source_without_builtin() {
         let root = temp_test_dir("cptool-add-checker-existing-custom");
         let problem_dir = init_package(&root, "Add Checker Existing Custom").unwrap();
+        clear_default_checker_role(&problem_dir);
         let custom_source = "#include \"testlib.h\"\nint main(int argc, char** argv) { registerTestlibCmd(argc, argv); quitf(_ok, \"ok\"); }\n";
         std::fs::write(problem_dir.join("src").join("chk.cpp"), custom_source).unwrap();
 
@@ -937,6 +956,7 @@ mod tests {
     fn add_checker_creates_default_cpp_without_builtin_or_source() {
         let root = temp_test_dir("cptool-add-checker-create");
         let problem_dir = init_package(&root, "Add Checker Create").unwrap();
+        remove_default_checker(&problem_dir);
 
         add_checker(AddCheckerOptions {
             work_dir: problem_dir.clone(),
@@ -963,6 +983,7 @@ mod tests {
     fn add_checker_can_mark_existing_program_as_checker() {
         let root = temp_test_dir("cptool-add-checker-existing-program");
         let problem_dir = init_package(&root, "Add Checker Existing Program").unwrap();
+        remove_default_checker(&problem_dir);
         add_program(AddProgramOptions {
             work_dir: problem_dir.clone(),
             name: "chk".to_string(),

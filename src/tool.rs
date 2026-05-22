@@ -95,12 +95,19 @@ mod tests {
         assert!(problem_dir.join("src").join("brute.cpp").exists());
         assert!(problem_dir.join("src").join("gen.cpp").exists());
         assert!(problem_dir.join("src").join("val.cpp").exists());
+        assert!(problem_dir.join("src").join("chk.cpp").exists());
         assert!(problem_dir.join("src").join("testlib.h").exists());
         let generator_source =
             std::fs::read_to_string(problem_dir.join("src").join("gen.cpp")).unwrap();
         assert!(generator_source.contains("#include \"testlib.h\""));
         assert!(generator_source.contains("registerGen(argc, argv, 1);"));
+        let checker_source =
+            std::fs::read_to_string(problem_dir.join("src").join("chk.cpp")).unwrap();
+        assert!(checker_source.starts_with("// Copied from testlib checkers/wcmp.cpp\n"));
+        assert!(checker_source.contains("compare sequences of tokens"));
+        assert!(problem_dir.join("tests").join("checker").is_dir());
         assert!(problem_dir.join("tests").join("failures").is_dir());
+        assert!(problem_dir.join("tests").join("validator").is_dir());
         assert!(problem_dir.join(".gitignore").exists());
         assert!(!problem_dir.join("quality_report.md").exists());
         assert!(!problem_dir.join("problem.md").exists());
@@ -112,6 +119,7 @@ mod tests {
         assert_eq!(problem.programs["gen"].time_limit_secs, 3.0);
         assert_eq!(problem.programs["std"].time_limit_secs, 3.0);
         assert_eq!(problem.programs["brute"].time_limit_secs, 3.0);
+        assert_eq!(problem.programs["chk"].time_limit_secs, 3.0);
         let yaml = std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap();
         assert!(yaml.contains("time_limit_secs: 3.0\n"));
         assert!(yaml.contains("memory_limit_mb: 512.0\n"));
@@ -121,11 +129,18 @@ mod tests {
         ));
         assert!(!yaml.contains("      compile_args:"));
         assert_eq!(problem.validator_name.as_deref(), Some("val"));
+        assert_eq!(problem.checker_name.as_deref(), Some("chk"));
         match &problem.programs["val"].info {
             ProgramInfo::Cpp(program) => {
                 assert_eq!(program.path, std::path::PathBuf::from("./src/val.cpp"))
             }
             other => panic!("expected val to be a C++ program, got {other:?}"),
+        }
+        match &problem.programs["chk"].info {
+            ProgramInfo::Cpp(program) => {
+                assert_eq!(program.path, std::path::PathBuf::from("./src/chk.cpp"))
+            }
+            other => panic!("expected chk to be a C++ program, got {other:?}"),
         }
 
         std::fs::remove_dir_all(root).unwrap();

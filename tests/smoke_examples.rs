@@ -147,6 +147,7 @@ fn add_checker_builtin_copies_source_and_check_accepts_package() {
             problem_dir.to_str().unwrap(),
             "--builtin",
             "wcmp",
+            "--replace",
         ],
         None,
     );

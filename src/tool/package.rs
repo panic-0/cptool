@@ -17,6 +17,10 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 "#;
+const DEFAULT_CHECKER_CPP: &str = concat!(
+    "// Copied from testlib checkers/wcmp.cpp\n",
+    include_str!("../../example/assets/testlib/checkers/wcmp.cpp")
+);
 
 pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     let slug = slugify(id)?;
@@ -27,7 +31,9 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
 
     std::fs::create_dir_all(problem_dir.join("src"))?;
     std::fs::create_dir_all(problem_dir.join("data"))?;
+    std::fs::create_dir_all(problem_dir.join("tests").join("checker"))?;
     std::fs::create_dir_all(problem_dir.join("tests").join("failures"))?;
+    std::fs::create_dir_all(problem_dir.join("tests").join("validator"))?;
     std::fs::write(problem_dir.join("statement.md"), "# 题面\n\n")?;
     std::fs::write(problem_dir.join("editorial.md"), "# 题解\n\n")?;
     std::fs::write(
@@ -44,12 +50,13 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
         problem_dir.join("src").join("val.cpp"),
         DEFAULT_VALIDATOR_CPP,
     )?;
+    std::fs::write(problem_dir.join("src").join("chk.cpp"), DEFAULT_CHECKER_CPP)?;
     std::fs::write(problem_dir.join("src").join("testlib.h"), TESTLIB_H)?;
     let yaml_name = serde_yml::to_string(id)?.trim_end().to_string();
     std::fs::write(
         problem_dir.join("problem.yaml"),
         format!(
-            "name: {yaml_name}\ntime_limit_secs: 3.0\nmemory_limit_mb: 512.0\ncpp_compile_args: [-O2, -std=c++20]\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n  val:\n    info: !cpp\n      path: ./src/val.cpp\nsolution: std\nvalidator: val\ngenerator: gen\ntest:\n  type: min\n  bundles:\n    sample:\n      cases:\n      - []\n  tasks:\n  - name: sample\n    score: 100.0\n    bundles: [sample]\n",
+            "name: {yaml_name}\ntime_limit_secs: 3.0\nmemory_limit_mb: 512.0\ncpp_compile_args: [-O2, -std=c++20]\nprograms:\n  gen:\n    info: !cpp\n      path: ./src/gen.cpp\n  std:\n    info: !cpp\n      path: ./src/std.cpp\n  brute:\n    info: !cpp\n      path: ./src/brute.cpp\n  val:\n    info: !cpp\n      path: ./src/val.cpp\n  chk:\n    info: !cpp\n      path: ./src/chk.cpp\nsolution: std\nvalidator: val\nchecker: chk\ngenerator: gen\ntest:\n  type: min\n  bundles:\n    sample:\n      cases:\n      - []\n  tasks:\n  - name: sample\n    score: 100.0\n    bundles: [sample]\n",
         ),
     )?;
     Ok(problem_dir)
