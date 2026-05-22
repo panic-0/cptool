@@ -10,14 +10,18 @@ fn stress_plan_runs_named_plan_without_seed_config() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-plan");
-    run_cptool(["init", "stress_plan_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "stress_plan_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("stress_plan_problem");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
 
     let output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -39,12 +43,16 @@ fn stress_uses_configured_checker_instead_of_text_comparison() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-checker");
-    run_cptool(["init", "stress_checker", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "stress_checker", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("stress_checker");
     configure_checker_python_problem(&problem_dir);
 
     let output = run_cptool(
         [
+            "test",
             "stress",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -76,7 +84,10 @@ fn stress_plan_expect_fail_records_checker_rejection_artifact() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-checker-fail");
-    run_cptool(["init", "stress_checker_fail", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "stress_checker_fail", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("stress_checker_fail");
     configure_checker_python_problem(&problem_dir);
     let yaml_path = problem_dir.join("problem.yaml");
@@ -96,7 +107,8 @@ fn stress_plan_expect_fail_records_checker_rejection_artifact() {
 
     let output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -134,7 +146,7 @@ fn stress_plan_expect_fail_rejects_checker_infrastructure_failure() {
 
     let temp = TempWorkspace::new("cptool-stress-checker-crash");
     run_cptool(
-        ["init", "stress_checker_crash", "--root"],
+        ["pkg", "init", "stress_checker_crash", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("stress_checker_crash");
@@ -164,7 +176,8 @@ raise SystemExit(3)
 
     let output = run_cptool_allow_failure(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -195,7 +208,7 @@ fn stress_plan_json_waits_for_generation_lock_and_stays_parseable() {
 
     let temp = TempWorkspace::new("cptool-stress-plan-json-wait-lock");
     run_cptool(
-        ["init", "stress_plan_json_wait_lock", "--root"],
+        ["pkg", "init", "stress_plan_json_wait_lock", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp
@@ -208,7 +221,8 @@ fn stress_plan_json_waits_for_generation_lock_and_stays_parseable() {
 
     let output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -235,14 +249,18 @@ fn stress_plan_summary_only_suppresses_case_progress() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-plan-summary");
-    run_cptool(["init", "stress_plan_summary", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "stress_plan_summary", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("stress_plan_summary");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
 
     let output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -269,14 +287,18 @@ fn stress_plan_summary_only_json_prints_plan_summaries() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-plan-json");
-    run_cptool(["init", "stress_plan_json", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "stress_plan_json", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("stress_plan_json");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
 
     let output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -303,7 +325,10 @@ fn stress_plan_can_filter_positive_and_negative_plans() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-plan-filters");
-    run_cptool(["init", "stress_plan_filters", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "stress_plan_filters", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("stress_plan_filters");
     configure_python_problem(&problem_dir);
     std::fs::write(
@@ -319,7 +344,8 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     let positive = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -335,7 +361,8 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     let negative = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -359,7 +386,10 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-empty-output");
-    run_cptool(["init", "stress_empty_output", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "stress_empty_output", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("stress_empty_output");
     configure_python_problem(&problem_dir);
     std::fs::write(
@@ -370,6 +400,7 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
 
     let output = run_cptool(
         [
+            "test",
             "stress",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -401,12 +432,16 @@ fn stress_reports_single_unique_input_hash_for_fixed_args() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-fixed-args");
-    run_cptool(["init", "stress_fixed_args", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "stress_fixed_args", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("stress_fixed_args");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
         [
+            "test",
             "stress",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -440,12 +475,13 @@ fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
     }
 
     let temp = TempWorkspace::new("cptool-stress-json");
-    run_cptool(["init", "stress_json", "--root"], Some(temp.path()));
+    run_cptool(["pkg", "init", "stress_json", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("stress_json");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
         [
+            "test",
             "stress",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -482,7 +518,7 @@ fn stress_expands_case_placeholder_and_reports_unique_inputs() {
 
     let temp = TempWorkspace::new("cptool-stress-case-placeholder");
     run_cptool(
-        ["init", "stress_case_placeholder", "--root"],
+        ["pkg", "init", "stress_case_placeholder", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("stress_case_placeholder");
@@ -490,6 +526,7 @@ fn stress_expands_case_placeholder_and_reports_unique_inputs() {
 
     let output = run_cptool(
         [
+            "test",
             "stress",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -522,7 +559,7 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
 
     let temp = TempWorkspace::new("cptool-stress-plan-empty-summary");
     run_cptool(
-        ["init", "stress_plan_empty_summary", "--root"],
+        ["pkg", "init", "stress_plan_empty_summary", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp
@@ -539,7 +576,8 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
 
     let output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -567,7 +605,7 @@ fn stress_plan_expands_seed_and_case_placeholders() {
 
     let temp = TempWorkspace::new("cptool-stress-plan-placeholders");
     run_cptool(
-        ["init", "stress_plan_placeholders", "--root"],
+        ["pkg", "init", "stress_plan_placeholders", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp
@@ -580,7 +618,8 @@ fn stress_plan_expands_seed_and_case_placeholders() {
 
     let output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -602,7 +641,7 @@ fn stress_plan_expect_fail_treats_wrong_answer_as_success() {
 
     let temp = TempWorkspace::new("cptool-stress-plan-expect-fail");
     run_cptool(
-        ["init", "stress_plan_expect_fail", "--root"],
+        ["pkg", "init", "stress_plan_expect_fail", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("stress_plan_expect_fail");
@@ -620,7 +659,8 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     let output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -648,7 +688,8 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     let json_output = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",

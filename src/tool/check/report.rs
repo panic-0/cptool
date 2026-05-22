@@ -77,7 +77,7 @@ impl CheckReport {
     pub fn render_text(&self) -> String {
         let mut out = String::new();
         let status = if self.has_errors() { "FAIL" } else { "PASS" };
-        let _ = writeln!(out, "# cptool check report");
+        let _ = writeln!(out, "# cptool pkg check report");
         let _ = writeln!(out);
         let _ = writeln!(out, "- work_dir: `{}`", self.work_dir.display());
         let _ = writeln!(out, "- status: `{status}`");

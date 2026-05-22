@@ -59,7 +59,7 @@ impl EvidenceReport {
 
     pub fn render_text(&self) -> String {
         let mut out = String::new();
-        out.push_str("# cptool evidence report\n\n");
+        out.push_str("# cptool report evidence\n\n");
         out.push_str(&format!("- cptool_version: `{}`\n", self.cptool_version));
         out.push_str(&format!("- work_dir: `{}`\n", self.work_dir.display()));
         out.push_str(&format!("- check: {}\n", self.check.summary()));
@@ -306,7 +306,7 @@ fn read_reused_stress_plan(path: &Path) -> anyhow::Result<Vec<StressSummary>> {
         .with_context(|| format!("failed to read stress-plan JSON `{}`", path.display()))?;
     let report: StressPlanJsonReport = serde_json::from_str(&text).with_context(|| {
         format!(
-            "failed to parse stress-plan JSON `{}`; expected output from `cptool stress-plan --summary-only --json`",
+            "failed to parse stress-plan JSON `{}`; expected output from `cptool test plan --summary-only --json`",
             path.display()
         )
     })?;

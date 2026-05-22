@@ -8,16 +8,72 @@ mod args;
 mod json;
 
 use args::{
-    AddCommands, AddProgramKindArg, AddTaskTypeArg, Cli, Commands, JudgeCommands,
-    JudgeExpectationArg,
+    AddCommands, AddProgramKindArg, AddTaskTypeArg, CaseCommands, Cli, Commands, ConfigCommands,
+    JudgeExpectationArg, PkgCommands, ReportCommands, TestCommands,
 };
 
 pub fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init { id, root } => handle_init(id, root)?,
-        Commands::Add { command } => handle_add(command)?,
-        Commands::Run {
+        Commands::Pkg { command } => handle_pkg(command)?,
+        Commands::Config { command } => handle_config(command)?,
+        Commands::Case { command } => handle_case(command)?,
+        Commands::Test { command } => handle_test(command)?,
+        Commands::Report { command } => handle_report(command)?,
+    }
+    Ok(())
+}
+
+fn handle_pkg(command: PkgCommands) -> anyhow::Result<()> {
+    match command {
+        PkgCommands::Init { id, root } => handle_init(id, root)?,
+        PkgCommands::Check {
+            work_dir,
+            wait_for_generation_lock,
+            json,
+        } => handle_check(work_dir, wait_for_generation_lock, json)?,
+        PkgCommands::Clean {
+            work_dir,
+            data,
+            cache,
+            json,
+        } => handle_clean(work_dir, data, cache, json)?,
+        PkgCommands::Export { work_dir, oj } => handle_export(work_dir, oj)?,
+    }
+    Ok(())
+}
+
+fn handle_config(command: ConfigCommands) -> anyhow::Result<()> {
+    match command {
+        ConfigCommands::Add { command } => handle_add(command)?,
+    }
+    Ok(())
+}
+
+fn handle_case(command: CaseCommands) -> anyhow::Result<()> {
+    match command {
+        CaseCommands::Gen {
+            work_dir,
+            bundle,
+            case,
+            output_dir,
+            output_limit_bytes,
+            wait_for_generation_lock,
+            clean,
+            summary_only,
+            json,
+        } => handle_gen(GenCommandOptions {
+            work_dir,
+            bundle,
+            case,
+            output_dir,
+            output_limit_bytes,
+            wait_for_generation_lock,
+            clean,
+            summary_only,
+            json,
+        })?,
+        CaseCommands::Run {
             program,
             case,
             work_dir,
@@ -52,35 +108,47 @@ pub fn run() -> anyhow::Result<()> {
             hide_stdout,
             args,
         })?,
-        Commands::Judge { command } => handle_judge(command)?,
-        Commands::Gen {
+    }
+    Ok(())
+}
+
+fn handle_test(command: TestCommands) -> anyhow::Result<()> {
+    match command {
+        TestCommands::Validator {
             work_dir,
-            bundle,
-            case,
-            output_dir,
+            validator,
+            input_path,
+            expect,
             output_limit_bytes,
-            wait_for_generation_lock,
-            clean,
-            summary_only,
             json,
-        } => handle_gen(GenCommandOptions {
+        } => handle_test_validator(
             work_dir,
-            bundle,
-            case,
-            output_dir,
+            validator,
+            input_path,
+            expect,
             output_limit_bytes,
-            wait_for_generation_lock,
-            clean,
-            summary_only,
+            json,
+        )?,
+        TestCommands::Checker {
+            work_dir,
+            checker,
+            input_path,
+            output_path,
+            answer_path,
+            expect,
+            output_limit_bytes,
+            json,
+        } => handle_test_checker(TestCheckerCommandOptions {
+            work_dir,
+            checker,
+            input_path,
+            output_path,
+            answer_path,
+            expect,
+            output_limit_bytes,
             json,
         })?,
-        Commands::Clean {
-            work_dir,
-            data,
-            cache,
-            json,
-        } => handle_clean(work_dir, data, cache, json)?,
-        Commands::Stress {
+        TestCommands::Stress {
             work_dir,
             generator,
             against,
@@ -99,7 +167,7 @@ pub fn run() -> anyhow::Result<()> {
             json,
             args,
         })?,
-        Commands::StressPlan {
+        TestCommands::Plan {
             work_dir,
             name,
             output_limit_bytes,
@@ -120,12 +188,13 @@ pub fn run() -> anyhow::Result<()> {
             negative_only,
             json,
         })?,
-        Commands::Check {
-            work_dir,
-            wait_for_generation_lock,
-            json,
-        } => handle_check(work_dir, wait_for_generation_lock, json)?,
-        Commands::Evidence {
+    }
+    Ok(())
+}
+
+fn handle_report(command: ReportCommands) -> anyhow::Result<()> {
+    match command {
+        ReportCommands::Evidence {
             work_dir,
             output_limit_bytes,
             skip_gen,
@@ -144,7 +213,6 @@ pub fn run() -> anyhow::Result<()> {
             json,
             markdown,
         })?,
-        Commands::Export { work_dir, oj } => handle_export(work_dir, oj)?,
     }
     Ok(())
 }
@@ -487,49 +555,50 @@ fn generation_lock_timeout(seconds: Option<u64>) -> Option<Duration> {
     seconds.map(Duration::from_secs)
 }
 
-fn handle_judge(command: JudgeCommands) -> anyhow::Result<()> {
-    let report = match command {
-        JudgeCommands::Validator {
-            work_dir,
-            validator,
-            input_path,
-            expect,
-            output_limit_bytes,
-            json,
-        } => {
-            let report = tool::judge_validator(tool::JudgeValidatorOptions {
-                work_dir,
-                validator,
-                input_path,
-                expect: convert_judge_expectation(expect),
-                output_limit_bytes,
-            })?;
-            print_judge_report(&report, json)?;
-            report
-        }
-        JudgeCommands::Checker {
-            work_dir,
-            checker,
-            input_path,
-            output_path,
-            answer_path,
-            expect,
-            output_limit_bytes,
-            json,
-        } => {
-            let report = tool::judge_checker(tool::JudgeCheckerOptions {
-                work_dir,
-                checker,
-                input_path,
-                output_path,
-                answer_path,
-                expect: convert_judge_expectation(expect),
-                output_limit_bytes,
-            })?;
-            print_judge_report(&report, json)?;
-            report
-        }
-    };
+fn handle_test_validator(
+    work_dir: PathBuf,
+    validator: Option<String>,
+    input_path: PathBuf,
+    expect: JudgeExpectationArg,
+    output_limit_bytes: usize,
+    json: bool,
+) -> anyhow::Result<()> {
+    let report = tool::judge_validator(tool::JudgeValidatorOptions {
+        work_dir,
+        validator,
+        input_path,
+        expect: convert_judge_expectation(expect),
+        output_limit_bytes,
+    })?;
+    print_judge_report(&report, json)?;
+    if !report.ok {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+struct TestCheckerCommandOptions {
+    work_dir: PathBuf,
+    checker: Option<String>,
+    input_path: PathBuf,
+    output_path: PathBuf,
+    answer_path: PathBuf,
+    expect: JudgeExpectationArg,
+    output_limit_bytes: usize,
+    json: bool,
+}
+
+fn handle_test_checker(options: TestCheckerCommandOptions) -> anyhow::Result<()> {
+    let report = tool::judge_checker(tool::JudgeCheckerOptions {
+        work_dir: options.work_dir,
+        checker: options.checker,
+        input_path: options.input_path,
+        output_path: options.output_path,
+        answer_path: options.answer_path,
+        expect: convert_judge_expectation(options.expect),
+        output_limit_bytes: options.output_limit_bytes,
+    })?;
+    print_judge_report(&report, options.json)?;
     if !report.ok {
         std::process::exit(2);
     }

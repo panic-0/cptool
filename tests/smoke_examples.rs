@@ -9,11 +9,11 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
     }
 
     let temp = TempWorkspace::new("cptool-full-flow");
-    run_cptool(["init", "flow_problem", "--root"], Some(temp.path()));
+    run_cptool(["pkg", "init", "flow_problem", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("flow_problem");
     configure_python_problem(&problem_dir);
 
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
     assert_eq!(
         std::fs::read_to_string(problem_dir.join("data").join("sample-0.in")).unwrap(),
@@ -27,6 +27,7 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
     let stdout_path = problem_dir.join("actual.out");
     run_cptool(
         [
+            "case",
             "run",
             "std",
             "sample[0]",
@@ -41,6 +42,7 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
 
     run_cptool(
         [
+            "test",
             "stress",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -61,6 +63,7 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
 
     run_cptool(
         [
+            "pkg",
             "export",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -85,7 +88,10 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
 #[test]
 fn init_scaffold_includes_working_testlib_validator() {
     let temp = TempWorkspace::new("cptool-init-testlib-validator");
-    run_cptool(["init", "testlib_validator", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "testlib_validator", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("testlib_validator");
 
     assert!(problem_dir.join("src").join("val.cpp").exists());
@@ -101,8 +107,8 @@ fn init_scaffold_includes_working_testlib_validator() {
     )
     .unwrap();
 
-    run_cptool(["gen", "-w"], Some(&problem_dir));
-    let check = run_cptool(["check", "--json", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
+    let check = run_cptool(["pkg", "check", "--json", "-w"], Some(&problem_dir));
     let value: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
 
     assert_eq!(value["status"], "pass");
@@ -118,7 +124,7 @@ fn init_scaffold_includes_working_testlib_validator() {
 #[test]
 fn add_checker_builtin_copies_source_and_check_accepts_package() {
     let temp = TempWorkspace::new("cptool-add-checker-cli");
-    run_cptool(["init", "checker_cli", "--root"], Some(temp.path()));
+    run_cptool(["pkg", "init", "checker_cli", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("checker_cli");
     std::fs::write(
         problem_dir.join("src").join("gen.cpp"),
@@ -133,6 +139,7 @@ fn add_checker_builtin_copies_source_and_check_accepts_package() {
 
     run_cptool(
         [
+            "config",
             "add",
             "checker",
             "chk",
@@ -151,8 +158,8 @@ fn add_checker_builtin_copies_source_and_check_accepts_package() {
     assert!(problem_yaml.contains("checker: chk\n"));
     assert!(problem_yaml.contains("path: \"./src/chk.cpp\""));
 
-    run_cptool(["gen", "-w"], Some(&problem_dir));
-    let check = run_cptool(["check", "--json", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
+    let check = run_cptool(["pkg", "check", "--json", "-w"], Some(&problem_dir));
     let value: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
     assert_eq!(value["status"], "pass");
 }
@@ -171,11 +178,11 @@ fn example_problem_packages_generate_and_check() {
             continue;
         }
         let work_dir = problem_dir.to_str().unwrap();
-        let gen_output = run_cptool(["gen", "-w", work_dir, "--summary-only"], None);
+        let gen_output = run_cptool(["case", "gen", "-w", work_dir, "--summary-only"], None);
         let gen_stdout = String::from_utf8_lossy(&gen_output.stdout);
         assert!(gen_stdout.contains("gen: ok"));
 
-        let check = run_cptool(["check", "-w", work_dir], None);
+        let check = run_cptool(["pkg", "check", "-w", work_dir], None);
         let check_stdout = String::from_utf8_lossy(&check.stdout);
         assert!(check_stdout.contains("status: `PASS`"));
         checked.push(
@@ -198,7 +205,10 @@ fn add_validator_registers_detected_source_and_check_accepts_package() {
     }
 
     let temp = TempWorkspace::new("cptool-add-validator-cli");
-    run_cptool(["init", "validator_cli", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "validator_cli", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("validator_cli");
     configure_python_problem(&problem_dir);
     std::fs::remove_file(problem_dir.join("src").join("val.cpp")).unwrap();
@@ -216,6 +226,7 @@ int(data[1])
 
     run_cptool(
         [
+            "config",
             "add",
             "validator",
             "val",
@@ -231,6 +242,7 @@ int(data[1])
 
     let gen_output = run_cptool(
         [
+            "case",
             "gen",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -243,7 +255,13 @@ int(data[1])
     assert_eq!(gen_value["validator_configured"], true);
     assert_eq!(gen_value["validator_calls"], 1);
     let check = run_cptool(
-        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "pkg",
+            "check",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let value: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
@@ -264,11 +282,14 @@ fn unicode_paths_and_utf8_data_flow_through_cli() {
     }
 
     let temp = TempWorkspace::new("cptool-unicode 路径");
-    run_cptool(["init", "unicode_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "unicode_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("unicode_problem");
     configure_unicode_python_problem(&problem_dir);
 
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
     assert_eq!(
         std::fs::read_to_string(problem_dir.join("data").join("sample-0.in")).unwrap(),
@@ -282,6 +303,7 @@ fn unicode_paths_and_utf8_data_flow_through_cli() {
     let stdout_path = problem_dir.join("输出 结果.out");
     run_cptool(
         [
+            "case",
             "run",
             "std",
             "sample[0]",
@@ -297,12 +319,13 @@ fn unicode_paths_and_utf8_data_flow_through_cli() {
         "答案: 你好 世界\n"
     );
 
-    let check = run_cptool(["check", "-w"], Some(&problem_dir));
+    let check = run_cptool(["pkg", "check", "-w"], Some(&problem_dir));
     let check_stdout = String::from_utf8_lossy(&check.stdout);
     assert!(check_stdout.contains("status: `PASS`"));
 
     run_cptool(
         [
+            "pkg",
             "export",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -332,13 +355,11 @@ fn cli_help_describes_new_workflow_commands() {
     let top = run_cptool(["--help"], None);
     let top_stdout = String::from_utf8_lossy(&top.stdout);
 
-    assert!(top_stdout.contains("check"));
-    assert!(top_stdout.contains("clean"));
-    assert!(top_stdout.contains("evidence"));
-    assert!(top_stdout.contains("judge"));
-    assert!(top_stdout.contains("stress-plan"));
+    for command in ["pkg", "config", "case", "test", "report"] {
+        assert!(top_stdout.contains(command));
+    }
 
-    let gen_help = run_cptool(["gen", "--help"], None);
+    let gen_help = run_cptool(["case", "gen", "--help"], None);
     let gen_stdout = String::from_utf8_lossy(&gen_help.stdout);
     assert!(gen_stdout.contains("--clean"));
     assert!(gen_stdout.contains("Remove stale .in/.ans files"));
@@ -347,7 +368,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(gen_stdout.contains("--json"));
     assert!(gen_stdout.contains("--wait-for-generation-lock"));
 
-    let run = run_cptool(["run", "--help"], None);
+    let run = run_cptool(["case", "run", "--help"], None);
     let run_stdout = String::from_utf8_lossy(&run.stdout);
     assert!(run_stdout.contains("--summary-only"));
     assert!(run_stdout.contains("Print only status"));
@@ -356,39 +377,39 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(run_stdout.contains("--memory-limit-mb"));
     assert!(run_stdout.contains("--wait-for-generation-lock"));
 
-    let check = run_cptool(["check", "--help"], None);
+    let check = run_cptool(["pkg", "check", "--help"], None);
     let check_stdout = String::from_utf8_lossy(&check.stdout);
     assert!(check_stdout.contains("Check common package structure"));
     assert!(check_stdout.contains("--json"));
     assert!(check_stdout.contains("--wait-for-generation-lock"));
 
-    let judge = run_cptool(["judge", "--help"], None);
-    let judge_stdout = String::from_utf8_lossy(&judge.stdout);
-    assert!(judge_stdout.contains("validator"));
-    assert!(judge_stdout.contains("checker"));
-    let judge_validator = run_cptool(["judge", "validator", "--help"], None);
-    let judge_validator_stdout = String::from_utf8_lossy(&judge_validator.stdout);
-    assert!(judge_validator_stdout.contains("--input-path"));
-    assert!(judge_validator_stdout.contains("--expect"));
-    assert!(!judge_validator_stdout.contains("--stdin-text"));
+    let test = run_cptool(["test", "--help"], None);
+    let test_stdout = String::from_utf8_lossy(&test.stdout);
+    assert!(test_stdout.contains("validator"));
+    assert!(test_stdout.contains("checker"));
+    let test_validator = run_cptool(["test", "validator", "--help"], None);
+    let test_validator_stdout = String::from_utf8_lossy(&test_validator.stdout);
+    assert!(test_validator_stdout.contains("--input-path"));
+    assert!(test_validator_stdout.contains("--expect"));
+    assert!(!test_validator_stdout.contains("--stdin-text"));
 
-    let add_checker = run_cptool(["add", "checker", "--help"], None);
+    let add_checker = run_cptool(["config", "add", "checker", "--help"], None);
     let add_checker_stdout = String::from_utf8_lossy(&add_checker.stdout);
     assert!(add_checker_stdout.contains("optionally copying a built-in"));
     assert!(add_checker_stdout.contains("--builtin"));
-    let add_validator = run_cptool(["add", "validator", "--help"], None);
+    let add_validator = run_cptool(["config", "add", "validator", "--help"], None);
     let add_validator_stdout = String::from_utf8_lossy(&add_validator.stdout);
     assert!(add_validator_stdout.contains("Register a validator"));
     assert!(add_validator_stdout.contains("--replace"));
     assert!(add_validator_stdout.contains("--time-limit-secs"));
 
-    let clean = run_cptool(["clean", "--help"], None);
+    let clean = run_cptool(["pkg", "clean", "--help"], None);
     let clean_stdout = String::from_utf8_lossy(&clean.stdout);
     assert!(clean_stdout.contains("--data"));
     assert!(clean_stdout.contains("--cache"));
     assert!(clean_stdout.contains("--json"));
 
-    let evidence = run_cptool(["evidence", "--help"], None);
+    let evidence = run_cptool(["report", "evidence", "--help"], None);
     let evidence_stdout = String::from_utf8_lossy(&evidence.stdout);
     assert!(evidence_stdout.contains("Collect check, generation, and stress-plan evidence"));
     assert!(evidence_stdout.contains("--json"));
@@ -396,7 +417,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(evidence_stdout.contains("--reuse-existing-stress-plan"));
     assert!(evidence_stdout.contains("--wait-for-generation-lock"));
 
-    let stress_plan = run_cptool(["stress-plan", "--help"], None);
+    let stress_plan = run_cptool(["test", "plan", "--help"], None);
     let stress_plan_stdout = String::from_utf8_lossy(&stress_plan.stdout);
     assert!(stress_plan_stdout.contains("--name"));
     assert!(stress_plan_stdout.contains("Run only the named stress plan"));
@@ -406,7 +427,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(stress_plan_stdout.contains("--json"));
     assert!(stress_plan_stdout.contains("--wait-for-generation-lock"));
 
-    let stress = run_cptool(["stress", "--help"], None);
+    let stress = run_cptool(["test", "stress", "--help"], None);
     let stress_stdout = String::from_utf8_lossy(&stress.stdout);
     assert!(stress_stdout.contains("{seed}"));
     assert!(stress_stdout.contains("{case}"));
@@ -416,16 +437,39 @@ fn cli_help_describes_new_workflow_commands() {
 #[test]
 fn wait_for_generation_lock_rejects_zero_seconds() {
     for args in [
-        &["gen", "--wait-for-generation-lock", "0"][..],
-        &["run", "--wait-for-generation-lock", "0"][..],
-        &["check", "--wait-for-generation-lock", "0"][..],
-        &["stress-plan", "--wait-for-generation-lock", "0"][..],
-        &["evidence", "--wait-for-generation-lock", "0"][..],
+        &["case", "gen", "--wait-for-generation-lock", "0"][..],
+        &["case", "run", "--wait-for-generation-lock", "0"][..],
+        &["pkg", "check", "--wait-for-generation-lock", "0"][..],
+        &["test", "plan", "--wait-for-generation-lock", "0"][..],
+        &["report", "evidence", "--wait-for-generation-lock", "0"][..],
     ] {
         let output = run_cptool_slice_allow_failure(args, None);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         assert!(!output.status.success());
         assert!(stderr.contains("value must be at least 1 second"));
+    }
+}
+
+#[test]
+fn legacy_top_level_commands_are_not_supported() {
+    for command in [
+        "init",
+        "add",
+        "run",
+        "judge",
+        "gen",
+        "clean",
+        "stress",
+        "stress-plan",
+        "check",
+        "evidence",
+        "export",
+    ] {
+        let output = run_cptool_slice_allow_failure(&[command, "--help"], None);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(!output.status.success(), "{command} unexpectedly succeeded");
+        assert!(stderr.contains("unrecognized subcommand"));
     }
 }

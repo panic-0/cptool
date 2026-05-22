@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[command(
     version = env!("CPTOOL_VERSION"),
     about = "Deterministic competitive-programming problem package tool",
-    long_about = "cptool initializes problem packages, runs configured programs, generates official data, stress-tests solutions, checks package health, and exports judge data."
+    long_about = "cptool groups package lifecycle, configuration edits, case generation/runs, test workflows, and audit reports for deterministic competitive-programming problem packages."
 )]
 pub(super) struct Cli {
     #[command(subcommand)]
@@ -16,6 +16,35 @@ pub(super) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum Commands {
+    #[command(about = "Package lifecycle, health checks, cleanup, and export")]
+    Pkg {
+        #[command(subcommand)]
+        command: PkgCommands,
+    },
+    #[command(about = "Edit problem.yaml and create simple package scaffolds")]
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
+    },
+    #[command(about = "Generate official cases and run configured programs")]
+    Case {
+        #[command(subcommand)]
+        command: CaseCommands,
+    },
+    #[command(about = "Run validator, checker, stress, and stress-plan tests")]
+    Test {
+        #[command(subcommand)]
+        command: TestCommands,
+    },
+    #[command(about = "Collect audit and evidence reports")]
+    Report {
+        #[command(subcommand)]
+        command: ReportCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum PkgCommands {
     #[command(about = "Create a minimal cptool/autocpp problem package")]
     Init {
         #[arg(help = "Problem id or display name used to create <problems-dir>/<slug>")]
@@ -28,10 +57,82 @@ pub(super) enum Commands {
         )]
         root: PathBuf,
     },
-    #[command(about = "Add programs, bundles, tasks, or checkers to problem.yaml")]
+    #[command(about = "Check common package structure, config, data, and sample issues")]
+    Check {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            value_parser = positive_seconds,
+            help = "Wait up to SECONDS for an in-progress data generation lock"
+        )]
+        wait_for_generation_lock: Option<u64>,
+        #[arg(long, help = "Print the check report as JSON")]
+        json: bool,
+    },
+    #[command(about = "Clean generated data and local cptool cache")]
+    Clean {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Clean generated data files from data/")]
+        data: bool,
+        #[arg(long, help = "Clean local cptool cache from .cptool/cache")]
+        cache: bool,
+        #[arg(long, help = "Print the clean report as JSON")]
+        json: bool,
+    },
+    #[command(about = "Export the package to an online judge format")]
+    Export {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, value_enum, help = "Target online judge format")]
+        oj: OnlineJudge,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ConfigCommands {
+    #[command(about = "Add programs, bundles, tasks, validators, or checkers to problem.yaml")]
     Add {
         #[command(subcommand)]
         command: AddCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum CaseCommands {
+    #[command(about = "Generate official .in/.ans data from problem.yaml bundles")]
+    Gen {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Generate every case in this bundle")]
+        bundle: Option<String>,
+        #[arg(long, help = "Generate one case selector such as large[0]")]
+        case: Option<String>,
+        #[arg(short, long, help = "Output directory; defaults to <work-dir>/data")]
+        output_dir: Option<PathBuf>,
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
+        output_limit_bytes: usize,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            value_parser = positive_seconds,
+            help = "Wait up to SECONDS for an in-progress data generation lock"
+        )]
+        wait_for_generation_lock: Option<u64>,
+        #[arg(
+            long,
+            help = "Remove stale .in/.ans files for the selected case, bundle, or known bundles before publishing new data"
+        )]
+        clean: bool,
+        #[arg(
+            long,
+            help = "Print one compact generation summary instead of each generated path"
+        )]
+        summary_only: bool,
+        #[arg(long, help = "Print the generation report as JSON")]
+        json: bool,
     },
     #[command(about = "Run a configured program or source file on package input")]
     Run {
@@ -106,52 +207,53 @@ pub(super) enum Commands {
         #[arg(last = true, help = "Extra arguments passed to the program after --")]
         args: Vec<String>,
     },
-    #[command(about = "Run configured validator or checker on local files")]
-    Judge {
-        #[command(subcommand)]
-        command: JudgeCommands,
-    },
-    #[command(about = "Generate official .in/.ans data from problem.yaml bundles")]
-    Gen {
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum TestCommands {
+    #[command(about = "Run the configured validator on an input file")]
+    Validator {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long, help = "Generate every case in this bundle")]
-        bundle: Option<String>,
-        #[arg(long, help = "Generate one case selector such as large[0]")]
-        case: Option<String>,
-        #[arg(short, long, help = "Output directory; defaults to <work-dir>/data")]
-        output_dir: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Validator program key; defaults to problem.yaml validator"
+        )]
+        validator: Option<String>,
+        #[arg(long, value_name = "PATH", help = "Input file to validate")]
+        input_path: PathBuf,
+        #[arg(long, value_enum, default_value_t = JudgeExpectationArg::Pass, help = "Expected verdict")]
+        expect: JudgeExpectationArg,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
-        #[arg(
-            long,
-            value_name = "SECONDS",
-            value_parser = positive_seconds,
-            help = "Wait up to SECONDS for an in-progress data generation lock"
-        )]
-        wait_for_generation_lock: Option<u64>,
-        #[arg(
-            long,
-            help = "Remove stale .in/.ans files for the selected case, bundle, or known bundles before publishing new data"
-        )]
-        clean: bool,
-        #[arg(
-            long,
-            help = "Print one compact generation summary instead of each generated path"
-        )]
-        summary_only: bool,
-        #[arg(long, help = "Print the generation report as JSON")]
+        #[arg(long, help = "Print the test result as JSON")]
         json: bool,
     },
-    #[command(about = "Clean generated data and local cptool cache")]
-    Clean {
+    #[command(about = "Run the configured checker on input/output/answer files")]
+    Checker {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long, help = "Clean generated data files from data/")]
-        data: bool,
-        #[arg(long, help = "Clean local cptool cache from .cptool/cache")]
-        cache: bool,
-        #[arg(long, help = "Print the clean report as JSON")]
+        #[arg(long, help = "Checker program key; defaults to problem.yaml checker")]
+        checker: Option<String>,
+        #[arg(long, value_name = "PATH", help = "Input file passed to the checker")]
+        input_path: PathBuf,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Participant output file passed to the checker"
+        )]
+        output_path: PathBuf,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Jury answer file passed to the checker"
+        )]
+        answer_path: PathBuf,
+        #[arg(long, value_enum, default_value_t = JudgeExpectationArg::Pass, help = "Expected verdict")]
+        expect: JudgeExpectationArg,
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
+        output_limit_bytes: usize,
+        #[arg(long, help = "Print the test result as JSON")]
         json: bool,
     },
     #[command(
@@ -188,10 +290,11 @@ pub(super) enum Commands {
         args: Vec<String>,
     },
     #[command(
+        name = "plan",
         about = "Run stress plans declared in problem.yaml",
         long_about = "Run stress plans declared in problem.yaml. Plan args support {seed}, {case}, and {case0}; {seed} is deterministic and may be controlled with stress.plans[].seed_base."
     )]
-    StressPlan {
+    Plan {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
         #[arg(long, help = "Run only the named stress plan; omit to run all plans")]
@@ -227,20 +330,10 @@ pub(super) enum Commands {
         #[arg(long, help = "Print stress plan summaries as JSON")]
         json: bool,
     },
-    #[command(about = "Check common package structure, config, data, and sample issues")]
-    Check {
-        #[arg(short, long, default_value = ".", help = "Problem package directory")]
-        work_dir: PathBuf,
-        #[arg(
-            long,
-            value_name = "SECONDS",
-            value_parser = positive_seconds,
-            help = "Wait up to SECONDS for an in-progress data generation lock"
-        )]
-        wait_for_generation_lock: Option<u64>,
-        #[arg(long, help = "Print the check report as JSON")]
-        json: bool,
-    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ReportCommands {
     #[command(about = "Collect check, generation, and stress-plan evidence")]
     Evidence {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
@@ -255,7 +348,7 @@ pub(super) enum Commands {
             long,
             value_name = "PATH",
             conflicts_with = "skip_stress_plan",
-            help = "Reuse JSON from `stress-plan --summary-only --json` instead of rerunning stress plans"
+            help = "Reuse JSON from `test plan --summary-only --json` instead of rerunning stress plans"
         )]
         reuse_existing_stress_plan: Option<PathBuf>,
         #[arg(
@@ -273,13 +366,6 @@ pub(super) enum Commands {
             help = "Print a quality_report.md-ready Markdown evidence section"
         )]
         markdown: bool,
-    },
-    #[command(about = "Export the package to an online judge format")]
-    Export {
-        #[arg(short, long, default_value = ".", help = "Problem package directory")]
-        work_dir: PathBuf,
-        #[arg(long, value_enum, help = "Target online judge format")]
-        oj: OnlineJudge,
     },
 }
 
@@ -419,55 +505,6 @@ pub(super) enum AddCommands {
         compile_arg: Vec<String>,
         #[arg(long, help = "Replace existing checker config or source")]
         replace: bool,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum JudgeCommands {
-    #[command(about = "Run the configured validator on an input file")]
-    Validator {
-        #[arg(short, long, default_value = ".", help = "Problem package directory")]
-        work_dir: PathBuf,
-        #[arg(
-            long,
-            help = "Validator program key; defaults to problem.yaml validator"
-        )]
-        validator: Option<String>,
-        #[arg(long, value_name = "PATH", help = "Input file to validate")]
-        input_path: PathBuf,
-        #[arg(long, value_enum, default_value_t = JudgeExpectationArg::Pass, help = "Expected verdict")]
-        expect: JudgeExpectationArg,
-        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
-        output_limit_bytes: usize,
-        #[arg(long, help = "Print the judge result as JSON")]
-        json: bool,
-    },
-    #[command(about = "Run the configured checker on input/output/answer files")]
-    Checker {
-        #[arg(short, long, default_value = ".", help = "Problem package directory")]
-        work_dir: PathBuf,
-        #[arg(long, help = "Checker program key; defaults to problem.yaml checker")]
-        checker: Option<String>,
-        #[arg(long, value_name = "PATH", help = "Input file passed to the checker")]
-        input_path: PathBuf,
-        #[arg(
-            long,
-            value_name = "PATH",
-            help = "Participant output file passed to the checker"
-        )]
-        output_path: PathBuf,
-        #[arg(
-            long,
-            value_name = "PATH",
-            help = "Jury answer file passed to the checker"
-        )]
-        answer_path: PathBuf,
-        #[arg(long, value_enum, default_value_t = JudgeExpectationArg::Pass, help = "Expected verdict")]
-        expect: JudgeExpectationArg,
-        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
-        output_limit_bytes: usize,
-        #[arg(long, help = "Print the judge result as JSON")]
-        json: bool,
     },
 }
 

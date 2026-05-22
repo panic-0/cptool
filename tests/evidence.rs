@@ -10,7 +10,7 @@ fn evidence_json_aggregates_check_gen_and_stress_plan() {
 
     let temp = TempWorkspace::new("cptool-evidence-json");
     run_cptool(
-        ["init", "evidence_json_problem", "--root"],
+        ["pkg", "init", "evidence_json_problem", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("evidence_json_problem");
@@ -18,7 +18,13 @@ fn evidence_json_aggregates_check_gen_and_stress_plan() {
     append_stress_plan(&problem_dir);
 
     let output = run_cptool(
-        ["evidence", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "report",
+            "evidence",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -41,7 +47,7 @@ fn evidence_markdown_renders_quality_report_section() {
 
     let temp = TempWorkspace::new("cptool-evidence-markdown");
     run_cptool(
-        ["init", "evidence_markdown_problem", "--root"],
+        ["pkg", "init", "evidence_markdown_problem", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp
@@ -62,6 +68,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     let output = run_cptool(
         [
+            "report",
             "evidence",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -90,7 +97,7 @@ fn evidence_json_can_reuse_stress_plan_report_without_new_failure_artifacts() {
 
     let temp = TempWorkspace::new("cptool-evidence-reuse-stress-plan");
     run_cptool(
-        ["init", "evidence_reuse_stress_plan", "--root"],
+        ["pkg", "init", "evidence_reuse_stress_plan", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp
@@ -111,7 +118,8 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     let stress_plan = run_cptool(
         [
-            "stress-plan",
+            "test",
+            "plan",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -125,6 +133,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     let evidence = run_cptool(
         [
+            "report",
             "evidence",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -162,7 +171,7 @@ fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
 
     let temp = TempWorkspace::new("cptool-evidence-json-wait-lock");
     run_cptool(
-        ["init", "evidence_json_wait_lock", "--root"],
+        ["pkg", "init", "evidence_json_wait_lock", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("evidence_json_wait_lock");
@@ -172,6 +181,7 @@ fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
 
     let output = run_cptool(
         [
+            "report",
             "evidence",
             "-w",
             problem_dir.to_str().unwrap(),

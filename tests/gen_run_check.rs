@@ -10,13 +10,17 @@ fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
     }
 
     let temp = TempWorkspace::new("cptool-run-summary");
-    run_cptool(["init", "summary_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "summary_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("summary_problem");
     configure_python_problem(&problem_dir);
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
     let summary = run_cptool(
         [
+            "case",
             "run",
             "std",
             "sample[0]",
@@ -37,6 +41,7 @@ fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
 
     let hidden = run_cptool(
         [
+            "case",
             "run",
             "std",
             "sample[0]",
@@ -58,13 +63,17 @@ fn run_json_prints_machine_readable_summary_without_program_stdout() {
     }
 
     let temp = TempWorkspace::new("cptool-run-json");
-    run_cptool(["init", "run_json_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "run_json_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("run_json_problem");
     configure_python_problem(&problem_dir);
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
     let output = run_cptool(
         [
+            "case",
             "run",
             "std",
             "sample[0]",
@@ -91,7 +100,10 @@ fn judge_validator_accepts_input_file_and_expect_fail() {
     }
 
     let temp = TempWorkspace::new("cptool-judge-validator");
-    run_cptool(["init", "judge_validator", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "judge_validator", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("judge_validator");
     configure_python_problem(&problem_dir);
     add_validator_program(
@@ -107,7 +119,7 @@ if data != "ok":
 
     let pass = run_cptool(
         [
-            "judge",
+            "test",
             "validator",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -124,7 +136,7 @@ if data != "ok":
 
     let fail = run_cptool(
         [
-            "judge",
+            "test",
             "validator",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -143,7 +155,7 @@ if data != "ok":
 
     let unexpected = run_cptool_allow_failure(
         [
-            "judge",
+            "test",
             "validator",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -162,7 +174,10 @@ fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
     }
 
     let temp = TempWorkspace::new("cptool-judge-checker");
-    run_cptool(["init", "judge_checker", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "judge_checker", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("judge_checker");
     configure_checker_python_problem(&problem_dir);
     std::fs::write(problem_dir.join("input.in"), "7\n").unwrap();
@@ -172,7 +187,7 @@ fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
 
     let pass = run_cptool(
         [
-            "judge",
+            "test",
             "checker",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -193,7 +208,7 @@ fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
 
     let fail = run_cptool(
         [
-            "judge",
+            "test",
             "checker",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -219,7 +234,7 @@ fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
             .contains("expected 7")
     );
 
-    let help = run_cptool(["judge", "validator", "--help"], None);
+    let help = run_cptool(["test", "validator", "--help"], None);
     assert!(!String::from_utf8_lossy(&help.stdout).contains("--stdin-text"));
 }
 
@@ -230,7 +245,10 @@ fn run_can_override_time_and_memory_limits() {
     }
 
     let temp = TempWorkspace::new("cptool-run-limit-override");
-    run_cptool(["init", "run_limit_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "run_limit_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("run_limit_problem");
     configure_python_problem(&problem_dir);
     std::fs::write(
@@ -247,6 +265,7 @@ sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
 
     let low_limit = run_cptool_allow_failure(
         [
+            "case",
             "run",
             "std",
             "-w",
@@ -265,6 +284,7 @@ sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
 
     let high_limit = run_cptool(
         [
+            "case",
             "run",
             "std",
             "-w",
@@ -290,7 +310,7 @@ fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
     }
 
     let temp = TempWorkspace::new("cptool-empty-answer");
-    run_cptool(["init", "empty_answer", "--root"], Some(temp.path()));
+    run_cptool(["pkg", "init", "empty_answer", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("empty_answer");
     configure_python_problem(&problem_dir);
     std::fs::write(
@@ -299,7 +319,7 @@ fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
     )
     .unwrap();
 
-    let result = run_cptool(["gen", "-w"], Some(&problem_dir));
+    let result = run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let stderr = String::from_utf8_lossy(&result.stderr);
 
     assert!(stderr.contains("warning: empty_answer"));
@@ -309,7 +329,13 @@ fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
     assert!(stderr.contains("stderr_bytes=0"));
 
     let summary = run_cptool(
-        ["gen", "-w", problem_dir.to_str().unwrap(), "--summary-only"],
+        [
+            "case",
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+        ],
         None,
     );
     let summary_stdout = String::from_utf8_lossy(&summary.stdout);
@@ -334,7 +360,7 @@ fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
     )
     .unwrap();
 
-    let allowed = run_cptool(["gen", "-w"], Some(&problem_dir));
+    let allowed = run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let allowed_stderr = String::from_utf8_lossy(&allowed.stderr);
 
     assert!(!allowed_stderr.contains("warning: empty_answer"));
@@ -346,12 +372,18 @@ fn gen_summary_only_prints_compact_success_totals() {
     }
 
     let temp = TempWorkspace::new("cptool-gen-summary");
-    run_cptool(["init", "gen_summary", "--root"], Some(temp.path()));
+    run_cptool(["pkg", "init", "gen_summary", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("gen_summary");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
-        ["gen", "-w", problem_dir.to_str().unwrap(), "--summary-only"],
+        [
+            "case",
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+        ],
         None,
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -369,12 +401,13 @@ fn gen_summary_only_json_prints_report() {
     }
 
     let temp = TempWorkspace::new("cptool-gen-json");
-    run_cptool(["init", "gen_json", "--root"], Some(temp.path()));
+    run_cptool(["pkg", "init", "gen_json", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("problems").join("gen_json");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
         [
+            "case",
             "gen",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -406,12 +439,21 @@ fn gen_and_export_cover_multiple_bundles_cases_and_tasks() {
     }
 
     let temp = TempWorkspace::new("cptool-diverse-data");
-    run_cptool(["init", "diverse_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "diverse_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("diverse_problem");
     configure_diverse_python_problem(&problem_dir);
 
     let summary = run_cptool(
-        ["gen", "-w", problem_dir.to_str().unwrap(), "--summary-only"],
+        [
+            "case",
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+        ],
         None,
     );
     let summary_stdout = String::from_utf8_lossy(&summary.stdout);
@@ -449,6 +491,7 @@ fn gen_and_export_cover_multiple_bundles_cases_and_tasks() {
 
     run_cptool(
         [
+            "pkg",
             "export",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -496,7 +539,10 @@ fn gen_warns_when_generator_stdout_is_empty() {
     }
 
     let temp = TempWorkspace::new("cptool-empty-generator");
-    run_cptool(["init", "empty_generator", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "empty_generator", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("empty_generator");
     configure_python_problem(&problem_dir);
     std::fs::write(
@@ -510,7 +556,7 @@ fn gen_warns_when_generator_stdout_is_empty() {
     )
     .unwrap();
 
-    let result = run_cptool(["gen", "-w"], Some(&problem_dir));
+    let result = run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let stderr = String::from_utf8_lossy(&result.stderr);
 
     assert!(stderr.contains("warning: generator_output_suspicious"));
@@ -526,11 +572,14 @@ fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
     }
 
     let temp = TempWorkspace::new("cptool-gen-clean");
-    run_cptool(["init", "clean_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "clean_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("clean_problem");
     configure_python_problem(&problem_dir);
 
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let data_dir = problem_dir.join("data");
     std::fs::write(data_dir.join("sample-99.in"), "stale").unwrap();
     std::fs::write(data_dir.join("sample-99.ans"), "stale").unwrap();
@@ -538,6 +587,7 @@ fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
 
     run_cptool(
         [
+            "case",
             "gen",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -562,6 +612,7 @@ fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
     .unwrap();
     let failed = run_cptool_allow_failure(
         [
+            "case",
             "gen",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -586,7 +637,7 @@ fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
 fn clean_command_removes_data_files_and_cache() {
     let temp = TempWorkspace::new("cptool-clean-command");
     run_cptool(
-        ["init", "clean_command_problem", "--root"],
+        ["pkg", "init", "clean_command_problem", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("clean_command_problem");
@@ -599,7 +650,13 @@ fn clean_command_removes_data_files_and_cache() {
     std::fs::write(cache_dir.join("artifact"), "cached").unwrap();
 
     let output = run_cptool(
-        ["clean", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "pkg",
+            "clean",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -619,7 +676,7 @@ fn clean_command_removes_data_files_and_cache() {
 fn clean_command_can_target_only_data_or_cache() {
     let temp = TempWorkspace::new("cptool-clean-targets");
     run_cptool(
-        ["init", "clean_targets_problem", "--root"],
+        ["pkg", "init", "clean_targets_problem", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("clean_targets_problem");
@@ -630,7 +687,13 @@ fn clean_command_can_target_only_data_or_cache() {
     std::fs::write(cache_dir.join("artifact"), "cached").unwrap();
 
     let data_only = run_cptool(
-        ["clean", "-w", problem_dir.to_str().unwrap(), "--data"],
+        [
+            "pkg",
+            "clean",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--data",
+        ],
         None,
     );
     assert!(String::from_utf8_lossy(&data_only.stdout).contains("data_files=1"));
@@ -639,7 +702,13 @@ fn clean_command_can_target_only_data_or_cache() {
 
     std::fs::write(data_dir.join("sample-0.ans"), "answer").unwrap();
     let cache_only = run_cptool(
-        ["clean", "-w", problem_dir.to_str().unwrap(), "--cache"],
+        [
+            "pkg",
+            "clean",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--cache",
+        ],
         None,
     );
     assert!(String::from_utf8_lossy(&cache_only.stdout).contains("cache_removed=true"));
@@ -650,7 +719,10 @@ fn clean_command_can_target_only_data_or_cache() {
 #[test]
 fn clean_command_refuses_during_data_generation() {
     let temp = TempWorkspace::new("cptool-clean-lock");
-    run_cptool(["init", "clean_lock_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "clean_lock_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("clean_lock_problem");
     let data_dir = problem_dir.join("data");
     std::fs::write(data_dir.join("sample-0.in"), "input").unwrap();
@@ -658,7 +730,13 @@ fn clean_command_refuses_during_data_generation() {
     std::fs::create_dir_all(data_dir.join(".cptool-gen.lock")).unwrap();
 
     let output = run_cptool_allow_failure(
-        ["clean", "-w", problem_dir.to_str().unwrap(), "--data"],
+        [
+            "pkg",
+            "clean",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--data",
+        ],
         None,
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -673,7 +751,7 @@ fn clean_command_refuses_during_data_generation() {
 fn clean_command_refuses_when_staging_dir_exists() {
     let temp = TempWorkspace::new("cptool-clean-staging");
     run_cptool(
-        ["init", "clean_staging_problem", "--root"],
+        ["pkg", "init", "clean_staging_problem", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("clean_staging_problem");
@@ -682,7 +760,13 @@ fn clean_command_refuses_when_staging_dir_exists() {
     std::fs::create_dir_all(data_dir.join(".cptool-gen-leftover")).unwrap();
 
     let output = run_cptool_allow_failure(
-        ["clean", "-w", problem_dir.to_str().unwrap(), "--data"],
+        [
+            "pkg",
+            "clean",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--data",
+        ],
         None,
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -699,13 +783,17 @@ fn gen_waits_for_generation_lock_when_requested() {
     }
 
     let temp = TempWorkspace::new("cptool-gen-wait-lock");
-    run_cptool(["init", "gen_wait_lock", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "gen_wait_lock", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("gen_wait_lock");
     configure_python_problem(&problem_dir);
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
         [
+            "case",
             "gen",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -731,13 +819,17 @@ fn run_waits_for_generation_lock_before_implicit_case_generation() {
     }
 
     let temp = TempWorkspace::new("cptool-run-wait-lock");
-    run_cptool(["init", "run_wait_lock", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "run_wait_lock", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("run_wait_lock");
     configure_python_problem(&problem_dir);
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
         [
+            "case",
             "run",
             "std",
             "sample[0]",
@@ -763,13 +855,17 @@ fn gen_json_reports_validator_stats() {
     }
 
     let temp = TempWorkspace::new("cptool-gen-validator-json");
-    run_cptool(["init", "gen_validator_json", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "gen_validator_json", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("gen_validator_json");
     configure_python_problem(&problem_dir);
     add_validator_program(&problem_dir, "import sys\nsys.stdin.buffer.read()\n");
 
     let output = run_cptool(
         [
+            "case",
             "gen",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -792,7 +888,7 @@ fn gen_validator_failure_reports_case_and_generator_args() {
 
     let temp = TempWorkspace::new("cptool-gen-validator-failure");
     run_cptool(
-        ["init", "gen_validator_failure", "--root"],
+        ["pkg", "init", "gen_validator_failure", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("gen_validator_failure");
@@ -801,6 +897,7 @@ fn gen_validator_failure_reports_case_and_generator_args() {
 
     let output = run_cptool_allow_failure(
         [
+            "case",
             "gen",
             "-w",
             problem_dir.to_str().unwrap(),
@@ -823,17 +920,20 @@ fn check_command_reports_valid_and_invalid_packages() {
     }
 
     let temp = TempWorkspace::new("cptool-check-command");
-    run_cptool(["init", "check_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "check_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("check_problem");
     configure_python_problem(&problem_dir);
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
-    let ok = run_cptool(["check", "-w"], Some(&problem_dir));
+    let ok = run_cptool(["pkg", "check", "-w"], Some(&problem_dir));
     let ok_stdout = String::from_utf8_lossy(&ok.stdout);
     assert!(ok_stdout.contains("status: `PASS`"));
 
     std::fs::remove_file(problem_dir.join("src").join("std.cpp")).unwrap();
-    let failed = run_cptool_allow_failure(["check", "-w"], Some(&problem_dir));
+    let failed = run_cptool_allow_failure(["pkg", "check", "-w"], Some(&problem_dir));
     let failed_stdout = String::from_utf8_lossy(&failed.stdout);
 
     assert!(!failed.status.success());
@@ -847,13 +947,22 @@ fn check_json_reports_status_and_issue_counts() {
     }
 
     let temp = TempWorkspace::new("cptool-check-json");
-    run_cptool(["init", "check_json_problem", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "check_json_problem", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("check_json_problem");
     configure_python_problem(&problem_dir);
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
     let ok = run_cptool(
-        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "pkg",
+            "check",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let ok_value: Value = serde_json::from_slice(&ok.stdout).unwrap();
@@ -882,7 +991,13 @@ fn check_json_reports_status_and_issue_counts() {
 
     std::fs::remove_file(problem_dir.join("src").join("std.cpp")).unwrap();
     let failed = run_cptool_allow_failure(
-        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "pkg",
+            "check",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let failed_value: Value = serde_json::from_slice(&failed.stdout).unwrap();
@@ -918,7 +1033,10 @@ fn check_json_keeps_package_audit_warning_codes_stable() {
     }
 
     let temp = TempWorkspace::new("cptool-check-json-package-contract");
-    run_cptool(["init", "package_contract", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "package_contract", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("package_contract");
     configure_python_problem(&problem_dir);
     let yaml_path = problem_dir.join("problem.yaml");
@@ -927,7 +1045,7 @@ fn check_json_keeps_package_audit_warning_codes_stable() {
         "stress:\n  plans:\n  - name: wrong-proof\n    generator: gen\n    against: [std, brute]\n    cases: 1\n    expect: fail\n",
     );
     std::fs::write(&yaml_path, yaml).unwrap();
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     std::fs::write(problem_dir.join("statement.md"), "# Statement\nTODO\n").unwrap();
     std::fs::create_dir_all(problem_dir.join("package_contract")).unwrap();
     std::fs::write(
@@ -942,7 +1060,13 @@ fn check_json_keeps_package_audit_warning_codes_stable() {
     .unwrap();
 
     let output = run_cptool(
-        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "pkg",
+            "check",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -969,12 +1093,21 @@ fn check_json_reports_missing_and_stale_generated_data() {
     }
 
     let temp = TempWorkspace::new("cptool-check-data-audit");
-    run_cptool(["init", "check_data_audit", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "check_data_audit", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("check_data_audit");
     configure_python_problem(&problem_dir);
 
     let missing = run_cptool_allow_failure(
-        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "pkg",
+            "check",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let missing_value: Value = serde_json::from_slice(&missing.stdout).unwrap();
@@ -987,14 +1120,20 @@ fn check_json_reports_missing_and_stale_generated_data() {
             .any(|issue| issue["code"] == "generated_data_missing" && issue["severity"] == "error")
     );
 
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let data_dir = problem_dir.join("data");
     std::fs::write(data_dir.join("sample-99.in"), "stale\n").unwrap();
     std::fs::write(data_dir.join("unknown-0.ans"), "stale\n").unwrap();
     std::fs::write(data_dir.join("badname.in"), "stale\n").unwrap();
 
     let stale = run_cptool(
-        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "pkg",
+            "check",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let stale_value: Value = serde_json::from_slice(&stale.stdout).unwrap();
@@ -1042,13 +1181,22 @@ fn check_json_marks_generation_lock_as_transient() {
     }
 
     let temp = TempWorkspace::new("cptool-check-json-lock");
-    run_cptool(["init", "check_json_lock", "--root"], Some(temp.path()));
+    run_cptool(
+        ["pkg", "init", "check_json_lock", "--root"],
+        Some(temp.path()),
+    );
     let problem_dir = temp.path().join("problems").join("check_json_lock");
     configure_python_problem(&problem_dir);
     std::fs::create_dir_all(problem_dir.join("data").join(".cptool-gen.lock")).unwrap();
 
     let output = run_cptool_allow_failure(
-        ["check", "-w", problem_dir.to_str().unwrap(), "--json"],
+        [
+            "pkg",
+            "check",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -1072,16 +1220,17 @@ fn check_json_waits_for_generation_lock_and_stays_parseable() {
 
     let temp = TempWorkspace::new("cptool-check-json-wait-lock");
     run_cptool(
-        ["init", "check_json_wait_lock", "--root"],
+        ["pkg", "init", "check_json_wait_lock", "--root"],
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("check_json_wait_lock");
     configure_python_problem(&problem_dir);
-    run_cptool(["gen", "-w"], Some(&problem_dir));
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
         [
+            "pkg",
             "check",
             "-w",
             problem_dir.to_str().unwrap(),

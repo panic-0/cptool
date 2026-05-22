@@ -1,6 +1,6 @@
 # Built-in Testlib Checkers
 
-`cptool add checker <name> --builtin <id>` 会把 `example/assets/testlib/checkers/<id>.cpp` 复制进题包并注册到 `problem.yaml`。复制后的文件开头会写来源注释，并使用题包内的 `#include "testlib.h"`。
+`cptool config add checker <name> --builtin <id>` 会把 `example/assets/testlib/checkers/<id>.cpp` 复制进题包并注册到 `problem.yaml`。复制后的文件开头会写来源注释，并使用题包内的 `#include "testlib.h"`。
 
 内置列表由构建脚本扫描 `example/assets/testlib/checkers/*.cpp` 自动生成。下表按当前源码行为描述；不要只凭名字猜语义。特别注意：`caseicmp`、`casencmp`、`casewcmp` 的 `case` 指输出形如 `Case k:` 的多测试格式，不表示大小写不敏感。
 
