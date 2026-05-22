@@ -252,7 +252,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     let problem = load_problem(&work_dir)?;
     let generator = if generator == FILE_GENERATOR_NAME {
         StressGenerator::File
-    } else if generator.starts_with('$') {
+    } else if generator.starts_with(':') {
         anyhow::bail!("generator `{generator}` is an unknown built-in generator");
     } else {
         StressGenerator::Program(resolve_named_or_source(&work_dir, &problem, generator)?)

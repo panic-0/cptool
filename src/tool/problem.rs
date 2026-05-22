@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub(crate) const FILE_GENERATOR_NAME: &str = "$file";
+pub(crate) const FILE_GENERATOR_NAME: &str = ":file";
 pub fn load_problem(work_dir: &Path) -> Result<Problem> {
     let path = work_dir.join("problem.yaml");
     let yaml = std::fs::read_to_string(&path)
@@ -188,7 +188,7 @@ fn ensure_generator_exists(problem: &Problem, name: &str, role: &str) -> Result<
     if name == FILE_GENERATOR_NAME {
         return Ok(());
     }
-    if name.starts_with('$') {
+    if name.starts_with(':') {
         anyhow::bail!("{role} `{name}` is an unknown built-in generator");
     }
     ensure_program_exists(problem, name, role)
@@ -261,7 +261,7 @@ mod tests {
     fn validate_problem_rejects_unknown_builtin_generator() {
         let mut problem = valid_problem();
         problem.test.bundles.get_mut("sample").unwrap().cases[0].generator_name =
-            "$unknown".to_string();
+            ":unknown".to_string();
 
         let err = validate_problem(&problem).unwrap_err().to_string();
 

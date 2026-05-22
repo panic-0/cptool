@@ -290,7 +290,7 @@ test:
   bundles:
     corner:
       cases:
-      - generator: "$file"
+      - generator: :file
         args: [tests/corner/small.in]
   tasks:
   - name: corner
@@ -349,7 +349,7 @@ programs:
     memory_limit_mb: 128.0
 solution: std
 validator: val
-generator: "$file"
+generator: :file
 test:
   bundles:
     sample:
@@ -413,22 +413,22 @@ fn gen_file_generator_reports_bad_arguments_and_missing_files() {
 
     for (case_line, expected) in [
         (
-            r#"      - generator: "$file"
+            r#"      - generator: :file
         args: []
 "#,
             "expects exactly one input path argument, got 0",
         ),
         (
-            r#"      - generator: "$file"
+            r#"      - generator: :file
         args: [missing.in, extra.in]
 "#,
             "expects exactly one input path argument, got 2",
         ),
         (
-            r#"      - generator: "$file"
+            r#"      - generator: :file
         args: [missing.in]
 "#,
-            "failed to read `$file` input",
+            "failed to read `:file` input",
         ),
     ] {
         std::fs::write(

@@ -553,7 +553,7 @@ pub(crate) fn generate_case_input(
     if generator_name == FILE_GENERATOR_NAME {
         return read_file_generator_input(work_dir, args, context);
     }
-    if generator_name.starts_with('$') {
+    if generator_name.starts_with(':') {
         anyhow::bail!("generator `{generator_name}` is an unknown built-in generator");
     }
     let generator = programs

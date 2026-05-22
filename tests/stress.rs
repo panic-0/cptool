@@ -659,7 +659,7 @@ fn stress_plan_can_use_file_generator_with_case_placeholder() {
         r#"stress:
   plans:
   - name: file-corners
-    generator: "$file"
+    generator: :file
     args: ["tests/corner/{case}.in"]
     against: [std, brute]
     cases: 2
