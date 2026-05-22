@@ -378,6 +378,11 @@ fn render_stress_plans(out: &mut String, plans: &[&StressSummary], negative: boo
             plan.unique_input_hashes,
             stress_warning_summary(plan)
         ));
+        if let (Some(checker), Some(answer_program)) = (&plan.checker, &plan.answer_program) {
+            out.push_str(&format!(
+                " checker={checker} answer_program={answer_program}"
+            ));
+        }
         if negative && let Some(failure) = &plan.expected_failure {
             out.push_str(&format!(
                 " failed_cases={} passed_cases={} failure_ratio={:.3} report={}",

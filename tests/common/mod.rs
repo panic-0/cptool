@@ -66,6 +66,99 @@ sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
     .unwrap();
 }
 
+pub fn configure_checker_python_problem(problem_dir: &Path) {
+    std::fs::write(
+        problem_dir.join("problem.yaml"),
+        r#"name: checker_problem
+programs:
+  gen:
+    info: !python
+      path: ./src/gen.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  std:
+    info: !python
+      path: ./src/std.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  alt:
+    info: !python
+      path: ./src/alt.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  bad:
+    info: !python
+      path: ./src/bad.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+  chk:
+    info: !python
+      path: ./src/chk.py
+    time_limit_secs: 1.0
+    memory_limit_mb: 128.0
+solution: std
+checker: chk
+test:
+  generator: gen
+  bundles:
+    sample:
+      cases:
+      - ["7"]
+  tasks:
+  - name: sample
+    score: 100.0
+    type: min
+    bundles: [sample]
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("gen.py"),
+        r#"import sys
+sys.stdout.buffer.write((sys.argv[1] + "\n").encode("ascii"))
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("std.py"),
+        r#"import sys
+value = int(sys.stdin.read())
+sys.stdout.buffer.write(f"{value}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("alt.py"),
+        r#"import sys
+value = int(sys.stdin.read())
+sys.stdout.buffer.write(f"{value:03d}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("bad.py"),
+        r#"import sys
+value = int(sys.stdin.read())
+sys.stdout.buffer.write(f"{value + 1}\n".encode("ascii"))
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("chk.py"),
+        r#"import sys
+input_path, output_path, answer_path = sys.argv[1:4]
+out = int(open(output_path, "rb").read())
+ans = int(open(answer_path, "rb").read())
+if out != ans:
+    if len(sys.argv) >= 5:
+        open(sys.argv[4], "w", encoding="utf-8").write(f"expected {ans}, found {out}\n")
+    sys.stderr.write(f"expected {ans}, found {out}\n")
+    raise SystemExit(1)
+"#,
+    )
+    .unwrap();
+}
+
 pub fn add_validator_program(problem_dir: &Path, source: &str) {
     let yaml_path = problem_dir.join("problem.yaml");
     let yaml = std::fs::read_to_string(&yaml_path).unwrap();

@@ -31,6 +31,162 @@ fn stress_plan_runs_named_plan_without_seed_config() {
     assert!(stdout.contains("plan `tiny` case 2 ok"));
     assert!(stdout.contains("stress plan `tiny` passed: 2 cases"));
 }
+
+#[test]
+fn stress_uses_configured_checker_instead_of_text_comparison() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-checker");
+    run_cptool(["init", "stress_checker", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("stress_checker");
+    configure_checker_python_problem(&problem_dir);
+
+    let output = run_cptool(
+        [
+            "stress",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--generator",
+            "gen",
+            "--against",
+            "std",
+            "--against",
+            "alt",
+            "--cases",
+            "1",
+            "--json",
+            "--",
+            "7",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(value["checker"], "chk");
+    assert_eq!(value["answer_program"], "std");
+    assert_eq!(value["expected_failure"], Value::Null);
+}
+
+#[test]
+fn stress_plan_expect_fail_records_checker_rejection_artifact() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-checker-fail");
+    run_cptool(["init", "stress_checker_fail", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("stress_checker_fail");
+    configure_checker_python_problem(&problem_dir);
+    let yaml_path = problem_dir.join("problem.yaml");
+    let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    yaml.push_str(
+        r#"stress:
+  plans:
+  - name: checker-catches-bad
+    generator: gen
+    args: ["7"]
+    against: [std, bad]
+    cases: 1
+    expect: fail
+"#,
+    );
+    std::fs::write(yaml_path, yaml).unwrap();
+
+    let output = run_cptool(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let failure = &value["plans"][0]["expected_failure"];
+
+    assert_eq!(value["plans"][0]["checker"], "chk");
+    assert_eq!(value["plans"][0]["answer_program"], "std");
+    assert!(
+        failure["reason"]
+            .as_str()
+            .unwrap()
+            .contains("checker `chk` rejected")
+    );
+    assert_eq!(failure["checker"]["checker"], "chk");
+    assert_eq!(failure["checker"]["participant"], "bad");
+    let report_path = Path::new(failure["checker"]["report_path"].as_str().unwrap());
+    assert!(report_path.exists());
+    assert!(
+        std::fs::read_to_string(report_path)
+            .unwrap()
+            .contains("expected 7")
+    );
+}
+
+#[test]
+fn stress_plan_expect_fail_rejects_checker_infrastructure_failure() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-stress-checker-crash");
+    run_cptool(
+        ["init", "stress_checker_crash", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("stress_checker_crash");
+    configure_checker_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("src").join("chk.py"),
+        r#"import sys
+sys.stderr.write("checker crashed\n")
+raise SystemExit(3)
+"#,
+    )
+    .unwrap();
+    let yaml_path = problem_dir.join("problem.yaml");
+    let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    yaml.push_str(
+        r#"stress:
+  plans:
+  - name: checker-crash-is-not-wrong-answer
+    generator: gen
+    args: ["7"]
+    against: [std, bad]
+    cases: 1
+    expect: fail
+"#,
+    );
+    std::fs::write(yaml_path, yaml).unwrap();
+
+    let output = run_cptool_allow_failure(
+        [
+            "stress-plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("checker_failed"), "{stderr}");
+    let report = std::fs::read_to_string(
+        std::fs::read_dir(problem_dir.join("tests").join("failures"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.extension().is_some_and(|extension| extension == "txt"))
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(report.contains("reason: checker_failed"), "{report}");
+}
+
 #[test]
 fn stress_plan_json_waits_for_generation_lock_and_stays_parseable() {
     if !python_available() {

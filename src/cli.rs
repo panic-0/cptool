@@ -7,7 +7,10 @@ use std::time::{Duration, Instant};
 mod args;
 mod json;
 
-use args::{AddCommands, AddProgramKindArg, AddTaskTypeArg, Cli, Commands};
+use args::{
+    AddCommands, AddProgramKindArg, AddTaskTypeArg, Cli, Commands, JudgeCommands,
+    JudgeExpectationArg,
+};
 
 pub fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -49,6 +52,7 @@ pub fn run() -> anyhow::Result<()> {
             hide_stdout,
             args,
         })?,
+        Commands::Judge { command } => handle_judge(command)?,
         Commands::Gen {
             work_dir,
             bundle,
@@ -483,6 +487,71 @@ fn generation_lock_timeout(seconds: Option<u64>) -> Option<Duration> {
     seconds.map(Duration::from_secs)
 }
 
+fn handle_judge(command: JudgeCommands) -> anyhow::Result<()> {
+    let report = match command {
+        JudgeCommands::Validator {
+            work_dir,
+            validator,
+            input_path,
+            expect,
+            output_limit_bytes,
+            json,
+        } => {
+            let report = tool::judge_validator(tool::JudgeValidatorOptions {
+                work_dir,
+                validator,
+                input_path,
+                expect: convert_judge_expectation(expect),
+                output_limit_bytes,
+            })?;
+            print_judge_report(&report, json)?;
+            report
+        }
+        JudgeCommands::Checker {
+            work_dir,
+            checker,
+            input_path,
+            output_path,
+            answer_path,
+            expect,
+            output_limit_bytes,
+            json,
+        } => {
+            let report = tool::judge_checker(tool::JudgeCheckerOptions {
+                work_dir,
+                checker,
+                input_path,
+                output_path,
+                answer_path,
+                expect: convert_judge_expectation(expect),
+                output_limit_bytes,
+            })?;
+            print_judge_report(&report, json)?;
+            report
+        }
+    };
+    if !report.ok {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+fn print_judge_report(report: &tool::JudgeReport, json: bool) -> anyhow::Result<()> {
+    if json {
+        self::json::print(&self::json::JudgeJsonSummary::from(report))?;
+    } else {
+        println!("{}", report.summary_line());
+        if !report.ok {
+            eprintln!(
+                "expected {}, observed {}",
+                report.expect.as_str(),
+                report.observed.as_str()
+            );
+        }
+    }
+    Ok(())
+}
+
 fn handle_add(command: AddCommands) -> anyhow::Result<()> {
     match command {
         AddCommands::Program {
@@ -575,6 +644,13 @@ fn convert_task_type(value: AddTaskTypeArg) -> tool::TestTaskType {
     match value {
         AddTaskTypeArg::Min => tool::TestTaskType::Min,
         AddTaskTypeArg::Sum => tool::TestTaskType::Sum,
+    }
+}
+
+fn convert_judge_expectation(value: JudgeExpectationArg) -> tool::JudgeExpectation {
+    match value {
+        JudgeExpectationArg::Pass => tool::JudgeExpectation::Pass,
+        JudgeExpectationArg::Fail => tool::JudgeExpectation::Fail,
     }
 }
 

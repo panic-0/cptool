@@ -106,6 +106,11 @@ pub(super) enum Commands {
         #[arg(last = true, help = "Extra arguments passed to the program after --")]
         args: Vec<String>,
     },
+    #[command(about = "Run configured validator or checker on local files")]
+    Judge {
+        #[command(subcommand)]
+        command: JudgeCommands,
+    },
     #[command(about = "Generate official .in/.ans data from problem.yaml bundles")]
     Gen {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
@@ -388,6 +393,55 @@ pub(super) enum AddCommands {
     },
 }
 
+#[derive(Debug, Subcommand)]
+pub(super) enum JudgeCommands {
+    #[command(about = "Run the configured validator on an input file")]
+    Validator {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(
+            long,
+            help = "Validator program key; defaults to problem.yaml validator"
+        )]
+        validator: Option<String>,
+        #[arg(long, value_name = "PATH", help = "Input file to validate")]
+        input_path: PathBuf,
+        #[arg(long, value_enum, default_value_t = JudgeExpectationArg::Pass, help = "Expected verdict")]
+        expect: JudgeExpectationArg,
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
+        output_limit_bytes: usize,
+        #[arg(long, help = "Print the judge result as JSON")]
+        json: bool,
+    },
+    #[command(about = "Run the configured checker on input/output/answer files")]
+    Checker {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Checker program key; defaults to problem.yaml checker")]
+        checker: Option<String>,
+        #[arg(long, value_name = "PATH", help = "Input file passed to the checker")]
+        input_path: PathBuf,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Participant output file passed to the checker"
+        )]
+        output_path: PathBuf,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Jury answer file passed to the checker"
+        )]
+        answer_path: PathBuf,
+        #[arg(long, value_enum, default_value_t = JudgeExpectationArg::Pass, help = "Expected verdict")]
+        expect: JudgeExpectationArg,
+        #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
+        output_limit_bytes: usize,
+        #[arg(long, help = "Print the judge result as JSON")]
+        json: bool,
+    },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(super) enum AddProgramKindArg {
     Cpp,
@@ -399,6 +453,12 @@ pub(super) enum AddProgramKindArg {
 pub(super) enum AddTaskTypeArg {
     Min,
     Sum,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(super) enum JudgeExpectationArg {
+    Pass,
+    Fail,
 }
 
 pub(super) fn positive_seconds(value: &str) -> Result<u64, String> {

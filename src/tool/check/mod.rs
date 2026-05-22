@@ -2,6 +2,7 @@ use super::data::{
     GenerateOptions, data_generation_status, format_duration, generate_data_with_options,
     wait_for_generation_status,
 };
+use super::judge::run_configured_checker_on_files;
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
 use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo, StressPlanExpectation};
 use super::temp_suffix;
@@ -524,6 +525,15 @@ fn check_sample_generation(
     }
 
     let answer_path = output_dir.join(format!("{sample_bundle}-0.ans"));
+    let input_path = output_dir.join(format!("{sample_bundle}-0.in"));
+    check_sample_checker_sanity(
+        report,
+        work_dir,
+        problem,
+        &input_path,
+        &answer_path,
+        &output_dir,
+    );
     let answer = if answer_path.is_file() {
         match std::fs::read_to_string(&answer_path) {
             Ok(answer) => Some(answer),
@@ -541,6 +551,55 @@ fn check_sample_generation(
     };
     let _ = std::fs::remove_dir_all(&output_dir);
     answer
+}
+
+fn check_sample_checker_sanity(
+    report: &mut CheckReport,
+    work_dir: &Path,
+    problem: &Problem,
+    input_path: &Path,
+    answer_path: &Path,
+    output_dir: &Path,
+) {
+    if problem.checker_name.is_none() || !input_path.is_file() || !answer_path.is_file() {
+        return;
+    }
+    let checker_report_path = output_dir.join("checker-sanity.txt");
+    match run_configured_checker_on_files(
+        work_dir,
+        problem,
+        input_path,
+        answer_path,
+        answer_path,
+        &checker_report_path,
+        DEFAULT_OUTPUT_LIMIT_BYTES,
+    ) {
+        Ok(Some(run)) if run.result.ok => {}
+        Ok(Some(run)) => {
+            let mut message = format!(
+                "checker `{}` rejected generated sample answer used as participant output: {}",
+                run.checker,
+                run.result.status_line()
+            );
+            if let Some(report_text) = run.report {
+                if !report_text.trim().is_empty() {
+                    message.push_str("; report: ");
+                    message.push_str(report_text.trim());
+                }
+            }
+            report.error(
+                codes::CHECKER_SANITY_FAILED,
+                message,
+                Some(work_dir.join("problem.yaml")),
+            );
+        }
+        Ok(None) => {}
+        Err(err) => report.error(
+            codes::CHECKER_SANITY_FAILED,
+            format!("checker sanity failed to run on generated sample: {err:#}"),
+            Some(work_dir.join("problem.yaml")),
+        ),
+    }
 }
 
 #[cfg(test)]

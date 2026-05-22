@@ -268,6 +268,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(top_stdout.contains("check"));
     assert!(top_stdout.contains("clean"));
     assert!(top_stdout.contains("evidence"));
+    assert!(top_stdout.contains("judge"));
     assert!(top_stdout.contains("stress-plan"));
 
     let gen_help = run_cptool(["gen", "--help"], None);
@@ -293,6 +294,16 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(check_stdout.contains("Check common package structure"));
     assert!(check_stdout.contains("--json"));
     assert!(check_stdout.contains("--wait-for-generation-lock"));
+
+    let judge = run_cptool(["judge", "--help"], None);
+    let judge_stdout = String::from_utf8_lossy(&judge.stdout);
+    assert!(judge_stdout.contains("validator"));
+    assert!(judge_stdout.contains("checker"));
+    let judge_validator = run_cptool(["judge", "validator", "--help"], None);
+    let judge_validator_stdout = String::from_utf8_lossy(&judge_validator.stdout);
+    assert!(judge_validator_stdout.contains("--input-path"));
+    assert!(judge_validator_stdout.contains("--expect"));
+    assert!(!judge_validator_stdout.contains("--stdin-text"));
 
     let clean = run_cptool(["clean", "--help"], None);
     let clean_stdout = String::from_utf8_lossy(&clean.stdout);

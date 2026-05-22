@@ -85,6 +85,145 @@ fn run_json_prints_machine_readable_summary_without_program_stdout() {
 }
 
 #[test]
+fn judge_validator_accepts_input_file_and_expect_fail() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-judge-validator");
+    run_cptool(["init", "judge_validator", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("judge_validator");
+    configure_python_problem(&problem_dir);
+    add_validator_program(
+        &problem_dir,
+        r#"import sys
+data = sys.stdin.read().strip()
+if data != "ok":
+    raise SystemExit(3)
+"#,
+    );
+    std::fs::write(problem_dir.join("valid.in"), "ok\n").unwrap();
+    std::fs::write(problem_dir.join("invalid.in"), "bad\n").unwrap();
+
+    let pass = run_cptool(
+        [
+            "judge",
+            "validator",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--input-path",
+            "valid.in",
+            "--json",
+        ],
+        None,
+    );
+    let pass_value: Value = serde_json::from_slice(&pass.stdout).unwrap();
+    assert_eq!(pass_value["role"], "validator");
+    assert_eq!(pass_value["ok"], true);
+    assert_eq!(pass_value["observed"], "pass");
+
+    let fail = run_cptool(
+        [
+            "judge",
+            "validator",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--input-path",
+            "invalid.in",
+            "--expect",
+            "fail",
+            "--json",
+        ],
+        None,
+    );
+    let fail_value: Value = serde_json::from_slice(&fail.stdout).unwrap();
+    assert_eq!(fail_value["ok"], true);
+    assert_eq!(fail_value["expect"], "fail");
+    assert_eq!(fail_value["observed"], "fail");
+
+    let unexpected = run_cptool_allow_failure(
+        [
+            "judge",
+            "validator",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--input-path",
+            "invalid.in",
+        ],
+        None,
+    );
+    assert_eq!(unexpected.status.code(), Some(2));
+}
+
+#[test]
+fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-judge-checker");
+    run_cptool(["init", "judge_checker", "--root"], Some(temp.path()));
+    let problem_dir = temp.path().join("problems").join("judge_checker");
+    configure_checker_python_problem(&problem_dir);
+    std::fs::write(problem_dir.join("input.in"), "7\n").unwrap();
+    std::fs::write(problem_dir.join("answer.ans"), "7\n").unwrap();
+    std::fs::write(problem_dir.join("good.out"), "007\n").unwrap();
+    std::fs::write(problem_dir.join("bad.out"), "8\n").unwrap();
+
+    let pass = run_cptool(
+        [
+            "judge",
+            "checker",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--input-path",
+            "input.in",
+            "--output-path",
+            "good.out",
+            "--answer-path",
+            "answer.ans",
+            "--json",
+        ],
+        None,
+    );
+    let pass_value: Value = serde_json::from_slice(&pass.stdout).unwrap();
+    assert_eq!(pass_value["role"], "checker");
+    assert_eq!(pass_value["ok"], true);
+    assert_eq!(pass_value["observed"], "pass");
+
+    let fail = run_cptool(
+        [
+            "judge",
+            "checker",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--input-path",
+            "input.in",
+            "--output-path",
+            "bad.out",
+            "--answer-path",
+            "answer.ans",
+            "--expect",
+            "fail",
+            "--json",
+        ],
+        None,
+    );
+    let fail_value: Value = serde_json::from_slice(&fail.stdout).unwrap();
+    assert_eq!(fail_value["ok"], true);
+    assert_eq!(fail_value["observed"], "fail");
+    assert!(
+        fail_value["report"]
+            .as_str()
+            .unwrap()
+            .contains("expected 7")
+    );
+
+    let help = run_cptool(["judge", "validator", "--help"], None);
+    assert!(!String::from_utf8_lossy(&help.stdout).contains("--stdin-text"));
+}
+
+#[test]
 fn run_can_override_time_and_memory_limits() {
     if !python_available() {
         return;

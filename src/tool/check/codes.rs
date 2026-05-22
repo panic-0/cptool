@@ -1,6 +1,7 @@
 pub(super) const ANSWER_UNREADABLE: &str = "answer_unreadable";
 pub(super) const BUNDLE_EMPTY: &str = "bundle_empty";
 pub(super) const BUNDLE_UNCOVERED_BY_TASK: &str = "bundle_uncovered_by_task";
+pub(super) const CHECKER_SANITY_FAILED: &str = "checker_sanity_failed";
 pub(super) const DATA_DIR_UNREADABLE: &str = "data_dir_unreadable";
 pub(super) const DATA_GENERATION_IN_PROGRESS: &str = "data_generation_in_progress";
 pub(super) const DOUBLE_NESTED_PROBLEM_DIR: &str = "double_nested_problem_dir";

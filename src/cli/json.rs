@@ -42,6 +42,33 @@ impl<'a> From<&'a tool::RunResult> for RunJsonSummary<'a> {
 }
 
 #[derive(Serialize)]
+pub(super) struct JudgeJsonSummary<'a> {
+    role: &'static str,
+    program: &'a str,
+    expect: &'static str,
+    ok: bool,
+    observed: &'static str,
+    run: RunJsonSummary<'a>,
+    report_path: Option<&'a PathBuf>,
+    report: Option<&'a str>,
+}
+
+impl<'a> From<&'a tool::JudgeReport> for JudgeJsonSummary<'a> {
+    fn from(report: &'a tool::JudgeReport) -> Self {
+        Self {
+            role: report.kind.as_str(),
+            program: &report.program,
+            expect: report.expect.as_str(),
+            ok: report.ok,
+            observed: report.observed.as_str(),
+            run: RunJsonSummary::from(&report.run),
+            report_path: report.report_path.as_ref(),
+            report: report.report.as_deref(),
+        }
+    }
+}
+
+#[derive(Serialize)]
 pub(super) struct StressPlanJsonReport<'a> {
     plans: Vec<StressJsonSummary<'a>>,
 }
@@ -57,6 +84,8 @@ impl<'a> StressPlanJsonReport<'a> {
 #[derive(Serialize)]
 pub(super) struct StressJsonSummary<'a> {
     plan_name: Option<&'a str>,
+    checker: Option<&'a str>,
+    answer_program: Option<&'a str>,
     cases: usize,
     elapsed_ms: u128,
     against: &'a [String],
@@ -71,6 +100,8 @@ impl<'a> From<&'a tool::StressSummary> for StressJsonSummary<'a> {
     fn from(summary: &'a tool::StressSummary) -> Self {
         Self {
             plan_name: summary.plan_name.as_deref(),
+            checker: summary.checker.as_deref(),
+            answer_program: summary.answer_program.as_deref(),
             cases: summary.cases,
             elapsed_ms: summary.elapsed_ms,
             against: &summary.against,

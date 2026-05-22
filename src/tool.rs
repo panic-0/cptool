@@ -3,6 +3,7 @@ mod check;
 mod clean;
 mod data;
 mod evidence;
+mod judge;
 mod package;
 mod problem;
 mod program;
@@ -29,6 +30,10 @@ pub use data::{
 pub use evidence::{
     EvidenceCheckReport, EvidenceOptions, EvidenceReport, EvidenceSection, collect_evidence,
 };
+pub use judge::{
+    JudgeCheckerOptions, JudgeExpectation, JudgeKind, JudgeObserved, JudgeReport,
+    JudgeValidatorOptions, judge_checker, judge_validator,
+};
 pub use package::{init_package, slugify};
 pub(crate) use problem::resolve_path;
 pub use problem::{load_problem, parse_case_selector};
@@ -39,8 +44,8 @@ pub use schema::{
     TestBundle, TestCase, TestTask, TestTaskType,
 };
 pub use stress::{
-    ExpectedStressFailure, StressOptions, StressSummary, StressWarning, stress,
-    stress_with_options, stress_with_summary,
+    ExpectedCheckerOutput, ExpectedStressFailure, StressOptions, StressSummary, StressWarning,
+    stress, stress_with_options, stress_with_summary,
 };
 pub use stress_plan::{
     StressPlanFilter, StressPlanOptions, stress_plan, stress_plan_collect_with_options,
