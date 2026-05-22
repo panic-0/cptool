@@ -97,6 +97,16 @@ mod tests {
         assert!(problem_dir.join("src").join("val.cpp").exists());
         assert!(problem_dir.join("src").join("chk.cpp").exists());
         assert!(problem_dir.join("src").join("testlib.h").exists());
+        let std_source = std::fs::read_to_string(problem_dir.join("src").join("std.cpp")).unwrap();
+        let brute_source =
+            std::fs::read_to_string(problem_dir.join("src").join("brute.cpp")).unwrap();
+        assert_eq!(std_source, crate::tool::package::DEFAULT_PROGRAM_CPP);
+        assert_eq!(brute_source, crate::tool::package::DEFAULT_PROGRAM_CPP);
+        assert!(std_source.contains("#include <bits/stdc++.h>"));
+        assert!(
+            std_source
+                .contains("cin.tie(nullptr);\n    ios::sync_with_stdio(false);\n\n    return 0;")
+        );
         let generator_source =
             std::fs::read_to_string(problem_dir.join("src").join("gen.cpp")).unwrap();
         assert!(generator_source.contains("#include \"testlib.h\""));

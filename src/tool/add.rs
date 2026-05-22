@@ -1,3 +1,4 @@
+use super::package::DEFAULT_PROGRAM_CPP;
 use super::schema::{
     CommandProgram, CppProgram, OutputConfig, Problem, Program, ProgramInfo, TestBundle, TestCase,
     TestTask, TestTaskType,
@@ -93,7 +94,12 @@ pub fn add_program(options: AddProgramOptions) -> Result<()> {
         if let Some(parent) = abs_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&abs_path, "")?;
+        let source = if kind == AddProgramKind::Cpp {
+            DEFAULT_PROGRAM_CPP
+        } else {
+            ""
+        };
+        std::fs::write(&abs_path, source)?;
     }
 
     let program = program_from_parts(
@@ -685,6 +691,12 @@ mod tests {
         .unwrap();
 
         assert!(problem_dir.join("src").join("foo.cpp").exists());
+        let source = std::fs::read_to_string(problem_dir.join("src").join("foo.cpp")).unwrap();
+        assert_eq!(source, DEFAULT_PROGRAM_CPP);
+        assert!(source.contains("int main(int argc, char *argv[])"));
+        assert!(
+            source.contains("cin.tie(nullptr);\n    ios::sync_with_stdio(false);\n\n    return 0;")
+        );
         let problem = load_problem(&problem_dir).unwrap();
         let ProgramInfo::Cpp(cpp) = &problem.programs["foo"].info else {
             panic!("expected C++ program");

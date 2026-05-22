@@ -734,18 +734,20 @@ mod tests {
     }
 
     #[test]
-    fn init_package_default_reports_empty_std_and_gen_as_generation_error() {
+    fn init_package_default_reports_empty_answer_instead_of_generation_failure() {
         let root = temp_test_dir("cptool-check-init");
         let problem_dir = init_package(&root, "Check Me").unwrap();
 
         let report = check_problem_package(&problem_dir);
 
+        assert!(report.has_errors());
         assert!(
-            report
+            !report
                 .issues
                 .iter()
                 .any(|issue| issue.code == "sample_generation_failed")
         );
+        assert_issue(&report, "empty_answer", CheckSeverity::Error);
 
         std::fs::remove_dir_all(root).unwrap();
     }

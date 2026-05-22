@@ -2,6 +2,8 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 const TESTLIB_H: &str = include_str!("../../assets/testlib/testlib.h");
+pub(crate) const DEFAULT_PROGRAM_CPP: &str =
+    include_str!("../../assets/templates/default_program.cpp");
 const DEFAULT_GENERATOR_CPP: &str = r#"#include "testlib.h"
 
 int main(int argc, char *argv[]) {
@@ -40,8 +42,11 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
         problem_dir.join(".gitignore"),
         ".cptool/\ndata/\nexport/\noutput/\ntmp/\ntests/failures/\n*.exe\n*.tmp\n",
     )?;
-    std::fs::write(problem_dir.join("src").join("std.cpp"), "")?;
-    std::fs::write(problem_dir.join("src").join("brute.cpp"), "")?;
+    std::fs::write(problem_dir.join("src").join("std.cpp"), DEFAULT_PROGRAM_CPP)?;
+    std::fs::write(
+        problem_dir.join("src").join("brute.cpp"),
+        DEFAULT_PROGRAM_CPP,
+    )?;
     std::fs::write(
         problem_dir.join("src").join("gen.cpp"),
         DEFAULT_GENERATOR_CPP,
