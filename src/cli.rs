@@ -1,7 +1,7 @@
 use clap::Parser;
 use cptool::export::{Exporter, OnlineJudge, syzoj};
 use cptool::tool::{self, DEFAULT_OUTPUT_LIMIT_BYTES, RunOptions};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 mod args;
@@ -221,7 +221,7 @@ fn handle_report(command: ReportCommands) -> anyhow::Result<()> {
 
 fn handle_init(id: String, root: PathBuf) -> anyhow::Result<()> {
     let path = tool::init_package(&root, &id)?;
-    println!("created {}", path.display());
+    println!("created {}", terminal_path(&path, None));
     Ok(())
 }
 
@@ -328,6 +328,7 @@ fn handle_gen(options: GenCommandOptions) -> anyhow::Result<()> {
         summary_only,
         json,
     } = options;
+    let display_work_dir = work_dir.clone();
     let options = tool::GenerateOptions {
         work_dir,
         bundle,
@@ -339,14 +340,17 @@ fn handle_gen(options: GenCommandOptions) -> anyhow::Result<()> {
     };
     if json {
         let report = tool::generate_data_report_with_options(options)?;
-        self::json::print(&report)?;
+        self::json::print(&display_generate_report(report, &display_work_dir))?;
     } else if summary_only {
         let report = tool::generate_data_report_with_options(options)?;
         println!("{}", report.summary_line());
     } else {
         let generated = tool::generate_data_with_options(options)?;
         for path in generated {
-            println!("generated {}", path.display());
+            println!(
+                "generated {}",
+                terminal_path(&path, Some(&display_work_dir))
+            );
         }
     }
     Ok(())
@@ -359,7 +363,7 @@ fn handle_clean(work_dir: PathBuf, data: bool, cache: bool, json: bool) -> anyho
         cache,
     })?;
     if json {
-        self::json::print(&report)?;
+        self::json::print(&display_clean_report(report))?;
     } else {
         println!("{}", report.summary_line());
     }
@@ -390,6 +394,7 @@ fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
             print_progress: false,
             print_warnings: false,
         })?;
+        let summary = display_stress_summary(summary, &options.work_dir);
         self::json::print(&self::json::StressJsonSummary::from(&summary))?;
     } else {
         let summary = tool::stress_with_summary(
@@ -433,6 +438,7 @@ fn handle_stress_plan(options: StressPlanCommandOptions) -> anyhow::Result<()> {
     };
     if options.json {
         let summaries = tool::stress_plan_collect_with_options(stress_options)?;
+        let summaries = display_stress_summaries(summaries, &options.work_dir);
         let report = self::json::StressPlanJsonReport::from_summaries(&summaries);
         self::json::print(&report)?;
     } else {
@@ -453,9 +459,10 @@ fn handle_check(
         },
     );
     if json {
-        self::json::print(&self::json::CheckJsonReport::from(&report))?;
+        let display_report = display_check_report(report.clone());
+        self::json::print(&self::json::CheckJsonReport::from(&display_report))?;
     } else {
-        print!("{}", report.render_text());
+        print!("{}", display_check_report(report.clone()).render_text());
     }
     if report.has_errors() {
         std::process::exit(2);
@@ -483,14 +490,18 @@ fn handle_evidence(options: EvidenceCommandOptions) -> anyhow::Result<()> {
         reuse_existing_stress_plan: options.reuse_existing_stress_plan,
         generation_lock_timeout: generation_lock_timeout(options.wait_for_generation_lock),
     });
+    let has_errors = report.has_errors();
     if options.json {
-        self::json::print(&report)?;
+        self::json::print(&display_evidence_report(report))?;
     } else if options.markdown {
-        print!("{}", report.render_quality_markdown());
+        print!(
+            "{}",
+            display_evidence_report(report).render_quality_markdown()
+        );
     } else {
-        print!("{}", report.render_text());
+        print!("{}", display_evidence_report(report).render_text());
     }
-    if report.has_errors() {
+    if has_errors {
         std::process::exit(2);
     }
     Ok(())
@@ -521,7 +532,7 @@ fn handle_export(work_dir: PathBuf, oj: OnlineJudge) -> anyhow::Result<()> {
             }
             std::fs::create_dir_all(&export_dir)?;
             syzoj::SyzojExporter::export(&problem, &work_dir, &data_dir, &export_dir)?;
-            println!("exported {}", export_dir.display());
+            println!("exported {}", terminal_path(&export_dir, Some(&work_dir)));
         }
     }
     let elapsed = start.elapsed();
@@ -557,6 +568,171 @@ fn generation_lock_timeout(seconds: Option<u64>) -> Option<Duration> {
     seconds.map(Duration::from_secs)
 }
 
+fn display_generate_report(
+    mut report: tool::GenerateReport,
+    work_dir: &Path,
+) -> tool::GenerateReport {
+    report.paths = report
+        .paths
+        .into_iter()
+        .map(|path| PathBuf::from(terminal_path(&path, Some(work_dir))))
+        .collect();
+    report
+}
+
+fn display_clean_report(mut report: tool::CleanReport) -> tool::CleanReport {
+    let original_work_dir = report.work_dir.clone();
+    report.work_dir = PathBuf::from(terminal_path(&original_work_dir, None));
+    report.paths_removed = report
+        .paths_removed
+        .into_iter()
+        .map(|path| PathBuf::from(terminal_path(&path, Some(&original_work_dir))))
+        .collect();
+    report
+}
+
+fn display_check_report(mut display_report: tool::CheckReport) -> tool::CheckReport {
+    let original_work_dir = display_report.work_dir.clone();
+    let display_work_dir = terminal_path(&original_work_dir, None);
+
+    display_report.work_dir = PathBuf::from(&display_work_dir);
+    shorten_check_issues(
+        &mut display_report.issues,
+        &original_work_dir,
+        &display_work_dir,
+    );
+    display_report
+}
+
+fn display_evidence_report(mut report: tool::EvidenceReport) -> tool::EvidenceReport {
+    let original_work_dir = report.work_dir.clone();
+    report.work_dir = PathBuf::from(terminal_path(&original_work_dir, None));
+
+    if let Some(check) = report.check.report.as_mut() {
+        let original_check_work_dir = check.work_dir.clone();
+        let display_check_work_dir = terminal_path(&original_check_work_dir, None);
+        check.work_dir = PathBuf::from(&display_check_work_dir);
+        shorten_check_issues(
+            &mut check.issues,
+            &original_check_work_dir,
+            &display_check_work_dir,
+        );
+    }
+
+    if let Some(gen_report) = report.r#gen.report.as_mut() {
+        gen_report.paths = gen_report
+            .paths
+            .iter()
+            .map(|path| PathBuf::from(terminal_path(path, Some(&original_work_dir))))
+            .collect();
+    }
+
+    if let Some(stress_reports) = report.stress_plan.report.as_mut() {
+        for summary in stress_reports {
+            shorten_stress_summary_paths(summary, &original_work_dir);
+        }
+    }
+
+    report
+}
+
+fn display_stress_summaries(
+    mut summaries: Vec<tool::StressSummary>,
+    work_dir: &Path,
+) -> Vec<tool::StressSummary> {
+    for summary in &mut summaries {
+        shorten_stress_summary_paths(summary, work_dir);
+    }
+    summaries
+}
+
+fn display_stress_summary(
+    mut summary: tool::StressSummary,
+    work_dir: &Path,
+) -> tool::StressSummary {
+    shorten_stress_summary_paths(&mut summary, work_dir);
+    summary
+}
+
+fn display_judge_report(
+    mut report: tool::JudgeReport,
+    work_dir: Option<&Path>,
+) -> tool::JudgeReport {
+    if let Some(path) = &report.report_path {
+        report.report_path = Some(PathBuf::from(terminal_path(path, work_dir)));
+    }
+    report
+}
+
+fn shorten_check_issues(issues: &mut [tool::CheckIssue], work_dir: &Path, display_work_dir: &str) {
+    for issue in issues {
+        if let Some(path) = &issue.path {
+            issue.path = Some(PathBuf::from(terminal_path(path, Some(work_dir))));
+        }
+        if let Some(next_action) = &mut issue.next_action {
+            let original = work_dir.display().to_string();
+            *next_action = next_action.replace(&original, display_work_dir);
+        }
+    }
+}
+
+fn shorten_stress_summary_paths(summary: &mut tool::StressSummary, work_dir: &Path) {
+    if let Some(failure) = summary.expected_failure.as_mut() {
+        failure.input_path = PathBuf::from(terminal_path(&failure.input_path, Some(work_dir)));
+        failure.report_path = PathBuf::from(terminal_path(&failure.report_path, Some(work_dir)));
+        for output in &mut failure.outputs {
+            output.stdout_path = PathBuf::from(terminal_path(&output.stdout_path, Some(work_dir)));
+            output.stderr_path = PathBuf::from(terminal_path(&output.stderr_path, Some(work_dir)));
+        }
+        if let Some(checker) = failure.checker.as_mut() {
+            checker.stdout_path =
+                PathBuf::from(terminal_path(&checker.stdout_path, Some(work_dir)));
+            checker.stderr_path =
+                PathBuf::from(terminal_path(&checker.stderr_path, Some(work_dir)));
+            checker.report_path = checker
+                .report_path
+                .as_ref()
+                .map(|path| PathBuf::from(terminal_path(path, Some(work_dir))));
+        }
+    }
+}
+
+fn terminal_path(path: &Path, primary_base: Option<&Path>) -> String {
+    let path_abs = absolutize_for_display(path);
+    if let Some(base) = primary_base {
+        let base_abs = absolutize_for_display(base);
+        if let Ok(relative) = path_abs.strip_prefix(&base_abs) {
+            return path_to_terminal_string(relative);
+        }
+    }
+
+    if let Ok(cwd) = std::env::current_dir()
+        && let Ok(relative) = path_abs.strip_prefix(&cwd)
+    {
+        return path_to_terminal_string(relative);
+    }
+
+    path_to_terminal_string(path)
+}
+
+fn absolutize_for_display(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    }
+}
+
+fn path_to_terminal_string(path: &Path) -> String {
+    if path.as_os_str().is_empty() {
+        ".".to_string()
+    } else {
+        path.display().to_string().replace('\\', "/")
+    }
+}
+
 fn handle_test_validator(
     work_dir: PathBuf,
     validator: Option<String>,
@@ -566,6 +742,7 @@ fn handle_test_validator(
     fix_line_endings: bool,
     json: bool,
 ) -> anyhow::Result<()> {
+    let display_work_dir = work_dir.clone();
     let report = tool::judge_validator(tool::JudgeValidatorOptions {
         work_dir,
         validator,
@@ -574,7 +751,7 @@ fn handle_test_validator(
         output_limit_bytes,
         fix_line_endings,
     })?;
-    print_judge_report(&report, json)?;
+    print_judge_report(&report, json, Some(&display_work_dir))?;
     if !report.ok {
         std::process::exit(2);
     }
@@ -593,6 +770,7 @@ struct TestCheckerCommandOptions {
 }
 
 fn handle_test_checker(options: TestCheckerCommandOptions) -> anyhow::Result<()> {
+    let display_work_dir = options.work_dir.clone();
     let report = tool::judge_checker(tool::JudgeCheckerOptions {
         work_dir: options.work_dir,
         checker: options.checker,
@@ -602,16 +780,21 @@ fn handle_test_checker(options: TestCheckerCommandOptions) -> anyhow::Result<()>
         expect: convert_judge_expectation(options.expect),
         output_limit_bytes: options.output_limit_bytes,
     })?;
-    print_judge_report(&report, options.json)?;
+    print_judge_report(&report, options.json, Some(&display_work_dir))?;
     if !report.ok {
         std::process::exit(2);
     }
     Ok(())
 }
 
-fn print_judge_report(report: &tool::JudgeReport, json: bool) -> anyhow::Result<()> {
+fn print_judge_report(
+    report: &tool::JudgeReport,
+    json: bool,
+    display_work_dir: Option<&Path>,
+) -> anyhow::Result<()> {
     if json {
-        self::json::print(&self::json::JudgeJsonSummary::from(report))?;
+        let display_report = display_judge_report(report.clone(), display_work_dir);
+        self::json::print(&self::json::JudgeJsonSummary::from(&display_report))?;
     } else {
         for warning in &report.warnings {
             eprintln!("warning: {} {}", warning.code, warning.message);

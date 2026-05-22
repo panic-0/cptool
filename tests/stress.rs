@@ -1,7 +1,6 @@
 mod common;
 use common::*;
 use serde_json::Value;
-use std::path::Path;
 
 #[test]
 fn stress_plan_runs_named_plan_without_seed_config() {
@@ -129,7 +128,7 @@ fn stress_plan_expect_fail_records_checker_rejection_artifact() {
     );
     assert_eq!(failure["checker"]["checker"], "chk");
     assert_eq!(failure["checker"]["participant"], "bad");
-    let report_path = Path::new(failure["checker"]["report_path"].as_str().unwrap());
+    let report_path = problem_dir.join(failure["checker"]["report_path"].as_str().unwrap());
     assert!(report_path.exists());
     assert!(
         std::fs::read_to_string(report_path)
@@ -708,7 +707,15 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     assert_eq!(failure["passed_cases"], 0);
     assert_eq!(failure["failure_ratio"], 1.0);
     assert!(failure["input_sha256"].as_str().unwrap().len() == 64);
-    assert!(Path::new(failure["input_path"].as_str().unwrap()).exists());
-    assert!(Path::new(failure["report_path"].as_str().unwrap()).exists());
+    assert!(
+        problem_dir
+            .join(failure["input_path"].as_str().unwrap())
+            .exists()
+    );
+    assert!(
+        problem_dir
+            .join(failure["report_path"].as_str().unwrap())
+            .exists()
+    );
     assert_eq!(failure["outputs"].as_array().unwrap().len(), 2);
 }

@@ -488,6 +488,44 @@ fn gen_summary_only_prints_compact_success_totals() {
     assert!(stdout.contains("warnings=0"));
     assert!(!stdout.contains("generated "));
 }
+
+#[test]
+fn gen_default_output_prints_paths_relative_to_work_dir() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-gen-short-paths");
+    run_cptool(
+        ["pkg", "init", "gen_short_paths", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("problems").join("gen_short_paths");
+    configure_python_problem(&problem_dir);
+
+    let output = run_cptool(["case", "gen", "-w", problem_dir.to_str().unwrap()], None);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let long_problem_dir = problem_dir.display().to_string();
+
+    assert!(stdout.contains("generated data/sample-0.in"));
+    assert!(stdout.contains("generated data/sample-0.ans"));
+    assert!(!stdout.contains(&long_problem_dir));
+
+    let summary = run_cptool(
+        [
+            "case",
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+        ],
+        None,
+    );
+    let summary_stdout = String::from_utf8_lossy(&summary.stdout);
+    assert!(summary_stdout.contains("gen: ok cases=1 bundles=sample elapsed="));
+    assert!(!summary_stdout.contains("generated "));
+}
+
 #[test]
 fn gen_summary_only_json_prints_report() {
     if !python_available() {
@@ -519,12 +557,8 @@ fn gen_summary_only_json_prints_report() {
     assert_eq!(value["validator_configured"], false);
     assert_eq!(value["validator_calls"], 0);
     assert_eq!(value["warnings"].as_array().unwrap().len(), 0);
-    assert!(
-        value["paths"].as_array().unwrap()[0]
-            .as_str()
-            .unwrap()
-            .ends_with("sample-0.in")
-    );
+    assert!(value["paths"].as_array().unwrap()[0].as_str().unwrap() == "data/sample-0.in");
+    assert!(value["paths"].as_array().unwrap()[1].as_str().unwrap() == "data/sample-0.ans");
 }
 #[test]
 fn gen_and_export_cover_multiple_bundles_cases_and_tasks() {
@@ -1193,6 +1227,7 @@ fn check_json_reports_missing_and_stale_generated_data() {
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("check_data_audit");
+    let display_problem_dir = problem_dir.display().to_string().replace('\\', "/");
     configure_python_problem(&problem_dir);
 
     let missing = run_cptool_allow_failure(
@@ -1218,7 +1253,7 @@ fn check_json_reports_missing_and_stale_generated_data() {
     );
     assert_eq!(
         missing_issue["next_action"],
-        format!("cptool case gen -w {} --clean", problem_dir.display())
+        format!("cptool case gen -w {display_problem_dir} --clean")
     );
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
@@ -1251,7 +1286,7 @@ fn check_json_reports_missing_and_stale_generated_data() {
     assert_eq!(stale_issue["kind"], "stale");
     assert_eq!(
         stale_issue["next_action"],
-        format!("cptool case gen -w {} --clean", problem_dir.display())
+        format!("cptool case gen -w {display_problem_dir} --clean")
     );
 }
 
@@ -1267,6 +1302,7 @@ fn check_text_reports_generated_data_next_action() {
         Some(temp.path()),
     );
     let problem_dir = temp.path().join("problems").join("check_data_next_action");
+    let display_problem_dir = problem_dir.display().to_string().replace('\\', "/");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool_allow_failure(["pkg", "check", "-w"], Some(&problem_dir));
@@ -1275,8 +1311,7 @@ fn check_text_reports_generated_data_next_action() {
     assert!(!output.status.success());
     assert!(stdout.contains("generated_data_missing"));
     assert!(stdout.contains(&format!(
-        "next action: `cptool case gen -w {} --clean`",
-        problem_dir.display()
+        "next action: `cptool case gen -w {display_problem_dir} --clean`"
     )));
 }
 
