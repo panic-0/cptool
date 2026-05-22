@@ -581,11 +581,11 @@ fn check_sample_checker_sanity(
                 run.checker,
                 run.result.status_line()
             );
-            if let Some(report_text) = run.report {
-                if !report_text.trim().is_empty() {
-                    message.push_str("; report: ");
-                    message.push_str(report_text.trim());
-                }
+            if let Some(report_text) = run.report
+                && !report_text.trim().is_empty()
+            {
+                message.push_str("; report: ");
+                message.push_str(report_text.trim());
             }
             report.error(
                 codes::CHECKER_SANITY_FAILED,
