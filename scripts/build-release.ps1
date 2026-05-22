@@ -81,12 +81,13 @@ trap 'rm -rf "`$tmp_dir"' EXIT
 git clone --quiet '$quotedRepoRoot' "`$tmp_dir/repo"
 cd "`$tmp_dir/repo"
 git checkout --quiet '$quotedCommit'
+git submodule update --init --recursive
 $linuxEnv bash scripts/build-release-linux.sh
 mkdir -p '$quotedRepoRoot/dist'
 cp "dist/cptool-v$Version-linux-x86_64.tar.gz" '$quotedRepoRoot/dist/'
 "@
     try {
-        $script | Set-Content -Encoding ascii -LiteralPath $tempScript
+        [System.IO.File]::WriteAllText($tempScript, ($script -replace "`r`n", "`n"), [System.Text.Encoding]::ASCII)
         wsl bash $wslScript
         if ($LASTEXITCODE -ne 0) {
             throw "Linux release build failed with exit code $LASTEXITCODE"
