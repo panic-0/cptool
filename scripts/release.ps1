@@ -86,8 +86,15 @@ if (-not [string]::IsNullOrWhiteSpace($remoteTag)) {
     throw "Remote tag $tag already exists on origin"
 }
 
-& $gh release view $tag --repo $Repo *> $null
-if ($LASTEXITCODE -eq 0) {
+$releaseViewSucceeded = $false
+try {
+    & $gh release view $tag --repo $Repo *> $null
+    $releaseViewSucceeded = ($LASTEXITCODE -eq 0)
+}
+catch {
+    $releaseViewSucceeded = $false
+}
+if ($releaseViewSucceeded) {
     throw "GitHub release $tag already exists in $Repo"
 }
 
