@@ -374,8 +374,6 @@ pub struct StressPlan {
     #[serde(default = "default_stress_cases")]
     pub cases: usize,
     #[serde(default)]
-    pub seed_base: Option<u64>,
-    #[serde(default)]
     pub expect: StressPlanExpectation,
 }
 
@@ -408,8 +406,6 @@ struct RawStressPlan {
     against: Vec<String>,
     #[serde(default = "default_stress_cases")]
     cases: usize,
-    #[serde(default)]
-    seed_base: Option<u64>,
     #[serde(default)]
     expect: StressPlanExpectation,
 }
@@ -446,7 +442,6 @@ where
                 args: plan.args,
                 against: plan.against,
                 cases: plan.cases,
-                seed_base: plan.seed_base,
                 expect: plan.expect,
             })
         })

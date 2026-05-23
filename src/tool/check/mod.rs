@@ -907,7 +907,6 @@ mod tests {
             args: Vec::new(),
             against: vec!["std".to_string()],
             cases: 0,
-            seed_base: None,
             expect: crate::tool::schema::StressPlanExpectation::Fail,
         });
         let mut report = CheckReport::new(root.clone());

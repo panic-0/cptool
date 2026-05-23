@@ -263,7 +263,7 @@ pub(super) enum TestCommands {
     },
     #[command(
         about = "Stress test several programs on temporary generated inputs",
-        long_about = "Stress test several programs on temporary generated inputs. Generator args after -- support {seed}, {case}, and {case0}; {case} is 1-based, {case0} is 0-based, and {seed} is deterministic."
+        long_about = "Stress test several programs on temporary generated inputs. Generator args after -- support {case} and {case0}; {case} is 1-based and {case0} is 0-based."
     )]
     Stress {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
@@ -290,14 +290,14 @@ pub(super) enum TestCommands {
         json: bool,
         #[arg(
             last = true,
-            help = "Arguments passed to the generator after --; supports {seed}, {case}, and {case0}"
+            help = "Arguments passed to the generator after --; supports {case} and {case0}"
         )]
         args: Vec<String>,
     },
     #[command(
         name = "plan",
         about = "Run stress plans declared in problem.yaml",
-        long_about = "Run stress plans declared in problem.yaml. Plan args support {seed}, {case}, and {case0}; {seed} is deterministic and may be controlled with stress.plans[].seed_base."
+        long_about = "Run stress plans declared in problem.yaml. Plan args support {case} and {case0}; {case} is 1-based and {case0} is 0-based."
     )]
     Plan {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]

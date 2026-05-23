@@ -431,7 +431,6 @@ fn cli_help_describes_new_workflow_commands() {
 
     let stress = run_cptool(["test", "stress", "--help"], None);
     let stress_stdout = String::from_utf8_lossy(&stress.stdout);
-    assert!(stress_stdout.contains("{seed}"));
     assert!(stress_stdout.contains("{case}"));
     assert!(stress_stdout.contains("{case0}"));
     assert!(stress_stdout.contains("--json"));

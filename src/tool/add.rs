@@ -588,9 +588,6 @@ fn render_stress(out: &mut String, problem: &Problem) {
         out.push_str(&format!("    args: {}\n", inline_list(&plan.args)));
         out.push_str(&format!("    against: {}\n", inline_list(&plan.against)));
         out.push_str(&format!("    cases: {}\n", plan.cases));
-        if let Some(seed_base) = plan.seed_base {
-            out.push_str(&format!("    seed_base: {seed_base}\n"));
-        }
         out.push_str(&format!(
             "    expect: {}\n",
             stress_expect_name(plan.expect)

@@ -153,50 +153,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plan_args_expand_seed_and_case_placeholders() {
+    fn plan_args_expand_case_placeholders() {
         let plan = StressPlan {
             name: "small".to_string(),
             generator: "gen".to_string(),
             args: vec![
-                "--seed={seed}".to_string(),
                 "--case={case}".to_string(),
                 "--case0={case0}".to_string(),
                 "--literal=case".to_string(),
             ],
             against: vec!["std".to_string(), "brute".to_string()],
             cases: 3,
-            seed_base: Some(42),
             expect: StressPlanExpectation::Pass,
         };
 
         let args = plan_args_by_case(&plan);
 
         assert_eq!(args.len(), 3);
-        assert_eq!(args[0][1], "--case=1");
-        assert_eq!(args[0][2], "--case0=0");
-        assert_eq!(args[1][1], "--case=2");
-        assert_eq!(args[1][2], "--case0=1");
-        assert_eq!(args[2][3], "--literal=case");
-        assert_ne!(args[0][0], args[1][0]);
-        assert!(
-            args[0][0]
-                .strip_prefix("--seed=")
-                .unwrap()
-                .parse::<u64>()
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn seed_base_changes_deterministic_seeds() {
-        let mut first = plan("small");
-        first.args = vec!["{seed}".to_string()];
-        first.seed_base = Some(1);
-        let mut second = first.clone();
-        second.seed_base = Some(2);
-
-        assert_eq!(plan_args_by_case(&first), plan_args_by_case(&first));
-        assert_ne!(plan_args_by_case(&first), plan_args_by_case(&second));
+        assert_eq!(args[0][0], "--case=1");
+        assert_eq!(args[0][1], "--case0=0");
+        assert_eq!(args[1][0], "--case=2");
+        assert_eq!(args[1][1], "--case0=1");
+        assert_eq!(args[2][2], "--literal=case");
     }
 
     #[test]
@@ -247,7 +225,6 @@ mod tests {
             args: Vec::new(),
             against: vec!["std".to_string(), "brute".to_string()],
             cases: 1,
-            seed_base: None,
             expect: StressPlanExpectation::Pass,
         }
     }

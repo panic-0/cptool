@@ -300,12 +300,11 @@ pub fn overwrite_generator_for_stress_plan_placeholders(problem_dir: &Path) {
         problem_dir.join("src").join("gen.py"),
         r#"import sys
 
-seed = int(sys.argv[1])
-case = int(sys.argv[2])
-case0 = int(sys.argv[3])
+case = int(sys.argv[1])
+case0 = int(sys.argv[2])
 if case != case0 + 1:
     raise SystemExit(7)
-sys.stdout.buffer.write(f"{seed} {case}\n".encode("ascii"))
+sys.stdout.buffer.write(f"{case} {case0}\n".encode("ascii"))
 "#,
     )
     .unwrap();
@@ -327,18 +326,17 @@ pub fn append_stress_plan(problem_dir: &Path) {
     std::fs::write(yaml_path, yaml).unwrap();
 }
 
-pub fn append_stress_plan_with_seed_placeholders(problem_dir: &Path) {
+pub fn append_stress_plan_with_case_placeholders(problem_dir: &Path) {
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
     yaml.push_str(
         r#"stress:
   plans:
-  - name: seeded
+  - name: case-placeholders
     generator: gen
-    args: ["{seed}", "{case}", "{case0}"]
+    args: ["{case}", "{case0}"]
     against: [std, brute]
     cases: 2
-    seed_base: 20260519
 "#,
     );
     std::fs::write(yaml_path, yaml).unwrap();

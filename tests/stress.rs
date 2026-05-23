@@ -3,7 +3,7 @@ use common::*;
 use serde_json::Value;
 
 #[test]
-fn stress_plan_runs_named_plan_without_seed_config() {
+fn stress_plan_runs_named_plan() {
     if !python_available() {
         return;
     }
@@ -597,7 +597,7 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
     assert!(!stderr.contains("warning: repeated_input"));
 }
 #[test]
-fn stress_plan_expands_seed_and_case_placeholders() {
+fn stress_plan_expands_case_placeholders() {
     if !python_available() {
         return;
     }
@@ -613,7 +613,7 @@ fn stress_plan_expands_seed_and_case_placeholders() {
         .join("stress_plan_placeholders");
     configure_python_problem(&problem_dir);
     overwrite_generator_for_stress_plan_placeholders(&problem_dir);
-    append_stress_plan_with_seed_placeholders(&problem_dir);
+    append_stress_plan_with_case_placeholders(&problem_dir);
 
     let output = run_cptool(
         [
@@ -622,15 +622,15 @@ fn stress_plan_expands_seed_and_case_placeholders() {
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
-            "seeded",
+            "case-placeholders",
         ],
         None,
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    assert!(stdout.contains("plan `seeded` case 1 ok"));
-    assert!(stdout.contains("plan `seeded` case 2 ok"));
-    assert!(stdout.contains("stress plan `seeded` passed: 2 cases"));
+    assert!(stdout.contains("plan `case-placeholders` case 1 ok"));
+    assert!(stdout.contains("plan `case-placeholders` case 2 ok"));
+    assert!(stdout.contains("stress plan `case-placeholders` passed: 2 cases"));
 }
 
 #[test]

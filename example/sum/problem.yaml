@@ -12,6 +12,12 @@ programs:
       compile_args: [-O2, -std=c++14]
     time_limit_secs: 5.0
     memory_limit_mb: 512.0
+  wrong:
+    info: !cpp
+      path: ./src/wrong.cpp
+      compile_args: [-O2, -std=c++14]
+    time_limit_secs: 5.0
+    memory_limit_mb: 512.0
   val:
     info: !cpp
       path: ./src/val.cpp
@@ -68,3 +74,10 @@ test:
     type: min
     bundles: [s3]
     dependencies: [s1, s2]
+stress:
+  plans:
+  - name: catches-no-mod
+    args: [5, 1000000000]
+    against: [std, wrong]
+    cases: 3
+    expect: fail

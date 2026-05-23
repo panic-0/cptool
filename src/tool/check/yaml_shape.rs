@@ -123,15 +123,7 @@ pub(super) fn check_unknown_yaml_fields(report: &mut CheckReport, work_dir: &Pat
                         &path,
                         plan,
                         &format!("stress.plans[{plan_index}]"),
-                        &[
-                            "name",
-                            "generator",
-                            "args",
-                            "against",
-                            "cases",
-                            "seed_base",
-                            "expect",
-                        ],
+                        &["name", "generator", "args", "against", "cases", "expect"],
                     );
                 }
             }
