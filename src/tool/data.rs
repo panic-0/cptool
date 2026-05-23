@@ -165,7 +165,7 @@ impl GenerateWarningKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DataGenerationStatus {
+pub(crate) struct DataGenerationStatus {
     pub marker_path: PathBuf,
 }
 
@@ -274,7 +274,7 @@ fn generate_data_report_impl(
     }
 }
 
-pub fn data_generation_status(output_dir: &Path) -> Option<DataGenerationStatus> {
+pub(crate) fn data_generation_status(output_dir: &Path) -> Option<DataGenerationStatus> {
     let lock_dir = output_dir.join(GENERATION_LOCK_DIR);
     if lock_dir.is_dir() {
         return Some(DataGenerationStatus {
