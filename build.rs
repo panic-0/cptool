@@ -15,10 +15,7 @@ fn main() {
 }
 
 fn emit_builtin_checkers() {
-    let checker_dir = Path::new("example")
-        .join("assets")
-        .join("testlib")
-        .join("checkers");
+    let checker_dir = Path::new("third_party").join("testlib").join("checkers");
     println!("cargo:rerun-if-changed={}", checker_dir.display());
 
     let mut entries = std::fs::read_dir(&checker_dir)

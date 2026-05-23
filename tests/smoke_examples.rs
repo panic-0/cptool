@@ -170,6 +170,11 @@ fn example_problem_packages_generate_and_check() {
     let example_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("example");
     let example_dst = temp.path().join("example");
     copy_example_tree(&example_src, &example_dst);
+    let testlib_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("third_party")
+        .join("testlib");
+    let testlib_dst = temp.path().join("third_party").join("testlib");
+    copy_example_tree(&testlib_src, &testlib_dst);
 
     let mut checked = Vec::new();
     for entry in std::fs::read_dir(&example_dst).unwrap() {

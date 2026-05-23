@@ -3,7 +3,7 @@ programs:
   gen:
     info: !cpp
       path: ./src/gen.cpp
-      compile_args: [-O2, -std=c++14, -I../assets/testlib/]
+      compile_args: [-O2, -std=c++14, -I../../third_party/testlib/]
     time_limit_secs: 5.0
     memory_limit_mb: 512.0
   std:
@@ -22,13 +22,13 @@ programs:
     info: !cpp
       path: ./src/val.cpp
       # testlib validators are compile-heavy; O0 keeps smoke/CI cold builds fast.
-      compile_args: [-O0, -I../assets/testlib/]
+      compile_args: [-O0, -I../../third_party/testlib/]
     time_limit_secs: 5.0
     memory_limit_mb: 512.0
   chk:
     info: !cpp
-      path: ../assets/testlib/checkers/lcmp.cpp
-      compile_args: [-O2, -I../assets/testlib/]
+      path: ../../third_party/testlib/checkers/lcmp.cpp
+      compile_args: [-O2, -I../../third_party/testlib/]
     time_limit_secs: 5.0
     memory_limit_mb: 512.0
 solution: std

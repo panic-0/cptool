@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-const TESTLIB_H: &str = include_str!("../../assets/testlib/testlib.h");
+const TESTLIB_H: &str = include_str!("../../third_party/testlib/testlib.h");
 pub(crate) const DEFAULT_PROGRAM_CPP: &str =
     include_str!("../../assets/templates/default_program.cpp");
 const DEFAULT_GENERATOR_CPP: &str = r#"#include "testlib.h"
@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
 "#;
 const DEFAULT_CHECKER_CPP: &str = concat!(
     "// Copied from testlib checkers/wcmp.cpp\n",
-    include_str!("../../example/assets/testlib/checkers/wcmp.cpp")
+    include_str!("../../third_party/testlib/checkers/wcmp.cpp")
 );
 
 pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
