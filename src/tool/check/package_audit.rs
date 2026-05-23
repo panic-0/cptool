@@ -187,7 +187,7 @@ fn check_report_service_noise_and_failure_refs(report: &mut CheckReport, work_di
 fn failure_references(text: &str) -> Vec<String> {
     let mut references = Vec::new();
     let mut start = 0;
-    while let Some(offset) = text[start..].find("tests/failures/") {
+    while let Some(offset) = text[start..].find(".cptool/failures/") {
         let begin = start + offset;
         let end = text[begin..]
             .char_indices()

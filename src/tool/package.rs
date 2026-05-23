@@ -33,14 +33,17 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
 
     std::fs::create_dir_all(problem_dir.join("src"))?;
     std::fs::create_dir_all(problem_dir.join("data"))?;
-    std::fs::create_dir_all(problem_dir.join("tests").join("checker"))?;
-    std::fs::create_dir_all(problem_dir.join("tests").join("failures"))?;
-    std::fs::create_dir_all(problem_dir.join("tests").join("validator"))?;
+    std::fs::create_dir_all(problem_dir.join("fixtures").join("input"))?;
+    std::fs::create_dir_all(problem_dir.join("fixtures").join("validator").join("pass"))?;
+    std::fs::create_dir_all(problem_dir.join("fixtures").join("validator").join("fail"))?;
+    std::fs::create_dir_all(problem_dir.join("fixtures").join("checker").join("pass"))?;
+    std::fs::create_dir_all(problem_dir.join("fixtures").join("checker").join("fail"))?;
+    std::fs::create_dir_all(problem_dir.join(".cptool").join("failures"))?;
     std::fs::write(problem_dir.join("statement.md"), "# 题面\n\n")?;
     std::fs::write(problem_dir.join("editorial.md"), "# 题解\n\n")?;
     std::fs::write(
         problem_dir.join(".gitignore"),
-        ".cptool/\ndata/\nexport/\noutput/\ntmp/\ntests/failures/\n*.exe\n*.tmp\n",
+        ".cptool/\ndata/\nexport/\noutput/\ntmp/\n*.exe\n*.tmp\n",
     )?;
     std::fs::write(problem_dir.join("src").join("std.cpp"), DEFAULT_PROGRAM_CPP)?;
     std::fs::write(

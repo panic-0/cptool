@@ -942,7 +942,7 @@ mod tests {
         .unwrap();
         std::fs::write(
             problem_dir.join("quality_report.md"),
-            "正向覆盖 wrong-proof\nmissing tests/failures/nope.txt\nrate limit\n",
+            "正向覆盖 wrong-proof\nmissing .cptool/failures/nope.txt\nrate limit\n",
         )
         .unwrap();
 

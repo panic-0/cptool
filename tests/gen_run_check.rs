@@ -123,7 +123,7 @@ if data != "ok":
             "validator",
             "-w",
             problem_dir.to_str().unwrap(),
-            "--input-path",
+            "--input",
             "valid.in",
             "--json",
         ],
@@ -140,7 +140,7 @@ if data != "ok":
             "validator",
             "-w",
             problem_dir.to_str().unwrap(),
-            "--input-path",
+            "--input",
             "invalid.in",
             "--expect",
             "fail",
@@ -159,7 +159,7 @@ if data != "ok":
             "validator",
             "-w",
             problem_dir.to_str().unwrap(),
-            "--input-path",
+            "--input",
             "invalid.in",
         ],
         None,
@@ -211,7 +211,7 @@ if data != {expected}:
             "validator",
             "-w",
             problem_dir.to_str().unwrap(),
-            "--input-path",
+            "--input",
             "line_endings.in",
             "--json",
         ],
@@ -242,7 +242,7 @@ if data != {expected}:
             "validator",
             "-w",
             problem_dir.to_str().unwrap(),
-            "--input-path",
+            "--input",
             "line_endings_disabled.in",
             "--no-fix-line-endings",
             "--json",
@@ -291,7 +291,7 @@ test:
     corner:
       cases:
       - generator: :file
-        args: [tests/corner/small.in]
+        args: [fixtures/input/small.in]
   tasks:
   - name: corner
     score: 100.0
@@ -300,9 +300,8 @@ test:
 "#,
     )
     .unwrap();
-    std::fs::create_dir_all(problem_dir.join("tests").join("corner")).unwrap();
     std::fs::write(
-        problem_dir.join("tests").join("corner").join("small.in"),
+        problem_dir.join("fixtures").join("input").join("small.in"),
         "2 5\n",
     )
     .unwrap();
@@ -354,7 +353,7 @@ test:
   bundles:
     sample:
       cases:
-      - [tests/validator/strict.in]
+      - [fixtures/input/strict.in]
   tasks:
   - name: sample
     score: 100.0
@@ -377,10 +376,7 @@ int main(int argc, char *argv[]) {
 "#,
     )
     .unwrap();
-    let fixture = problem_dir
-        .join("tests")
-        .join("validator")
-        .join("strict.in");
+    let fixture = problem_dir.join("fixtures").join("input").join("strict.in");
     std::fs::write(&fixture, b"2 5").unwrap();
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
@@ -488,11 +484,11 @@ fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
             "checker",
             "-w",
             problem_dir.to_str().unwrap(),
-            "--input-path",
+            "--input",
             "input.in",
-            "--output-path",
+            "--output",
             "good.out",
-            "--answer-path",
+            "--answer",
             "answer.ans",
             "--json",
         ],
@@ -509,11 +505,11 @@ fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
             "checker",
             "-w",
             problem_dir.to_str().unwrap(),
-            "--input-path",
+            "--input",
             "input.in",
-            "--output-path",
+            "--output",
             "bad.out",
-            "--answer-path",
+            "--answer",
             "answer.ans",
             "--expect",
             "fail",
@@ -1387,7 +1383,7 @@ fn check_json_keeps_package_audit_warning_codes_stable() {
     .unwrap();
     std::fs::write(
         problem_dir.join("quality_report.md"),
-        "正向覆盖 wrong-proof\nmissing tests/failures/nope.txt\nrate limit\n",
+        "正向覆盖 wrong-proof\nmissing .cptool/failures/nope.txt\nrate limit\n",
     )
     .unwrap();
 

@@ -17,6 +17,7 @@
 - `src/tool/package.rs`：`pkg init` 脚手架生成。
 - `src/tool/add.rs`：`config add` 行为和源码脚手架。
 - `src/tool/data.rs`：正式数据生成、暂存和提交流程。
+- `src/tool/fixture.rs`：手写 input、validator、checker fixture 的添加、检查和列表。
 - `src/tool/run.rs`：程序运行以及可选输出/报告写入。
 - `src/tool/stress.rs`、`src/tool/stress_plan.rs`、`src/tool/stress_args.rs`：临时对拍和配置化 stress plan。
 - `src/tool/check/`：题包检查、YAML 形状检查、题面和样例审计。
@@ -26,15 +27,15 @@
 
 ## 验证
 
-行为改动完成前，**必须**在仓库根目录运行：
+每次更新代码后，提交、交付或声称完成前，**必须**在仓库根目录运行：
 
 ```powershell
 python scripts/check.py
 ```
 
-这是标准本地检查入口，会依次运行格式检查、clippy 和完整 Rust 测试套件。
+这是唯一的标准本地完成检查入口，会依次运行格式检查、clippy 和完整 Rust 测试套件。只跑 `cargo test`、单个测试文件、手工命令或局部检查都不能替代 `python scripts/check.py`，因为它们可能漏掉格式或 clippy 问题。
 
-迭代时可以先跑更窄的命令，最后仍要回到完整脚本：
+迭代时可以先跑更窄的命令来缩短反馈，但最后仍必须回到完整脚本：
 
 ```powershell
 cargo fmt --check
@@ -67,4 +68,3 @@ cargo test --all-targets --all-features
 - 发布资产由 `scripts/build_release.py` 构建。
 - 发布脚本是 `scripts/release.ps1`；它要求工作树干净，并且传入版本与 `Cargo.toml` 一致。
 - 不要在 detached HEAD 上打 tag 或发布。
-

@@ -1,4 +1,3 @@
-use super::data::read_file_generator_input;
 use super::judge::run_configured_checker_on_bytes;
 use super::problem::{FILE_GENERATOR_NAME, load_problem, normalize_work_dir, resolve_path};
 use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
@@ -251,7 +250,9 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     let work_dir = normalize_work_dir(work_dir)?;
     let problem = load_problem(&work_dir)?;
     let generator = if generator == FILE_GENERATOR_NAME {
-        StressGenerator::File
+        anyhow::bail!(
+            "stress generators cannot use `{FILE_GENERATOR_NAME}`; use a real generator program"
+        )
     } else if generator.starts_with(':') {
         anyhow::bail!("generator `{generator}` is an unknown built-in generator");
     } else {
@@ -265,7 +266,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     let answer_program = checker_name.as_ref().map(|_| against[0].clone());
     let failure_dir = failure_dir
         .map(|path| resolve_path(&work_dir, path))
-        .unwrap_or_else(|| work_dir.join("tests").join("failures"));
+        .unwrap_or_else(|| work_dir.join(".cptool").join("failures"));
 
     let start = Instant::now();
     let mut input_hashes = HashSet::new();
@@ -403,7 +404,6 @@ struct StressCaseOutcome {
 
 enum StressGenerator {
     Program(ProgramSpec),
-    File,
 }
 
 struct StressFailure {
@@ -500,9 +500,6 @@ fn run_stress_case(
                 );
             }
             gen_result.stdout_bytes
-        }
-        StressGenerator::File => {
-            read_file_generator_input(work_dir, args, &format!("stress case {index}"))?.bytes
         }
     };
     let input_hash = Sha256::digest(&input).to_vec();

@@ -273,7 +273,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     assert_eq!(count_failure_reports(&problem_dir), failure_reports_before);
     assert!(
         !problem_dir
-            .join("tests")
+            .join(".cptool")
             .join("failures")
             .join("stress-bad-is-detected-002.txt")
             .exists()

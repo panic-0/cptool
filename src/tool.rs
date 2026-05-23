@@ -3,6 +3,7 @@ mod check;
 mod clean;
 mod data;
 mod evidence;
+mod fixture;
 mod judge;
 mod package;
 mod problem;
@@ -30,6 +31,12 @@ pub use data::{
 };
 pub use evidence::{
     EvidenceCheckReport, EvidenceOptions, EvidenceReport, EvidenceSection, collect_evidence,
+};
+pub use fixture::{
+    AddCheckerFixtureOptions, AddFixtureReport, AddInputFixtureOptions, AddValidatorFixtureOptions,
+    CheckerFixture, FixtureCheckReport, FixtureIssue, FixtureListReport, InputFixture,
+    ValidatorFixture, add_checker_fixture, add_input_fixture, add_validator_fixture,
+    check_fixtures, checker_fixture_reports, list_fixtures, validator_fixture_reports,
 };
 pub use judge::{
     JudgeCheckerOptions, JudgeExpectation, JudgeKind, JudgeObserved, JudgeReport,
@@ -116,9 +123,36 @@ mod tests {
             std::fs::read_to_string(problem_dir.join("src").join("chk.cpp")).unwrap();
         assert!(checker_source.starts_with("// Copied from testlib checkers/wcmp.cpp\n"));
         assert!(checker_source.contains("compare sequences of tokens"));
-        assert!(problem_dir.join("tests").join("checker").is_dir());
-        assert!(problem_dir.join("tests").join("failures").is_dir());
-        assert!(problem_dir.join("tests").join("validator").is_dir());
+        assert!(problem_dir.join("fixtures").join("input").is_dir());
+        assert!(
+            problem_dir
+                .join("fixtures")
+                .join("validator")
+                .join("pass")
+                .is_dir()
+        );
+        assert!(
+            problem_dir
+                .join("fixtures")
+                .join("validator")
+                .join("fail")
+                .is_dir()
+        );
+        assert!(
+            problem_dir
+                .join("fixtures")
+                .join("checker")
+                .join("pass")
+                .is_dir()
+        );
+        assert!(
+            problem_dir
+                .join("fixtures")
+                .join("checker")
+                .join("fail")
+                .is_dir()
+        );
+        assert!(problem_dir.join(".cptool").join("failures").is_dir());
         assert!(problem_dir.join(".gitignore").exists());
         assert!(!problem_dir.join("quality_report.md").exists());
         assert!(!problem_dir.join("problem.md").exists());

@@ -36,6 +36,11 @@ pub(super) enum Commands {
         #[command(subcommand)]
         command: TestCommands,
     },
+    #[command(about = "Create, list, and check package fixtures")]
+    Fixture {
+        #[command(subcommand)]
+        command: FixtureCommands,
+    },
     #[command(about = "Collect audit and evidence reports")]
     Report {
         #[command(subcommand)]
@@ -211,7 +216,7 @@ pub(super) enum CaseCommands {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum TestCommands {
-    #[command(about = "Run the configured validator on an input file")]
+    #[command(about = "Run validator fixtures or one explicit input file")]
     Validator {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
@@ -220,8 +225,14 @@ pub(super) enum TestCommands {
             help = "Validator program key; defaults to problem.yaml validator"
         )]
         validator: Option<String>,
-        #[arg(long, value_name = "PATH", help = "Input file to validate")]
-        input_path: PathBuf,
+        #[arg(long, value_name = "PATH", help = "Run one explicit input file")]
+        input: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "pass/NAME|fail/NAME",
+            help = "Run one validator fixture"
+        )]
+        fixture: Option<String>,
         #[arg(long, value_enum, default_value_t = JudgeExpectationArg::Pass, help = "Expected verdict")]
         expect: JudgeExpectationArg,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
@@ -234,26 +245,36 @@ pub(super) enum TestCommands {
         #[arg(long, help = "Print the test result as JSON")]
         json: bool,
     },
-    #[command(about = "Run the configured checker on input/output/answer files")]
+    #[command(about = "Run checker fixtures or one explicit input/output/answer set")]
     Checker {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
         #[arg(long, help = "Checker program key; defaults to problem.yaml checker")]
         checker: Option<String>,
-        #[arg(long, value_name = "PATH", help = "Input file passed to the checker")]
-        input_path: PathBuf,
         #[arg(
             long,
             value_name = "PATH",
-            help = "Participant output file passed to the checker"
+            help = "Explicit input file passed to the checker"
         )]
-        output_path: PathBuf,
+        input: Option<PathBuf>,
         #[arg(
             long,
             value_name = "PATH",
-            help = "Jury answer file passed to the checker"
+            help = "Explicit participant output file passed to the checker"
         )]
-        answer_path: PathBuf,
+        output: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Explicit jury answer file passed to the checker"
+        )]
+        answer: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "pass/NAME|fail/NAME",
+            help = "Run one checker fixture"
+        )]
+        fixture: Option<String>,
         #[arg(long, value_enum, default_value_t = JudgeExpectationArg::Pass, help = "Expected verdict")]
         expect: JudgeExpectationArg,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
@@ -334,6 +355,138 @@ pub(super) enum TestCommands {
         negative_only: bool,
         #[arg(long, help = "Print stress plan summaries as JSON")]
         json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum FixtureCommands {
+    #[command(about = "Add a package fixture")]
+    Add {
+        #[command(subcommand)]
+        command: FixtureAddCommands,
+    },
+    #[command(about = "List package fixtures")]
+    List {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Print fixture list as JSON")]
+        json: bool,
+    },
+    #[command(about = "Check fixture structure and input usage")]
+    Check {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Print fixture check report as JSON")]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum FixtureAddCommands {
+    #[command(about = "Add a hand-written input fixture for `:file` test cases")]
+    Input {
+        #[arg(help = "Fixture name without path or extension")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, value_name = "PATH", help = "Copy input bytes from this path")]
+        from: Option<PathBuf>,
+        #[arg(long, help = "Replace an existing fixture")]
+        replace: bool,
+    },
+    #[command(about = "Add a validator pass/fail fixture")]
+    Validator {
+        #[command(subcommand)]
+        command: FixtureValidatorCommands,
+    },
+    #[command(about = "Add a checker pass/fail fixture")]
+    Checker {
+        #[command(subcommand)]
+        command: FixtureCheckerCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum FixtureValidatorCommands {
+    #[command(about = "Add an input that the validator must accept")]
+    Pass {
+        #[arg(help = "Fixture name without path or extension")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, value_name = "PATH", help = "Copy input bytes from this path")]
+        from: Option<PathBuf>,
+        #[arg(long, help = "Replace an existing fixture")]
+        replace: bool,
+    },
+    #[command(about = "Add an input that the validator must reject")]
+    Fail {
+        #[arg(help = "Fixture name without path or extension")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, value_name = "PATH", help = "Copy input bytes from this path")]
+        from: Option<PathBuf>,
+        #[arg(long, help = "Replace an existing fixture")]
+        replace: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum FixtureCheckerCommands {
+    #[command(about = "Add files that the checker must accept")]
+    Pass {
+        #[arg(help = "Fixture name without path or extension")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Copy checker input bytes from this path"
+        )]
+        input: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Copy participant output bytes from this path"
+        )]
+        output: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Copy jury answer bytes from this path"
+        )]
+        answer: Option<PathBuf>,
+        #[arg(long, help = "Replace an existing fixture")]
+        replace: bool,
+    },
+    #[command(about = "Add files that the checker must reject")]
+    Fail {
+        #[arg(help = "Fixture name without path or extension")]
+        name: String,
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Copy checker input bytes from this path"
+        )]
+        input: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Copy participant output bytes from this path"
+        )]
+        output: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Copy jury answer bytes from this path"
+        )]
+        answer: Option<PathBuf>,
+        #[arg(long, help = "Replace an existing fixture")]
+        replace: bool,
     },
 }
 
