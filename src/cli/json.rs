@@ -2,6 +2,7 @@ use cptool::support::count_lines;
 use cptool::tool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::io::Write;
 use std::path::PathBuf;
 
 #[derive(Serialize)]
@@ -138,6 +139,8 @@ impl<'a> From<&'a tool::CheckReport> for CheckJsonReport<'a> {
 }
 
 pub(super) fn print<T: Serialize>(value: &T) -> anyhow::Result<()> {
-    println!("{}", serde_json::to_string(value)?);
+    let mut bytes = serde_json::to_vec(value)?;
+    bytes.push(b'\n');
+    std::io::stdout().lock().write_all(&bytes)?;
     Ok(())
 }

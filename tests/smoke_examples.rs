@@ -323,6 +323,11 @@ fn unicode_paths_and_utf8_data_flow_through_cli() {
     let check = run_cptool(["pkg", "check", "-w"], Some(&problem_dir));
     let check_stdout = String::from_utf8_lossy(&check.stdout);
     assert!(check_stdout.contains("status: `PASS`"));
+    let check_json = run_cptool(["pkg", "check", "--json", "-w"], Some(&problem_dir));
+    let check_json_stdout = std::str::from_utf8(&check_json.stdout).unwrap();
+    assert!(check_json_stdout.contains("cptool-unicode 路径"));
+    let check_json_value: serde_json::Value = serde_json::from_slice(&check_json.stdout).unwrap();
+    assert_eq!(check_json_value["status"], "pass");
 
     run_cptool(
         [
