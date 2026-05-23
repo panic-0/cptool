@@ -235,7 +235,7 @@ fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem:
     } else {
         "missing"
     };
-    let next_action = format!("cptool case gen -w {} --clean", work_dir.display());
+    let next_action = format!("cptool case gen -w {}", work_dir.display());
     for (bundle_name, bundle) in &problem.test.bundles {
         for case_index in 0..bundle.cases.len() {
             for extension in ["in", "ans"] {
@@ -269,7 +269,7 @@ fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &P
     let Ok(entries) = std::fs::read_dir(&data_dir) else {
         return;
     };
-    let next_action = format!("cptool case gen -w {} --clean", work_dir.display());
+    let next_action = format!("cptool case gen -w {}", work_dir.display());
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_file() || !is_data_io_file(&path) {
@@ -533,7 +533,6 @@ fn check_sample_generation(
         selector: None,
         output_dir: Some(output_dir.clone()),
         output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
-        clean: false,
         generation_lock_timeout: None,
     });
     let generated = match result {

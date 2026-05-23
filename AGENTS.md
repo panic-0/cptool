@@ -49,7 +49,7 @@ cargo test --all-targets --all-features
 
 - `pkg init` 生成自包含题包脚手架，包括源码、数据和测试 fixture 目录。
 - 顶层默认值，例如运行限制、C++ 编译参数和 `generator`，应由 test cases 和 stress plans 复用；只有确实需要局部差异时才写 override。
-- 保留 generator 名 `:file` 表示从题包相对路径读取手写输入 fixture；它不是注册在 `programs` 里的程序。
+- 保留 generator 名 `:file` 表示从题包内 `fixtures/input/*.in` 读取手写输入 fixture；它不是注册在 `programs` 里的程序。
 - 显式 validator 测试和复制 fixture 的生成路径默认会规范化输入换行。源 fixture 不应被回写，除非命令文档明确说明会这样做。
 - `pkg clean` 只面向生成数据和本地缓存。validator、checker、corner、failure examples 等长期 fixture 目录不应被清理，除非命令明确拥有它们。
 - stress 参数占位符只支持 `{case}` 和 `{case0}`。

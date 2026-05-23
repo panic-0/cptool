@@ -422,9 +422,15 @@ fn gen_file_generator_reports_bad_arguments_and_missing_files() {
         ),
         (
             r#"      - generator: :file
-        args: [missing.in]
+        args: [fixtures/input/missing.in]
 "#,
             "failed to read `:file` input",
+        ),
+        (
+            r#"      - generator: :file
+        args: [data/manual.in]
+"#,
+            "must read handwritten input from fixtures/input",
         ),
     ] {
         std::fs::write(
@@ -893,24 +899,26 @@ fn gen_warns_when_generator_stdout_is_empty() {
     assert!(stderr.contains("stderr_bytes="));
 }
 #[test]
-fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
+fn gen_rebuilds_data_dir_and_preserves_on_failure() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-gen-clean");
+    let temp = TempWorkspace::new("cptool-gen-rebuild-data");
     run_cptool(
-        ["pkg", "init", "clean_problem", "--root"],
+        ["pkg", "init", "rebuild_data_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("clean_problem");
+    let problem_dir = temp.path().join("problems").join("rebuild_data_problem");
     configure_python_problem(&problem_dir);
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let data_dir = problem_dir.join("data");
     std::fs::write(data_dir.join("sample-99.in"), "stale").unwrap();
     std::fs::write(data_dir.join("sample-99.ans"), "stale").unwrap();
-    std::fs::write(data_dir.join("sampleish-0.in"), "keep").unwrap();
+    std::fs::write(data_dir.join("manual.in"), "handwritten").unwrap();
+    std::fs::create_dir_all(data_dir.join("manual")).unwrap();
+    std::fs::write(data_dir.join("manual").join("case.in"), "handwritten").unwrap();
 
     run_cptool(
         [
@@ -920,17 +928,14 @@ fn gen_clean_removes_only_selected_bundle_and_preserves_on_failure() {
             problem_dir.to_str().unwrap(),
             "--bundle",
             "sample",
-            "--clean",
         ],
         None,
     );
 
     assert!(!data_dir.join("sample-99.in").exists());
     assert!(!data_dir.join("sample-99.ans").exists());
-    assert_eq!(
-        std::fs::read_to_string(data_dir.join("sampleish-0.in")).unwrap(),
-        "keep"
-    );
+    assert!(!data_dir.join("manual.in").exists());
+    assert!(!data_dir.join("manual").exists());
 
     std::fs::write(
         problem_dir.join("src").join("gen.py"),
@@ -1452,7 +1457,7 @@ fn check_json_reports_missing_and_stale_generated_data() {
     );
     assert_eq!(
         missing_issue["next_action"],
-        format!("cptool case gen -w {display_problem_dir} --clean")
+        format!("cptool case gen -w {display_problem_dir}")
     );
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
@@ -1485,7 +1490,7 @@ fn check_json_reports_missing_and_stale_generated_data() {
     assert_eq!(stale_issue["kind"], "stale");
     assert_eq!(
         stale_issue["next_action"],
-        format!("cptool case gen -w {display_problem_dir} --clean")
+        format!("cptool case gen -w {display_problem_dir}")
     );
 }
 
@@ -1510,7 +1515,7 @@ fn check_text_reports_generated_data_next_action() {
     assert!(!output.status.success());
     assert!(stdout.contains("generated_data_missing"));
     assert!(stdout.contains(&format!(
-        "next action: `cptool case gen -w {display_problem_dir} --clean`"
+        "next action: `cptool case gen -w {display_problem_dir}`"
     )));
 }
 

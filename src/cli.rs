@@ -56,7 +56,6 @@ fn handle_case(command: CaseCommands) -> anyhow::Result<()> {
             output_dir,
             output_limit_bytes,
             wait_for_generation_lock,
-            clean,
             summary_only,
             json,
         } => handle_gen(GenCommandOptions {
@@ -66,7 +65,6 @@ fn handle_case(command: CaseCommands) -> anyhow::Result<()> {
             output_dir,
             output_limit_bytes,
             wait_for_generation_lock,
-            clean,
             summary_only,
             json,
         })?,
@@ -496,7 +494,6 @@ struct GenCommandOptions {
     output_dir: Option<PathBuf>,
     output_limit_bytes: usize,
     wait_for_generation_lock: Option<u64>,
-    clean: bool,
     summary_only: bool,
     json: bool,
 }
@@ -509,7 +506,6 @@ fn handle_gen(options: GenCommandOptions) -> anyhow::Result<()> {
         output_dir,
         output_limit_bytes,
         wait_for_generation_lock,
-        clean,
         summary_only,
         json,
     } = options;
@@ -520,7 +516,6 @@ fn handle_gen(options: GenCommandOptions) -> anyhow::Result<()> {
         selector: case,
         output_dir,
         output_limit_bytes,
-        clean,
         generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
     };
     if json {

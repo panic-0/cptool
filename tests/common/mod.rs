@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Duration;
 
-pub const GENERATION_LOCK_RELEASE_DELAY: Duration = Duration::from_millis(500);
-pub const GENERATION_LOCK_WAIT_TIMEOUT_SECS: &str = "3";
-pub const GENERATION_LOCK_WAIT_TIMEOUT_LOG: &str = "timeout=3s";
+pub const GENERATION_LOCK_RELEASE_DELAY: Duration = Duration::from_secs(2);
+pub const GENERATION_LOCK_WAIT_TIMEOUT_SECS: &str = "5";
+pub const GENERATION_LOCK_WAIT_TIMEOUT_LOG: &str = "timeout=5s";
 
 pub fn configure_python_problem(problem_dir: &Path) {
     std::fs::write(

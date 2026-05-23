@@ -324,7 +324,6 @@ fn collect_gen(
         selector: None,
         output_dir: None,
         output_limit_bytes,
-        clean: false,
         generation_lock_timeout,
     }) {
         Ok(report) => EvidenceSection::ok(report),

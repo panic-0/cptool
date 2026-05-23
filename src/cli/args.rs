@@ -98,7 +98,9 @@ pub(super) enum PkgCommands {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum CaseCommands {
-    #[command(about = "Generate official .in/.ans data from problem.yaml bundles")]
+    #[command(
+        about = "Generate official .in/.ans data from problem.yaml bundles; always rebuilds the output directory"
+    )]
     Gen {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
@@ -117,11 +119,6 @@ pub(super) enum CaseCommands {
             help = "Wait up to SECONDS for an in-progress data generation lock"
         )]
         wait_for_generation_lock: Option<u64>,
-        #[arg(
-            long,
-            help = "Remove stale .in/.ans files for the selected case, bundle, or known bundles before publishing new data"
-        )]
-        clean: bool,
         #[arg(
             long,
             help = "Print one compact generation summary instead of each generated path"

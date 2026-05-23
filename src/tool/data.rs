@@ -9,7 +9,7 @@ use super::unix_epoch_nanos;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const GENERATION_LOCK_DIR: &str = ".cptool-gen.lock";
@@ -23,7 +23,6 @@ pub struct GenerateOptions {
     pub selector: Option<String>,
     pub output_dir: Option<PathBuf>,
     pub output_limit_bytes: usize,
-    pub clean: bool,
     pub generation_lock_timeout: Option<Duration>,
 }
 
@@ -175,12 +174,6 @@ struct DataGenerationLock {
     path: PathBuf,
 }
 
-enum CleanScope {
-    Case(CaseSelector),
-    Bundle(String),
-    All(Vec<String>),
-}
-
 pub fn generate_data(
     work_dir: &Path,
     bundle: Option<&str>,
@@ -194,7 +187,6 @@ pub fn generate_data(
         selector: selector.map(str::to_string),
         output_dir: output_dir.map(Path::to_path_buf),
         output_limit_bytes,
-        clean: false,
         generation_lock_timeout: None,
     })
 }
@@ -217,7 +209,6 @@ fn generate_data_report_impl(
         selector,
         output_dir,
         output_limit_bytes,
-        clean,
         generation_lock_timeout,
     } = options;
     let work_dir = normalize_work_dir(&work_dir)?;
@@ -230,8 +221,6 @@ fn generate_data_report_impl(
         .with_context(|| format!("failed to create output dir {}", output_dir.display()))?;
     let _generation_lock = DataGenerationLock::acquire(&output_dir, generation_lock_timeout)?;
     let selected_cases = select_cases(&problem, bundle.as_deref(), selector.as_deref())?;
-    let clean_scope =
-        clean.then(|| clean_scope_for(&problem, bundle.as_deref(), selector.as_deref()));
     let staging_dir = StagingDirGuard::new(create_staging_dir(&output_dir)?);
     let programs = build_program_specs(&work_dir, &problem)?;
     let solution = programs
@@ -268,7 +257,7 @@ fn generate_data_report_impl(
             .flat_map(|case| case.files.iter())
             .cloned()
             .collect::<Vec<_>>();
-        let paths = commit_generated_files(&output_dir, clean_scope.as_ref(), &files)?;
+        let paths = commit_generated_files(&output_dir, staging_dir.path(), &files)?;
         Ok(build_generate_report(
             cases,
             paths,
@@ -590,6 +579,7 @@ pub(crate) fn read_file_generator_input(
         );
     }
     let source_path = resolve_path(work_dir, Path::new(&args[0]));
+    ensure_file_generator_fixture_path(work_dir, &source_path, &args[0], context)?;
     let mut bytes = std::fs::read(&source_path).with_context(|| {
         format!(
             "failed to read `{FILE_GENERATOR_NAME}` input for {context}: {}",
@@ -602,6 +592,52 @@ pub(crate) fn read_file_generator_input(
         bytes,
         stderr_bytes: 0,
     })
+}
+
+fn ensure_file_generator_fixture_path(
+    work_dir: &Path,
+    source_path: &Path,
+    raw_arg: &str,
+    context: &str,
+) -> Result<()> {
+    let fixture_dir = normalize_path_lexically(&work_dir.join("fixtures").join("input"));
+    let source_path = normalize_path_lexically(source_path);
+    if !source_path.starts_with(&fixture_dir) {
+        anyhow::bail!(
+            "generator `{FILE_GENERATOR_NAME}` for {context} must read handwritten input from fixtures/input; got `{raw_arg}`"
+        );
+    }
+    if source_path.extension().and_then(|ext| ext.to_str()) != Some("in") {
+        anyhow::bail!(
+            "generator `{FILE_GENERATOR_NAME}` for {context} must read a .in fixture under fixtures/input; got `{raw_arg}`"
+        );
+    }
+    if let (Ok(source), Ok(fixture_dir)) = (
+        std::fs::canonicalize(&source_path),
+        std::fs::canonicalize(&fixture_dir),
+    ) && !source.starts_with(&fixture_dir)
+    {
+        anyhow::bail!(
+            "generator `{FILE_GENERATOR_NAME}` for {context} must read handwritten input from fixtures/input; got `{raw_arg}`"
+        );
+    }
+    Ok(())
+}
+
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
 }
 
 fn build_generate_report(
@@ -703,19 +739,6 @@ fn ensure_case_exists(problem: &Problem, selector: &CaseSelector) -> Result<()> 
     Ok(())
 }
 
-fn clean_scope_for(problem: &Problem, bundle: Option<&str>, selector: Option<&str>) -> CleanScope {
-    if let Some(selector) = selector {
-        return CleanScope::Case(
-            parse_case_selector(selector)
-                .expect("selector was already parsed successfully before clean scope creation"),
-        );
-    }
-    if let Some(bundle) = bundle {
-        return CleanScope::Bundle(bundle.to_string());
-    }
-    CleanScope::All(problem.test.bundles.keys().cloned().collect())
-}
-
 fn create_staging_dir(output_dir: &Path) -> Result<PathBuf> {
     for attempt in 0..100 {
         let nanos = SystemTime::now()
@@ -740,7 +763,7 @@ fn create_staging_dir(output_dir: &Path) -> Result<PathBuf> {
 
 fn commit_generated_files(
     output_dir: &Path,
-    clean_scope: Option<&CleanScope>,
+    staging_dir: &Path,
     generated: &[GeneratedFile],
 ) -> Result<Vec<PathBuf>> {
     for file in generated {
@@ -752,11 +775,7 @@ fn commit_generated_files(
         }
     }
 
-    if let Some(scope) = clean_scope {
-        for path in clean_paths(output_dir, scope)? {
-            remove_file_if_exists(&path)?;
-        }
-    }
+    replace_output_dir_contents(output_dir, staging_dir)?;
 
     let mut final_paths = Vec::with_capacity(generated.len());
     for file in generated {
@@ -773,51 +792,30 @@ fn commit_generated_files(
     Ok(final_paths)
 }
 
-fn clean_paths(output_dir: &Path, scope: &CleanScope) -> Result<Vec<PathBuf>> {
-    match scope {
-        CleanScope::Case(selector) => {
-            let stem = output_dir.join(case_file_stem(selector));
-            Ok(vec![stem.with_extension("in"), stem.with_extension("ans")])
-        }
-        CleanScope::Bundle(bundle) => matching_bundle_files(output_dir, &[bundle.as_str()]),
-        CleanScope::All(bundles) => matching_bundle_files(
-            output_dir,
-            &bundles.iter().map(String::as_str).collect::<Vec<_>>(),
-        ),
-    }
-}
-
-fn matching_bundle_files(output_dir: &Path, bundles: &[&str]) -> Result<Vec<PathBuf>> {
-    if !output_dir.exists() {
-        return Ok(Vec::new());
-    }
-    let mut paths = Vec::new();
+fn replace_output_dir_contents(output_dir: &Path, staging_dir: &Path) -> Result<()> {
     for entry in std::fs::read_dir(output_dir)
         .with_context(|| format!("failed to read output dir {}", output_dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();
-        if !path.is_file() || !is_data_file(&path) {
+        if path == staging_dir
+            || path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == GENERATION_LOCK_DIR)
+        {
             continue;
         }
-        let Some(file_stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
-            continue;
-        };
-        if bundles
-            .iter()
-            .any(|bundle| file_stem.starts_with(&format!("{bundle}-")))
-        {
-            paths.push(path);
+        if path.is_dir() {
+            std::fs::remove_dir_all(&path).with_context(|| {
+                format!("failed to remove stale data directory {}", path.display())
+            })?;
+        } else {
+            std::fs::remove_file(&path)
+                .with_context(|| format!("failed to remove stale data file {}", path.display()))?;
         }
     }
-    Ok(paths)
-}
-
-fn is_data_file(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|extension| extension.to_str()),
-        Some("in" | "ans")
-    )
+    Ok(())
 }
 
 fn remove_file_if_exists(path: &Path) -> Result<()> {
@@ -833,23 +831,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clean_bundle_only_targets_matching_bundle_data_files() {
-        let root = temp_dir("clean-bundle");
+    fn commit_replaces_output_dir_contents() {
+        let root = temp_dir("replace-output");
+        let staging = root.join(".stage");
+        let lock = root.join(GENERATION_LOCK_DIR);
         std::fs::create_dir_all(&root).unwrap();
-        write_file(&root.join("large-0.in"), "old");
-        write_file(&root.join("large-99.ans"), "stale");
-        write_file(&root.join("small-0.in"), "keep");
-        write_file(&root.join("largeish-0.in"), "keep");
-        write_file(&root.join("large-0.txt"), "keep");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::create_dir_all(&lock).unwrap();
+        write_file(&root.join("sample-0.in"), "old");
+        write_file(&root.join("notes.txt"), "manual");
+        write_file(&root.join("nested").join("manual.in"), "manual");
+        let staged_input = staging.join("sample-0.in");
+        write_file(&staged_input, "fresh");
 
-        let mut names = clean_paths(&root, &CleanScope::Bundle("large".to_string()))
-            .unwrap()
-            .into_iter()
-            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
-            .collect::<Vec<_>>();
-        names.sort();
+        let paths = commit_generated_files(
+            &root,
+            &staging,
+            &[GeneratedFile {
+                staging_path: staged_input,
+                final_path: root.join("sample-0.in"),
+            }],
+        )
+        .unwrap();
 
-        assert_eq!(names, vec!["large-0.in", "large-99.ans"]);
+        assert_eq!(paths, vec![root.join("sample-0.in")]);
+        assert_eq!(
+            std::fs::read_to_string(root.join("sample-0.in")).unwrap(),
+            "fresh"
+        );
+        assert!(!root.join("notes.txt").exists());
+        assert!(!root.join("nested").exists());
+        assert!(lock.is_dir());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -863,7 +875,7 @@ mod tests {
 
         let err = commit_generated_files(
             &root,
-            None,
+            &staging,
             &[GeneratedFile {
                 staging_path: staging.join("sample-0.in"),
                 final_path: final_input.clone(),
@@ -878,18 +890,18 @@ mod tests {
     }
 
     #[test]
-    fn commit_clean_bundle_does_not_remove_other_bundles() {
-        let root = temp_dir("commit-clean-bundle");
+    fn commit_replaces_everything_even_for_single_generated_file() {
+        let root = temp_dir("commit-replace-all");
         let staging = root.join(".stage");
         std::fs::create_dir_all(&staging).unwrap();
         write_file(&root.join("large-9.in"), "stale");
-        write_file(&root.join("small-0.in"), "keep");
+        write_file(&root.join("small-0.in"), "stale");
         let staged_input = staging.join("large-0.in");
         write_file(&staged_input, "fresh");
 
         let paths = commit_generated_files(
             &root,
-            Some(&CleanScope::Bundle("large".to_string())),
+            &staging,
             &[GeneratedFile {
                 staging_path: staged_input,
                 final_path: root.join("large-0.in"),
@@ -903,10 +915,7 @@ mod tests {
             "fresh"
         );
         assert!(!root.join("large-9.in").exists());
-        assert_eq!(
-            std::fs::read_to_string(root.join("small-0.in")).unwrap(),
-            "keep"
-        );
+        assert!(!root.join("small-0.in").exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 

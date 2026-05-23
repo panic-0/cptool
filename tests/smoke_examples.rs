@@ -370,8 +370,8 @@ fn cli_help_describes_new_workflow_commands() {
 
     let gen_help = run_cptool(["case", "gen", "--help"], None);
     let gen_stdout = String::from_utf8_lossy(&gen_help.stdout);
-    assert!(gen_stdout.contains("--clean"));
-    assert!(gen_stdout.contains("Remove stale .in/.ans files"));
+    assert!(!gen_stdout.contains("--clean"));
+    assert!(gen_stdout.contains("always rebuilds the output directory"));
     assert!(gen_stdout.contains("--summary-only"));
     assert!(gen_stdout.contains("compact generation summary"));
     assert!(gen_stdout.contains("--json"));

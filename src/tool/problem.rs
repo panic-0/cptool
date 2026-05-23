@@ -62,7 +62,6 @@ pub(crate) fn resolve_run_input(
             selector: Some(format!("{}[{}]", selector.bundle, selector.index)),
             output_dir: None,
             output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
-            clean: false,
             generation_lock_timeout,
         })?;
     }
