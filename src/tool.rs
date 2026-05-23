@@ -21,12 +21,11 @@ pub use add::{
     builtin_checker_ids,
 };
 pub use check::{
-    CheckIssue, CheckOptions, CheckReport, CheckSeverity, check_problem_package,
-    check_problem_package_with_options,
+    CheckIssue, CheckOptions, CheckReport, CheckSeverity, check_problem_package_with_options,
 };
 pub use clean::{CleanOptions, CleanReport, clean_package_with_options};
 pub use data::{
-    GenerateOptions, GenerateReport, GenerateWarning, GenerateWarningKind, generate_data,
+    GenerateOptions, GenerateReport, GenerateWarning, GenerateWarningKind,
     generate_data_report_with_options, generate_data_with_options,
 };
 pub use evidence::{
@@ -53,11 +52,10 @@ pub use schema::{
 };
 pub use stress::{
     ExpectedCheckerOutput, ExpectedStressFailure, StressOptions, StressSummary, StressWarning,
-    stress, stress_with_options, stress_with_summary,
+    stress_with_options, stress_with_summary,
 };
 pub use stress_plan::{
-    StressPlanFilter, StressPlanOptions, stress_plan, stress_plan_collect_with_options,
-    stress_plan_with_options,
+    StressPlanFilter, StressPlanOptions, stress_plan_collect_with_options, stress_plan_with_options,
 };
 
 #[cfg(test)]

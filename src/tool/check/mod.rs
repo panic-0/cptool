@@ -27,10 +27,6 @@ use markdown_sample::{
 #[cfg(test)]
 use std::path::PathBuf;
 
-pub fn check_problem_package(work_dir: &Path) -> CheckReport {
-    check_problem_package_with_options(work_dir, CheckOptions::default())
-}
-
 pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions) -> CheckReport {
     let work_dir = normalize_work_dir(work_dir).unwrap_or_else(|_| work_dir.to_path_buf());
     let mut report = CheckReport::new(work_dir.clone());
@@ -719,7 +715,7 @@ mod tests {
         let root = temp_test_dir("cptool-check-missing");
         std::fs::create_dir_all(&root).unwrap();
 
-        let report = check_problem_package(&root);
+        let report = check_problem_package_with_options(&root, CheckOptions::default());
 
         assert!(report.has_errors());
         assert!(
@@ -737,7 +733,7 @@ mod tests {
         let root = temp_test_dir("cptool-check-init");
         let problem_dir = init_package(&root, "Check Me").unwrap();
 
-        let report = check_problem_package(&problem_dir);
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
 
         assert!(report.has_errors());
         assert!(
@@ -759,7 +755,7 @@ mod tests {
         let lock_dir = data_dir.join(".cptool-gen.lock");
         std::fs::create_dir_all(&lock_dir).unwrap();
 
-        let report = check_problem_package(&problem_dir);
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
 
         assert!(report.has_errors());
         let issue = report
@@ -789,7 +785,7 @@ mod tests {
         let root = temp_test_dir("cptool-check-validator-missing");
         let problem_dir = create_minimal_check_package(&root, None, None);
 
-        let report = check_problem_package(&problem_dir);
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
 
         assert_issue(&report, "validator_missing", CheckSeverity::Warning);
 
@@ -802,7 +798,7 @@ mod tests {
         let problem_dir =
             create_minimal_check_package(&root, None, Some("interactive output is unrestricted"));
 
-        let report = check_problem_package(&problem_dir);
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
 
         assert_no_issue(&report, "validator_missing");
 
@@ -814,7 +810,7 @@ mod tests {
         let root = temp_test_dir("cptool-check-validator-declared");
         let problem_dir = create_minimal_check_package(&root, Some("val"), None);
 
-        let report = check_problem_package(&problem_dir);
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
 
         assert_no_issue(&report, "validator_missing");
 
@@ -830,7 +826,7 @@ mod tests {
         yaml.push_str("surprise: true\n");
         std::fs::write(&yaml_path, yaml).unwrap();
 
-        let report = check_problem_package(&problem_dir);
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
 
         let issue = report
             .issues
@@ -945,7 +941,7 @@ mod tests {
         )
         .unwrap();
 
-        let report = check_problem_package(&problem_dir);
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
 
         assert_issue(&report, "placeholder_text", CheckSeverity::Warning);
         assert_issue(&report, "double_nested_problem_dir", CheckSeverity::Warning);

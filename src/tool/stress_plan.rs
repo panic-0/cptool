@@ -25,23 +25,6 @@ pub enum StressPlanFilter {
     NegativeOnly,
 }
 
-pub fn stress_plan(
-    work_dir: &Path,
-    name: Option<&str>,
-    failure_dir: Option<&Path>,
-    output_limit_bytes: usize,
-) -> Result<Vec<StressSummary>> {
-    stress_plan_with_options(StressPlanOptions {
-        work_dir,
-        name,
-        failure_dir,
-        output_limit_bytes,
-        summary_only: false,
-        filter: StressPlanFilter::All,
-        generation_lock_timeout: None,
-    })
-}
-
 pub fn stress_plan_with_options(options: StressPlanOptions<'_>) -> Result<Vec<StressSummary>> {
     stress_plan_impl(options, true)
 }

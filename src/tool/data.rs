@@ -174,23 +174,6 @@ struct DataGenerationLock {
     path: PathBuf,
 }
 
-pub fn generate_data(
-    work_dir: &Path,
-    bundle: Option<&str>,
-    selector: Option<&str>,
-    output_dir: Option<&Path>,
-    output_limit_bytes: usize,
-) -> Result<Vec<PathBuf>> {
-    generate_data_with_options(GenerateOptions {
-        work_dir: work_dir.to_path_buf(),
-        bundle: bundle.map(str::to_string),
-        selector: selector.map(str::to_string),
-        output_dir: output_dir.map(Path::to_path_buf),
-        output_limit_bytes,
-        generation_lock_timeout: None,
-    })
-}
-
 pub fn generate_data_with_options(options: GenerateOptions) -> Result<Vec<PathBuf>> {
     generate_data_report_impl(options, true).map(|report| report.paths)
 }

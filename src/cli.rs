@@ -757,13 +757,14 @@ fn handle_export(work_dir: PathBuf, oj: OnlineJudge) -> anyhow::Result<()> {
     };
     let data_dir = work_dir.join("data");
     let problem = tool::load_problem(&work_dir)?;
-    tool::generate_data(
-        &work_dir,
-        None,
-        None,
-        Some(&data_dir),
-        DEFAULT_OUTPUT_LIMIT_BYTES,
-    )?;
+    tool::generate_data_with_options(tool::GenerateOptions {
+        work_dir: work_dir.clone(),
+        bundle: None,
+        selector: None,
+        output_dir: Some(data_dir.clone()),
+        output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
+        generation_lock_timeout: None,
+    })?;
 
     match oj {
         OnlineJudge::Syzoj => {

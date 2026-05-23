@@ -11,27 +11,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-pub fn stress(
-    work_dir: &Path,
-    generator: &str,
-    against: &[String],
-    cases: usize,
-    args: &[String],
-    failure_dir: Option<&Path>,
-    output_limit_bytes: usize,
-) -> Result<()> {
-    stress_with_summary(
-        work_dir,
-        generator,
-        against,
-        cases,
-        args,
-        failure_dir,
-        output_limit_bytes,
-    )?;
-    Ok(())
-}
-
 pub fn stress_with_summary(
     work_dir: &Path,
     generator: &str,
