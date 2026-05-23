@@ -139,7 +139,6 @@ fn add_checker_builtin_copies_source_and_check_accepts_package() {
 
     run_cptool(
         [
-            "config",
             "add",
             "checker",
             "chk",
@@ -227,7 +226,6 @@ int(data[1])
 
     run_cptool(
         [
-            "config",
             "add",
             "validator",
             "val",
@@ -361,7 +359,7 @@ fn cli_help_describes_new_workflow_commands() {
     let top = run_cptool(["--help"], None);
     let top_stdout = String::from_utf8_lossy(&top.stdout);
 
-    for command in ["pkg", "config", "case", "test", "report"] {
+    for command in ["pkg", "add", "case", "test", "report"] {
         assert!(top_stdout.contains(command));
     }
 
@@ -410,11 +408,11 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(test_validator_stdout.contains("--no-fix-line-endings"));
     assert!(!test_validator_stdout.contains("--stdin-text"));
 
-    let add_checker = run_cptool(["config", "add", "checker", "--help"], None);
+    let add_checker = run_cptool(["add", "checker", "--help"], None);
     let add_checker_stdout = String::from_utf8_lossy(&add_checker.stdout);
     assert!(add_checker_stdout.contains("optionally copying a built-in"));
     assert!(add_checker_stdout.contains("--builtin"));
-    let add_validator = run_cptool(["config", "add", "validator", "--help"], None);
+    let add_validator = run_cptool(["add", "validator", "--help"], None);
     let add_validator_stdout = String::from_utf8_lossy(&add_validator.stdout);
     assert!(add_validator_stdout.contains("Register a validator"));
     assert!(add_validator_stdout.contains("--replace"));
@@ -472,7 +470,7 @@ fn wait_for_generation_lock_rejects_zero_seconds() {
 fn legacy_top_level_commands_are_not_supported() {
     for command in [
         "init",
-        "add",
+        "config",
         "run",
         "judge",
         "gen",

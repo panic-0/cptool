@@ -10,7 +10,7 @@ mod args;
 mod json;
 
 use args::{
-    AddCommands, AddProgramKindArg, AddTaskTypeArg, CaseCommands, Cli, Commands, ConfigCommands,
+    AddCommands, AddProgramKindArg, AddTaskTypeArg, CaseCommands, Cli, Commands,
     FixtureAddCommands, FixtureCheckerCommands, FixtureCommands, FixtureValidatorCommands,
     JudgeExpectationArg, PkgCommands, ReportCommands, TestCommands,
 };
@@ -19,7 +19,7 @@ pub fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Pkg { command } => handle_pkg(command)?,
-        Commands::Config { command } => handle_config(command)?,
+        Commands::Add { command } => handle_add(command)?,
         Commands::Case { command } => handle_case(command)?,
         Commands::Test { command } => handle_test(command)?,
         Commands::Fixture { command } => handle_fixture(command)?,
@@ -43,13 +43,6 @@ fn handle_pkg(command: PkgCommands) -> anyhow::Result<()> {
             json,
         } => handle_clean(work_dir, data, cache, json)?,
         PkgCommands::Export { work_dir, oj } => handle_export(work_dir, oj)?,
-    }
-    Ok(())
-}
-
-fn handle_config(command: ConfigCommands) -> anyhow::Result<()> {
-    match command {
-        ConfigCommands::Add { command } => handle_add(command)?,
     }
     Ok(())
 }

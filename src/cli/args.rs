@@ -21,10 +21,10 @@ pub(super) enum Commands {
         #[command(subcommand)]
         command: PkgCommands,
     },
-    #[command(about = "Edit problem.yaml and create simple package scaffolds")]
-    Config {
+    #[command(about = "Add programs, bundles, tasks, validators, or checkers to problem.yaml")]
+    Add {
         #[command(subcommand)]
-        command: ConfigCommands,
+        command: AddCommands,
     },
     #[command(about = "Generate official cases and run configured programs")]
     Case {
@@ -93,15 +93,6 @@ pub(super) enum PkgCommands {
         work_dir: PathBuf,
         #[arg(long, value_enum, help = "Target online judge format")]
         oj: OnlineJudge,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum ConfigCommands {
-    #[command(about = "Add programs, bundles, tasks, validators, or checkers to problem.yaml")]
-    Add {
-        #[command(subcommand)]
-        command: AddCommands,
     },
 }
 

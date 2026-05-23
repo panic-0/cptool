@@ -15,7 +15,7 @@
 - `src/cli/args.rs`：clap 命令结构和 help 文案。
 - `src/tool/schema.rs`：题包 schema、默认值和反序列化行为。
 - `src/tool/package.rs`：`pkg init` 脚手架生成。
-- `src/tool/add.rs`：`config add` 行为和源码脚手架。
+- `src/tool/add.rs`：`add` 行为和源码脚手架。
 - `src/tool/data.rs`：正式数据生成、暂存和提交流程。
 - `src/tool/fixture.rs`：手写 input、validator、checker fixture 的添加、检查和列表。
 - `src/tool/run.rs`：程序运行以及可选输出/报告写入。
