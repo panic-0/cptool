@@ -188,7 +188,7 @@ raise SystemExit(3)
     assert!(!output.status.success());
     assert!(stderr.contains("checker_failed"), "{stderr}");
     let report = std::fs::read_to_string(
-        std::fs::read_dir(problem_dir.join("tests").join("failures"))
+        std::fs::read_dir(problem_dir.join(".cptool").join("failures"))
             .unwrap()
             .filter_map(Result::ok)
             .map(|entry| entry.path())
@@ -634,7 +634,7 @@ fn stress_plan_expands_case_placeholders() {
 }
 
 #[test]
-fn stress_plan_can_use_file_generator_with_case_placeholder() {
+fn stress_plan_rejects_file_generator() {
     if !python_available() {
         return;
     }
@@ -649,10 +649,6 @@ fn stress_plan_can_use_file_generator_with_case_placeholder() {
         .join("problems")
         .join("stress_plan_file_generator");
     configure_python_problem(&problem_dir);
-    let corner_dir = problem_dir.join("tests").join("corner");
-    std::fs::create_dir_all(&corner_dir).unwrap();
-    std::fs::write(corner_dir.join("1.in"), "1 2\n").unwrap();
-    std::fs::write(corner_dir.join("2.in"), "3 4\n").unwrap();
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
     yaml.push_str(
@@ -660,7 +656,7 @@ fn stress_plan_can_use_file_generator_with_case_placeholder() {
   plans:
   - name: file-corners
     generator: :file
-    args: ["tests/corner/{case}.in"]
+    args: ["fixtures/input/{case}.in"]
     against: [std, brute]
     cases: 2
     expect: pass
@@ -668,7 +664,7 @@ fn stress_plan_can_use_file_generator_with_case_placeholder() {
     );
     std::fs::write(yaml_path, yaml).unwrap();
 
-    let output = run_cptool(
+    let output = run_cptool_allow_failure(
         [
             "test",
             "plan",
@@ -681,11 +677,9 @@ fn stress_plan_can_use_file_generator_with_case_placeholder() {
         ],
         None,
     );
-    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-
-    assert_eq!(value["plans"][0]["plan_name"], "file-corners");
-    assert_eq!(value["plans"][0]["cases"], 2);
-    assert_eq!(value["plans"][0]["unique_input_hashes"], 2);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot use `:file`"), "{stderr}");
 }
 
 #[test]
@@ -735,7 +729,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     assert!(stdout.contains("unique_input_hashes=1"));
     assert!(
         problem_dir
-            .join("tests")
+            .join(".cptool")
             .join("failures")
             .join("stress-bad-is-detected-001.txt")
             .exists()

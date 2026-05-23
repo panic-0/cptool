@@ -142,6 +142,12 @@ fn validate_problem(problem: &Problem) -> Result<()> {
         }
     }
     for plan in &problem.stress.plans {
+        if plan.generator == FILE_GENERATOR_NAME {
+            anyhow::bail!(
+                "generator for stress plan `{}` cannot use `{FILE_GENERATOR_NAME}`",
+                plan.name
+            );
+        }
         ensure_generator_exists(
             problem,
             &plan.generator,

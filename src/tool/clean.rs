@@ -16,14 +16,15 @@ pub struct CleanReport {
     pub work_dir: PathBuf,
     pub data_files_removed: usize,
     pub cache_removed: bool,
+    pub failures_removed: bool,
     pub paths_removed: Vec<PathBuf>,
 }
 
 impl CleanReport {
     pub fn summary_line(&self) -> String {
         format!(
-            "cleaned data_files={} cache_removed={}",
-            self.data_files_removed, self.cache_removed
+            "cleaned data_files={} cache_removed={} failures_removed={}",
+            self.data_files_removed, self.cache_removed, self.failures_removed
         )
     }
 }
@@ -36,6 +37,7 @@ pub fn clean_package_with_options(options: CleanOptions) -> Result<CleanReport> 
         work_dir: work_dir.clone(),
         data_files_removed: 0,
         cache_removed: false,
+        failures_removed: false,
         paths_removed: Vec::new(),
     };
 
@@ -44,6 +46,7 @@ pub fn clean_package_with_options(options: CleanOptions) -> Result<CleanReport> 
     }
     if clean_cache {
         clean_cache_dir(&work_dir, &mut report)?;
+        clean_failures_dir(&work_dir, &mut report)?;
     }
     Ok(report)
 }
@@ -88,6 +91,18 @@ fn clean_cache_dir(work_dir: &Path, report: &mut CleanReport) -> Result<()> {
         .with_context(|| format!("failed to remove cache dir {}", cache_dir.display()))?;
     report.cache_removed = true;
     report.paths_removed.push(cache_dir);
+    Ok(())
+}
+
+fn clean_failures_dir(work_dir: &Path, report: &mut CleanReport) -> Result<()> {
+    let failures_dir = work_dir.join(".cptool").join("failures");
+    if !failures_dir.exists() {
+        return Ok(());
+    }
+    std::fs::remove_dir_all(&failures_dir)
+        .with_context(|| format!("failed to remove failures dir {}", failures_dir.display()))?;
+    report.failures_removed = true;
+    report.paths_removed.push(failures_dir);
     Ok(())
 }
 

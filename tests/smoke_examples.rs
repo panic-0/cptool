@@ -388,9 +388,14 @@ fn cli_help_describes_new_workflow_commands() {
     let test_stdout = String::from_utf8_lossy(&test.stdout);
     assert!(test_stdout.contains("validator"));
     assert!(test_stdout.contains("checker"));
+    let fixture = run_cptool(["fixture", "--help"], None);
+    let fixture_stdout = String::from_utf8_lossy(&fixture.stdout);
+    assert!(fixture_stdout.contains("add"));
+    assert!(fixture_stdout.contains("check"));
     let test_validator = run_cptool(["test", "validator", "--help"], None);
     let test_validator_stdout = String::from_utf8_lossy(&test_validator.stdout);
-    assert!(test_validator_stdout.contains("--input-path"));
+    assert!(test_validator_stdout.contains("--input"));
+    assert!(test_validator_stdout.contains("--fixture"));
     assert!(test_validator_stdout.contains("--expect"));
     assert!(test_validator_stdout.contains("--no-fix-line-endings"));
     assert!(!test_validator_stdout.contains("--stdin-text"));

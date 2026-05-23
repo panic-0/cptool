@@ -392,7 +392,7 @@ pub fn append_mixed_stress_plans(problem_dir: &Path) {
 }
 
 pub fn count_failure_reports(problem_dir: &Path) -> usize {
-    let failure_dir = problem_dir.join("tests").join("failures");
+    let failure_dir = problem_dir.join(".cptool").join("failures");
     std::fs::read_dir(failure_dir)
         .unwrap()
         .filter(|entry| {
@@ -462,7 +462,7 @@ pub fn copy_example_tree(src: &Path, dst: &Path) {
         if source_path.is_dir() {
             if matches!(
                 name.as_ref(),
-                ".cptool" | "data" | "export" | "output" | "tmp" | "failures"
+                ".cptool" | "data" | "export" | "output" | "tmp"
             ) {
                 continue;
             }

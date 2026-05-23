@@ -54,6 +54,38 @@ pub(super) struct JudgeJsonSummary<'a> {
     warnings: &'a [tool::JudgeWarning],
 }
 
+#[derive(Serialize)]
+pub(super) struct JudgeBatchJsonSummary<'a> {
+    role: &'static str,
+    ok: bool,
+    total: usize,
+    passed: usize,
+    failed: usize,
+    fixtures: Vec<JudgeFixtureJsonSummary<'a>>,
+}
+
+impl<'a> JudgeBatchJsonSummary<'a> {
+    pub(super) fn new(role: &'static str, fixtures: Vec<JudgeFixtureJsonSummary<'a>>) -> Self {
+        let total = fixtures.len();
+        let passed = fixtures.iter().filter(|fixture| fixture.report.ok).count();
+        Self {
+            role,
+            ok: passed == total,
+            total,
+            passed,
+            failed: total - passed,
+            fixtures,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub(super) struct JudgeFixtureJsonSummary<'a> {
+    pub(super) name: &'a str,
+    pub(super) path: &'a PathBuf,
+    pub(super) report: JudgeJsonSummary<'a>,
+}
+
 impl<'a> From<&'a tool::JudgeReport> for JudgeJsonSummary<'a> {
     fn from(report: &'a tool::JudgeReport) -> Self {
         Self {

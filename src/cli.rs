@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Parser;
 use cptool::export::{Exporter, OnlineJudge, syzoj};
 use cptool::tool::{self, DEFAULT_OUTPUT_LIMIT_BYTES, RunOptions};
@@ -9,6 +10,7 @@ mod json;
 
 use args::{
     AddCommands, AddProgramKindArg, AddTaskTypeArg, CaseCommands, Cli, Commands, ConfigCommands,
+    FixtureAddCommands, FixtureCheckerCommands, FixtureCommands, FixtureValidatorCommands,
     JudgeExpectationArg, PkgCommands, ReportCommands, TestCommands,
 };
 
@@ -19,6 +21,7 @@ pub fn run() -> anyhow::Result<()> {
         Commands::Config { command } => handle_config(command)?,
         Commands::Case { command } => handle_case(command)?,
         Commands::Test { command } => handle_test(command)?,
+        Commands::Fixture { command } => handle_fixture(command)?,
         Commands::Report { command } => handle_report(command)?,
     }
     Ok(())
@@ -117,35 +120,39 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
         TestCommands::Validator {
             work_dir,
             validator,
-            input_path,
+            input,
+            fixture,
             expect,
             output_limit_bytes,
             no_fix_line_endings,
             json,
-        } => handle_test_validator(
+        } => handle_test_validator(TestValidatorCommandOptions {
             work_dir,
             validator,
-            input_path,
+            input,
+            fixture,
             expect,
             output_limit_bytes,
-            !no_fix_line_endings,
+            fix_line_endings: !no_fix_line_endings,
             json,
-        )?,
+        })?,
         TestCommands::Checker {
             work_dir,
             checker,
-            input_path,
-            output_path,
-            answer_path,
+            input,
+            output,
+            answer,
+            fixture,
             expect,
             output_limit_bytes,
             json,
         } => handle_test_checker(TestCheckerCommandOptions {
             work_dir,
             checker,
-            input_path,
-            output_path,
-            answer_path,
+            input,
+            output,
+            answer,
+            fixture,
             expect,
             output_limit_bytes,
             json,
@@ -190,6 +197,188 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             negative_only,
             json,
         })?,
+    }
+    Ok(())
+}
+
+fn handle_fixture(command: FixtureCommands) -> anyhow::Result<()> {
+    match command {
+        FixtureCommands::Add { command } => handle_fixture_add(command)?,
+        FixtureCommands::List { work_dir, json } => {
+            let report = tool::list_fixtures(work_dir)?;
+            print_fixture_list_report(report, json)?;
+        }
+        FixtureCommands::Check { work_dir, json } => {
+            let report = tool::check_fixtures(work_dir)?;
+            let ok = report.ok;
+            print_fixture_check_report(report, json)?;
+            if !ok {
+                std::process::exit(2);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn handle_fixture_add(command: FixtureAddCommands) -> anyhow::Result<()> {
+    let report = match command {
+        FixtureAddCommands::Input {
+            name,
+            work_dir,
+            from,
+            replace,
+        } => tool::add_input_fixture(tool::AddInputFixtureOptions {
+            work_dir,
+            name,
+            from,
+            replace,
+        })?,
+        FixtureAddCommands::Validator { command } => {
+            let (expect, name, work_dir, from, replace) = match command {
+                FixtureValidatorCommands::Pass {
+                    name,
+                    work_dir,
+                    from,
+                    replace,
+                } => (tool::JudgeExpectation::Pass, name, work_dir, from, replace),
+                FixtureValidatorCommands::Fail {
+                    name,
+                    work_dir,
+                    from,
+                    replace,
+                } => (tool::JudgeExpectation::Fail, name, work_dir, from, replace),
+            };
+            tool::add_validator_fixture(tool::AddValidatorFixtureOptions {
+                work_dir,
+                expect,
+                name,
+                from,
+                replace,
+            })?
+        }
+        FixtureAddCommands::Checker { command } => {
+            let (expect, args) = fixture_checker_args(command);
+            tool::add_checker_fixture(tool::AddCheckerFixtureOptions {
+                work_dir: args.work_dir,
+                expect,
+                name: args.name,
+                input_from: args.input,
+                output_from: args.output,
+                answer_from: args.answer,
+                replace: args.replace,
+            })?
+        }
+    };
+    for line in report.summary_lines() {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+struct FixtureCheckerArgs {
+    name: String,
+    work_dir: PathBuf,
+    input: Option<PathBuf>,
+    output: Option<PathBuf>,
+    answer: Option<PathBuf>,
+    replace: bool,
+}
+
+fn fixture_checker_args(
+    command: FixtureCheckerCommands,
+) -> (tool::JudgeExpectation, FixtureCheckerArgs) {
+    match command {
+        FixtureCheckerCommands::Pass {
+            name,
+            work_dir,
+            input,
+            output,
+            answer,
+            replace,
+        } => (
+            tool::JudgeExpectation::Pass,
+            FixtureCheckerArgs {
+                name,
+                work_dir,
+                input,
+                output,
+                answer,
+                replace,
+            },
+        ),
+        FixtureCheckerCommands::Fail {
+            name,
+            work_dir,
+            input,
+            output,
+            answer,
+            replace,
+        } => (
+            tool::JudgeExpectation::Fail,
+            FixtureCheckerArgs {
+                name,
+                work_dir,
+                input,
+                output,
+                answer,
+                replace,
+            },
+        ),
+    }
+}
+
+fn print_fixture_list_report(report: tool::FixtureListReport, json: bool) -> anyhow::Result<()> {
+    let report = display_fixture_list_report(report);
+    if json {
+        self::json::print(&report)?;
+    } else {
+        println!(
+            "fixtures: inputs={} validators={} checkers={}",
+            report.inputs.len(),
+            report.validators.len(),
+            report.checkers.len()
+        );
+        for input in &report.inputs {
+            println!(
+                "input {} used={} path={}",
+                input.name,
+                input.used,
+                input.path.display()
+            );
+        }
+        for validator in &report.validators {
+            println!(
+                "validator {}/{} path={}",
+                validator.expect.as_str(),
+                validator.name,
+                validator.path.display()
+            );
+        }
+        for checker in &report.checkers {
+            println!(
+                "checker {}/{} dir={}",
+                checker.expect.as_str(),
+                checker.name,
+                checker.dir.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn print_fixture_check_report(report: tool::FixtureCheckReport, json: bool) -> anyhow::Result<()> {
+    let report = display_fixture_check_report(report);
+    if json {
+        self::json::print(&report)?;
+    } else {
+        println!(
+            "fixture check: {} errors={}",
+            if report.ok { "ok" } else { "fail" },
+            report.errors.len()
+        );
+        for issue in &report.errors {
+            eprintln!("{} {}: {}", issue.code, issue.path.display(), issue.message);
+        }
     }
     Ok(())
 }
@@ -664,6 +853,38 @@ fn display_judge_report(
     report
 }
 
+fn display_fixture_list_report(mut report: tool::FixtureListReport) -> tool::FixtureListReport {
+    let original_work_dir = report.work_dir.clone();
+    report.work_dir = PathBuf::from(terminal_path(&original_work_dir, None));
+    shorten_fixture_list_paths(&mut report, &original_work_dir);
+    report
+}
+
+fn display_fixture_check_report(mut report: tool::FixtureCheckReport) -> tool::FixtureCheckReport {
+    let original_work_dir = report.work_dir.clone();
+    report.work_dir = PathBuf::from(terminal_path(&original_work_dir, None));
+    shorten_fixture_list_paths(&mut report.list, &original_work_dir);
+    for issue in &mut report.errors {
+        issue.path = PathBuf::from(terminal_path(&issue.path, Some(&original_work_dir)));
+    }
+    report
+}
+
+fn shorten_fixture_list_paths(report: &mut tool::FixtureListReport, work_dir: &Path) {
+    for input in &mut report.inputs {
+        input.path = PathBuf::from(terminal_path(&input.path, Some(work_dir)));
+    }
+    for validator in &mut report.validators {
+        validator.path = PathBuf::from(terminal_path(&validator.path, Some(work_dir)));
+    }
+    for checker in &mut report.checkers {
+        checker.dir = PathBuf::from(terminal_path(&checker.dir, Some(work_dir)));
+        checker.input_path = PathBuf::from(terminal_path(&checker.input_path, Some(work_dir)));
+        checker.output_path = PathBuf::from(terminal_path(&checker.output_path, Some(work_dir)));
+        checker.answer_path = PathBuf::from(terminal_path(&checker.answer_path, Some(work_dir)));
+    }
+}
+
 fn shorten_check_issues(issues: &mut [tool::CheckIssue], work_dir: &Path, display_work_dir: &str) {
     for issue in issues {
         if let Some(path) = &issue.path {
@@ -733,58 +954,330 @@ fn path_to_terminal_string(path: &Path) -> String {
     }
 }
 
-fn handle_test_validator(
+struct TestValidatorCommandOptions {
     work_dir: PathBuf,
     validator: Option<String>,
-    input_path: PathBuf,
+    input: Option<PathBuf>,
+    fixture: Option<String>,
     expect: JudgeExpectationArg,
     output_limit_bytes: usize,
     fix_line_endings: bool,
     json: bool,
-) -> anyhow::Result<()> {
-    let display_work_dir = work_dir.clone();
-    let report = tool::judge_validator(tool::JudgeValidatorOptions {
-        work_dir,
-        validator,
-        input_path,
-        expect: convert_judge_expectation(expect),
-        output_limit_bytes,
-        fix_line_endings,
-    })?;
-    print_judge_report(&report, json, Some(&display_work_dir))?;
-    if !report.ok {
-        std::process::exit(2);
+}
+
+fn handle_test_validator(options: TestValidatorCommandOptions) -> anyhow::Result<()> {
+    match (options.input, options.fixture) {
+        (Some(input), None) => {
+            let display_work_dir = options.work_dir.clone();
+            let report = tool::judge_validator(tool::JudgeValidatorOptions {
+                work_dir: options.work_dir,
+                validator: options.validator,
+                input_path: input,
+                expect: convert_judge_expectation(options.expect),
+                output_limit_bytes: options.output_limit_bytes,
+                fix_line_endings: options.fix_line_endings,
+            })?;
+            print_judge_report(&report, options.json, Some(&display_work_dir))?;
+            if !report.ok {
+                std::process::exit(2);
+            }
+        }
+        (None, Some(selector)) => {
+            let fixture = select_validator_fixture(options.work_dir.clone(), &selector)?;
+            let ok = run_validator_fixture_batch(
+                options.work_dir,
+                options.validator,
+                vec![fixture],
+                options.output_limit_bytes,
+                options.fix_line_endings,
+                options.json,
+            )?;
+            if !ok {
+                std::process::exit(2);
+            }
+        }
+        (None, None) => {
+            let fixtures = tool::validator_fixture_reports(options.work_dir.clone())?;
+            if fixtures.is_empty() {
+                anyhow::bail!(
+                    "no validator fixtures found under fixtures/validator/pass or fixtures/validator/fail"
+                );
+            }
+            let ok = run_validator_fixture_batch(
+                options.work_dir,
+                options.validator,
+                fixtures,
+                options.output_limit_bytes,
+                options.fix_line_endings,
+                options.json,
+            )?;
+            if !ok {
+                std::process::exit(2);
+            }
+        }
+        (Some(_), Some(_)) => {
+            anyhow::bail!("pass either --input or --fixture, not both");
+        }
     }
     Ok(())
+}
+
+fn run_validator_fixture_batch(
+    work_dir: PathBuf,
+    validator: Option<String>,
+    fixtures: Vec<tool::ValidatorFixture>,
+    output_limit_bytes: usize,
+    fix_line_endings: bool,
+    json: bool,
+) -> anyhow::Result<bool> {
+    let display_work_dir = work_dir.clone();
+    let mut reports = Vec::new();
+    for fixture in fixtures {
+        let report = tool::judge_validator(tool::JudgeValidatorOptions {
+            work_dir: work_dir.clone(),
+            validator: validator.clone(),
+            input_path: fixture.path.clone(),
+            expect: fixture.expect,
+            output_limit_bytes,
+            fix_line_endings,
+        })?;
+        reports.push((fixture, report));
+    }
+    print_judge_fixture_batch("validator", &reports, json, &display_work_dir)?;
+    Ok(reports.iter().all(|(_, report)| report.ok))
+}
+
+fn select_validator_fixture(
+    work_dir: PathBuf,
+    selector: &str,
+) -> anyhow::Result<tool::ValidatorFixture> {
+    let (expect, name) = parse_fixture_selector(selector)?;
+    let fixtures = tool::validator_fixture_reports(work_dir)?;
+    fixtures
+        .into_iter()
+        .find(|fixture| fixture.expect == expect && fixture.name == name)
+        .with_context(|| format!("validator fixture `{selector}` not found"))
+}
+
+fn print_judge_fixture_batch<F: FixtureDisplay>(
+    role: &'static str,
+    reports: &[(F, tool::JudgeReport)],
+    json: bool,
+    display_work_dir: &Path,
+) -> anyhow::Result<()> {
+    if json {
+        let display_reports: Vec<(String, PathBuf, tool::JudgeReport)> = reports
+            .iter()
+            .map(|(fixture, report)| {
+                (
+                    fixture.fixture_name().to_string(),
+                    PathBuf::from(terminal_path(
+                        fixture.fixture_path(),
+                        Some(display_work_dir),
+                    )),
+                    display_judge_report(report.clone(), Some(display_work_dir)),
+                )
+            })
+            .collect();
+        let fixtures = display_reports
+            .iter()
+            .map(|(name, path, report)| self::json::JudgeFixtureJsonSummary {
+                name,
+                path,
+                report: self::json::JudgeJsonSummary::from(report),
+            })
+            .collect();
+        self::json::print(&self::json::JudgeBatchJsonSummary::new(role, fixtures))?;
+    } else {
+        for (fixture, report) in reports {
+            for warning in &report.warnings {
+                eprintln!("warning: {} {}", warning.code, warning.message);
+            }
+            println!(
+                "{} {}: {}",
+                role,
+                terminal_path(fixture.fixture_path(), Some(display_work_dir)),
+                report.summary_line()
+            );
+        }
+        let passed = reports.iter().filter(|(_, report)| report.ok).count();
+        println!(
+            "{} fixtures: total={} passed={} failed={}",
+            role,
+            reports.len(),
+            passed,
+            reports.len() - passed
+        );
+    }
+    Ok(())
+}
+
+trait FixtureDisplay {
+    fn fixture_name(&self) -> &str;
+    fn fixture_path(&self) -> &Path;
+}
+
+impl FixtureDisplay for tool::ValidatorFixture {
+    fn fixture_name(&self) -> &str {
+        &self.name
+    }
+
+    fn fixture_path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl FixtureDisplay for tool::CheckerFixture {
+    fn fixture_name(&self) -> &str {
+        &self.name
+    }
+
+    fn fixture_path(&self) -> &Path {
+        &self.dir
+    }
+}
+
+fn parse_fixture_selector(selector: &str) -> anyhow::Result<(tool::JudgeExpectation, String)> {
+    let Some((expect, name)) = selector.split_once('/') else {
+        anyhow::bail!("fixture selector must look like pass/name or fail/name");
+    };
+    let expect = match expect {
+        "pass" => tool::JudgeExpectation::Pass,
+        "fail" => tool::JudgeExpectation::Fail,
+        _ => anyhow::bail!("fixture selector must start with pass/ or fail/"),
+    };
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        anyhow::bail!("fixture selector name must be a single fixture name");
+    }
+    Ok((expect, name.to_string()))
 }
 
 struct TestCheckerCommandOptions {
     work_dir: PathBuf,
     checker: Option<String>,
-    input_path: PathBuf,
-    output_path: PathBuf,
-    answer_path: PathBuf,
+    input: Option<PathBuf>,
+    output: Option<PathBuf>,
+    answer: Option<PathBuf>,
+    fixture: Option<String>,
     expect: JudgeExpectationArg,
     output_limit_bytes: usize,
     json: bool,
 }
 
 fn handle_test_checker(options: TestCheckerCommandOptions) -> anyhow::Result<()> {
-    let display_work_dir = options.work_dir.clone();
-    let report = tool::judge_checker(tool::JudgeCheckerOptions {
-        work_dir: options.work_dir,
-        checker: options.checker,
-        input_path: options.input_path,
-        output_path: options.output_path,
-        answer_path: options.answer_path,
-        expect: convert_judge_expectation(options.expect),
-        output_limit_bytes: options.output_limit_bytes,
-    })?;
-    print_judge_report(&report, options.json, Some(&display_work_dir))?;
-    if !report.ok {
-        std::process::exit(2);
+    let explicit_count = usize::from(options.input.is_some())
+        + usize::from(options.output.is_some())
+        + usize::from(options.answer.is_some());
+    if options.fixture.is_some() && explicit_count > 0 {
+        anyhow::bail!("pass either --fixture or --input/--output/--answer, not both");
+    }
+    if explicit_count > 0 && explicit_count < 3 {
+        let mut missing = Vec::new();
+        if options.input.is_none() {
+            missing.push("--input");
+        }
+        if options.output.is_none() {
+            missing.push("--output");
+        }
+        if options.answer.is_none() {
+            missing.push("--answer");
+        }
+        anyhow::bail!("explicit checker mode is missing {}", missing.join(" and "));
+    }
+
+    match (
+        options.input,
+        options.output,
+        options.answer,
+        options.fixture,
+    ) {
+        (Some(input), Some(output), Some(answer), None) => {
+            let display_work_dir = options.work_dir.clone();
+            let report = tool::judge_checker(tool::JudgeCheckerOptions {
+                work_dir: options.work_dir,
+                checker: options.checker,
+                input_path: input,
+                output_path: output,
+                answer_path: answer,
+                expect: convert_judge_expectation(options.expect),
+                output_limit_bytes: options.output_limit_bytes,
+            })?;
+            print_judge_report(&report, options.json, Some(&display_work_dir))?;
+            if !report.ok {
+                std::process::exit(2);
+            }
+        }
+        (None, None, None, Some(selector)) => {
+            let fixture = select_checker_fixture(options.work_dir.clone(), &selector)?;
+            let ok = run_checker_fixture_batch(
+                options.work_dir,
+                options.checker,
+                vec![fixture],
+                options.output_limit_bytes,
+                options.json,
+            )?;
+            if !ok {
+                std::process::exit(2);
+            }
+        }
+        (None, None, None, None) => {
+            let fixtures = tool::checker_fixture_reports(options.work_dir.clone())?;
+            if fixtures.is_empty() {
+                anyhow::bail!(
+                    "no checker fixtures found under fixtures/checker/pass or fixtures/checker/fail"
+                );
+            }
+            let ok = run_checker_fixture_batch(
+                options.work_dir,
+                options.checker,
+                fixtures,
+                options.output_limit_bytes,
+                options.json,
+            )?;
+            if !ok {
+                std::process::exit(2);
+            }
+        }
+        _ => unreachable!("checker mode was validated before dispatch"),
     }
     Ok(())
+}
+
+fn run_checker_fixture_batch(
+    work_dir: PathBuf,
+    checker: Option<String>,
+    fixtures: Vec<tool::CheckerFixture>,
+    output_limit_bytes: usize,
+    json: bool,
+) -> anyhow::Result<bool> {
+    let display_work_dir = work_dir.clone();
+    let mut reports = Vec::new();
+    for fixture in fixtures {
+        let report = tool::judge_checker(tool::JudgeCheckerOptions {
+            work_dir: work_dir.clone(),
+            checker: checker.clone(),
+            input_path: fixture.input_path.clone(),
+            output_path: fixture.output_path.clone(),
+            answer_path: fixture.answer_path.clone(),
+            expect: fixture.expect,
+            output_limit_bytes,
+        })?;
+        reports.push((fixture, report));
+    }
+    print_judge_fixture_batch("checker", &reports, json, &display_work_dir)?;
+    Ok(reports.iter().all(|(_, report)| report.ok))
+}
+
+fn select_checker_fixture(
+    work_dir: PathBuf,
+    selector: &str,
+) -> anyhow::Result<tool::CheckerFixture> {
+    let (expect, name) = parse_fixture_selector(selector)?;
+    let fixtures = tool::checker_fixture_reports(work_dir)?;
+    fixtures
+        .into_iter()
+        .find(|fixture| fixture.expect == expect && fixture.name == name)
+        .with_context(|| format!("checker fixture `{selector}` not found"))
 }
 
 fn print_judge_report(
