@@ -371,6 +371,12 @@ pub(super) enum ReportCommands {
             help = "Print a quality_report.md-ready Markdown evidence section"
         )]
         markdown: bool,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Also write the selected evidence output format to PATH"
+        )]
+        out: Option<PathBuf>,
     },
 }
 

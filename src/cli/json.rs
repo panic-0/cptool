@@ -139,8 +139,12 @@ impl<'a> From<&'a tool::CheckReport> for CheckJsonReport<'a> {
 }
 
 pub(super) fn print<T: Serialize>(value: &T) -> anyhow::Result<()> {
+    std::io::stdout().lock().write_all(&to_bytes(value)?)?;
+    Ok(())
+}
+
+pub(super) fn to_bytes<T: Serialize>(value: &T) -> anyhow::Result<Vec<u8>> {
     let mut bytes = serde_json::to_vec(value)?;
     bytes.push(b'\n');
-    std::io::stdout().lock().write_all(&bytes)?;
-    Ok(())
+    Ok(bytes)
 }

@@ -1,6 +1,7 @@
 use clap::Parser;
 use cptool::export::{Exporter, OnlineJudge, syzoj};
 use cptool::tool::{self, DEFAULT_OUTPUT_LIMIT_BYTES, RunOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -205,6 +206,7 @@ fn handle_report(command: ReportCommands) -> anyhow::Result<()> {
             wait_for_generation_lock,
             json,
             markdown,
+            out,
         } => handle_evidence(EvidenceCommandOptions {
             work_dir,
             output_limit_bytes,
@@ -214,6 +216,7 @@ fn handle_report(command: ReportCommands) -> anyhow::Result<()> {
             wait_for_generation_lock,
             json,
             markdown,
+            out,
         })?,
     }
     Ok(())
@@ -479,6 +482,7 @@ struct EvidenceCommandOptions {
     wait_for_generation_lock: Option<u64>,
     json: bool,
     markdown: bool,
+    out: Option<PathBuf>,
 }
 
 fn handle_evidence(options: EvidenceCommandOptions) -> anyhow::Result<()> {
@@ -491,20 +495,80 @@ fn handle_evidence(options: EvidenceCommandOptions) -> anyhow::Result<()> {
         generation_lock_timeout: generation_lock_timeout(options.wait_for_generation_lock),
     });
     let has_errors = report.has_errors();
+    let display_report = display_evidence_report(report);
     if options.json {
-        self::json::print(&display_evidence_report(report))?;
+        let output = self::json::to_bytes(&display_report)?;
+        write_optional_sidecar(options.out.as_deref(), &output)?;
+        std::io::stdout().lock().write_all(&output)?;
     } else if options.markdown {
-        print!(
-            "{}",
-            display_evidence_report(report).render_quality_markdown()
-        );
+        let output = display_report.render_quality_markdown().into_bytes();
+        write_optional_sidecar(options.out.as_deref(), &output)?;
+        std::io::stdout().lock().write_all(&output)?;
     } else {
-        print!("{}", display_evidence_report(report).render_text());
+        let output = display_report.render_text().into_bytes();
+        write_optional_sidecar(options.out.as_deref(), &output)?;
+        std::io::stdout().lock().write_all(&output)?;
     }
     if has_errors {
         std::process::exit(2);
     }
     Ok(())
+}
+
+fn write_optional_sidecar(path: Option<&Path>, bytes: &[u8]) -> anyhow::Result<()> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+    write_sidecar_atomic(path, bytes)
+}
+
+fn write_sidecar_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create evidence output parent dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("evidence");
+    let temp_path = parent.join(format!(".{file_name}.{}.tmp", sidecar_temp_suffix()));
+    let write_result = (|| -> anyhow::Result<()> {
+        std::fs::write(&temp_path, bytes).with_context(|| {
+            format!(
+                "failed to write evidence output temp file {}",
+                temp_path.display()
+            )
+        })?;
+        std::fs::rename(&temp_path, path).with_context(|| {
+            format!(
+                "failed to move evidence output temp file {} to {}",
+                temp_path.display(),
+                path.display()
+            )
+        })?;
+        Ok(())
+    })();
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(&temp_path);
+    }
+    write_result
+}
+
+fn sidecar_temp_suffix() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    format!("{}-{nanos}", std::process::id())
 }
 
 fn handle_export(work_dir: PathBuf, oj: OnlineJudge) -> anyhow::Result<()> {

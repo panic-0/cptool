@@ -423,6 +423,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(evidence_stdout.contains("--skip-gen"));
     assert!(evidence_stdout.contains("--reuse-existing-stress-plan"));
     assert!(evidence_stdout.contains("--wait-for-generation-lock"));
+    assert!(evidence_stdout.contains("--out"));
 
     let stress_plan = run_cptool(["test", "plan", "--help"], None);
     let stress_plan_stdout = String::from_utf8_lossy(&stress_plan.stdout);
