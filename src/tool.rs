@@ -18,7 +18,6 @@ pub(crate) use crate::support::{temp_suffix, unix_epoch_nanos};
 pub use add::{
     AddBundleOptions, AddCheckerOptions, AddProgramKind, AddProgramOptions, AddTaskOptions,
     AddValidatorOptions, add_bundle, add_checker, add_program, add_task, add_validator,
-    builtin_checker_ids,
 };
 pub use check::{
     CheckIssue, CheckOptions, CheckReport, CheckSeverity, check_problem_package_with_options,
@@ -41,9 +40,9 @@ pub use judge::{
     JudgeCheckerOptions, JudgeExpectation, JudgeKind, JudgeObserved, JudgeReport,
     JudgeValidatorOptions, JudgeWarning, judge_checker, judge_validator,
 };
-pub use package::{init_package, slugify};
+pub use package::init_package;
+pub use problem::load_problem;
 pub(crate) use problem::resolve_path;
-pub use problem::{load_problem, parse_case_selector};
 pub use run::run;
 pub use schema::{
     CommandProgram, CppProgram, DEFAULT_OUTPUT_LIMIT_BYTES, OutputConfig, Problem, Program,
@@ -51,8 +50,8 @@ pub use schema::{
     TestBundle, TestCase, TestTask, TestTaskType,
 };
 pub use stress::{
-    ExpectedCheckerOutput, ExpectedStressFailure, StressOptions, StressSummary, StressWarning,
-    stress_with_options, stress_with_summary,
+    ExpectedCheckerOutput, ExpectedStressFailure, ExpectedStressOutput, StressOptions,
+    StressSummary, StressWarning, stress_with_options, stress_with_summary,
 };
 pub use stress_plan::{
     StressPlanFilter, StressPlanOptions, stress_plan_collect_with_options, stress_plan_with_options,
@@ -70,18 +69,18 @@ mod tests {
 
     #[test]
     fn slugify_keeps_ascii_ids_predictable() {
-        assert_eq!(slugify("My Problem 01").unwrap(), "my-problem-01");
-        assert_eq!(slugify(" already_ok ").unwrap(), "already_ok");
-        assert!(slugify("   ").is_err());
+        assert_eq!(package::slugify("My Problem 01").unwrap(), "my-problem-01");
+        assert_eq!(package::slugify(" already_ok ").unwrap(), "already_ok");
+        assert!(package::slugify("   ").is_err());
     }
 
     #[test]
     fn parse_case_selector_uses_zero_based_index() {
-        let selector = parse_case_selector("s1[0]").unwrap();
+        let selector = problem::parse_case_selector("s1[0]").unwrap();
         assert_eq!(selector.bundle, "s1");
         assert_eq!(selector.index, 0);
-        assert!(parse_case_selector("s1").is_err());
-        assert!(parse_case_selector("[0]").is_err());
+        assert!(problem::parse_case_selector("s1").is_err());
+        assert!(problem::parse_case_selector("[0]").is_err());
     }
 
     #[test]

@@ -81,7 +81,7 @@ fn problems_dir_for_root(root: &Path) -> PathBuf {
     }
 }
 
-pub fn slugify(value: &str) -> Result<String> {
+pub(crate) fn slugify(value: &str) -> Result<String> {
     let mut slug = String::new();
     let mut last_dash = false;
     for ch in value.trim().chars() {

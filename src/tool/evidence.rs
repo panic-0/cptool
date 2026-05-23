@@ -140,7 +140,7 @@ impl EvidenceReport {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum EvidenceStatus {
+pub(crate) enum EvidenceStatus {
     Ok,
     Error,
     Skipped,
@@ -176,7 +176,7 @@ impl EvidenceCheckReport {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct EvidenceSection<T> {
-    pub status: EvidenceStatus,
+    pub(crate) status: EvidenceStatus,
     pub report: Option<T>,
     pub error: Option<String>,
 }

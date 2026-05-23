@@ -16,7 +16,7 @@ pub fn load_problem(work_dir: &Path) -> Result<Problem> {
     Ok(problem)
 }
 
-pub fn parse_case_selector(value: &str) -> Result<CaseSelector> {
+pub(crate) fn parse_case_selector(value: &str) -> Result<CaseSelector> {
     let Some(open) = value.rfind('[') else {
         anyhow::bail!("case selector must look like bundle[index], got `{value}`");
     };

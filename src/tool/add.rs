@@ -244,7 +244,7 @@ pub fn add_checker(options: AddCheckerOptions) -> Result<()> {
     write_problem(&work_dir, &problem)
 }
 
-pub fn builtin_checker_ids() -> impl Iterator<Item = &'static str> {
+fn builtin_checker_ids() -> impl Iterator<Item = &'static str> {
     generated_builtin_checkers::BUILTIN_CHECKERS
         .iter()
         .map(|(id, _, _)| *id)

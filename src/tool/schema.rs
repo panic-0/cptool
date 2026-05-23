@@ -10,9 +10,9 @@ pub(crate) const DEFAULT_TIME_LIMIT_SECS: f64 = 1.0;
 pub(crate) const DEFAULT_MEMORY_LIMIT_MB: f64 = 512.0;
 pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 33_554_432;
 #[derive(Clone, Debug)]
-pub struct CaseSelector {
-    pub bundle: String,
-    pub index: usize,
+pub(crate) struct CaseSelector {
+    pub(crate) bundle: String,
+    pub(crate) index: usize,
 }
 
 #[derive(Clone, Debug)]
