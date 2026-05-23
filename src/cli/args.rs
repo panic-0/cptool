@@ -45,7 +45,7 @@ pub(super) enum Commands {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum PkgCommands {
-    #[command(about = "Create a minimal cptool/autocpp problem package")]
+    #[command(about = "Create a minimal competitive-programming problem package")]
     Init {
         #[arg(help = "Problem id or display name used to create <problems-dir>/<slug>")]
         id: String,

@@ -365,6 +365,11 @@ fn cli_help_describes_new_workflow_commands() {
         assert!(top_stdout.contains(command));
     }
 
+    let init_help = run_cptool(["pkg", "init", "--help"], None);
+    let init_help_stdout = String::from_utf8_lossy(&init_help.stdout);
+    assert!(init_help_stdout.contains("Create a minimal competitive-programming problem package"));
+    assert!(!init_help_stdout.contains("autocpp"));
+
     let gen_help = run_cptool(["case", "gen", "--help"], None);
     let gen_stdout = String::from_utf8_lossy(&gen_help.stdout);
     assert!(gen_stdout.contains("--clean"));
