@@ -153,7 +153,7 @@ Programs can also use `!command` or `!python`; omitted program limits inherit to
 ## Notes
 
 + Syzoj export is not fully supported yet.
-+ `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.10.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
++ `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.11.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
 + Commands are grouped by task: `pkg` manages lifecycle/check/clean/export, `add` edits package configuration and simple source scaffolds, `case` generates official data and runs programs, `test` runs validator/checker/stress workflows, and `report` collects evidence.
 + `pkg init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `fixtures/`, `.cptool/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold writes top-level defaults `time_limit_secs: 3.0`, `memory_limit_mb: 512.0`, and `cpp_compile_args: [-O2, -std=c++20]`; add per-program limits or `compile_args` in `problem.yaml` only when a package needs tighter, looser, or program-specific settings. New packages include a self-contained `src/testlib.h`, a testlib `src/gen.cpp` placeholder, and a testlib `src/val.cpp` placeholder; update both placeholders to match the problem before publishing data.
 + C++ generators should include `testlib.h`, call `registerGen(argc, argv, 1)`, parse fixed arguments with `opt<T>(index)`, and use `rnd`/`println`. `registerGen` seeds `rnd` uniquely from the full command line, so generators should not read a seed argument and reseed `std::mt19937` by hand.
@@ -191,7 +191,7 @@ This is the canonical local verification entrypoint. It runs formatting, clippy,
 On Windows, publish a GitHub release from a clean checkout with:
 
 ```powershell
-.\scripts\release.ps1 -Version 0.10.0
+.\scripts\release.ps1 -Version 0.11.0
 ```
 
-Replace `0.10.0` with the current `Cargo.toml` version. The script runs `scripts/check.py`, builds release artifacts with `scripts/build_release.py`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.
+Replace `0.11.0` with the current `Cargo.toml` version. The script runs `scripts/check.py`, builds release artifacts with `scripts/build_release.py`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.
