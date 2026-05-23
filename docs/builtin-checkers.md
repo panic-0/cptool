@@ -1,4 +1,4 @@
-# Built-in Testlib Checkers
+# 内置 Testlib Checker
 
 `cptool add checker <name> --builtin <id>` 会把 `example/assets/testlib/checkers/<id>.cpp` 复制进题包并注册到 `problem.yaml`。复制后的文件开头会写来源注释，并使用题包内的 `#include "testlib.h"`。
 

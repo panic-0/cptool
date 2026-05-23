@@ -1,197 +1,59 @@
 # CP Tool
 
-CP Tool is a command line tool for competitive programming.
+CP Tool 是面向算法竞赛题包的确定性命令行工具。它负责创建题包脚手架、生成正式数据、运行已注册程序、检查题包健康状态、管理 fixture，并收集审计证据。
 
-## Usage
+## 快速开始
 
 ```bash
-# create a cptool problem package
+# 创建题包
 ./cptool pkg init a_plus_b
 
-# --root accepts either a workspace root or the problems/ directory itself
-./cptool pkg init p_agent45 --root ./problems
-
-# generate official data into ./example/a_plus_b/data
+# 生成正式数据到 data/
 ./cptool case gen -w ./example/a_plus_b
 
-# generate official data and print one compact audit summary
-./cptool case gen -w ./example/a_plus_b --summary-only
-
-# print machine-readable audit evidence
-./cptool case gen -w ./example/a_plus_b --summary-only --json
-
-# generate one bundle, rebuilding the data directory contents
-./cptool case gen -w ./example/a_plus_b --bundle main
-
-# clean generated data and local cptool cache
-./cptool pkg clean -w ./example/a_plus_b
-./cptool pkg clean -w ./example/a_plus_b --data
-./cptool pkg clean -w ./example/a_plus_b --cache
-
-# wait up to 10 seconds for an in-progress generation lock
-./cptool case gen -w ./example/a_plus_b --wait-for-generation-lock 10
-
-# generate with a custom per-program stdout/stderr limit; default is 32 MiB
-./cptool case gen -w ./example/a_plus_b --output-limit-bytes 67108864
-
-# run a configured program on a generated bundle case
+# 在一个已生成用例上运行标准程序
 ./cptool case run std sample[0] -w ./example/a_plus_b
-./cptool case run std sample[0] -w ./example/a_plus_b --wait-for-generation-lock 10
 
-# register package entries without hand-editing problem.yaml
-./cptool add program wrong_overflow -w ./example/a_plus_b
-./cptool add validator val -w ./example/a_plus_b
-./cptool add checker chk -w ./example/a_plus_b
-./cptool add checker chk -w ./example/a_plus_b --builtin wcmp
-
-# create and inspect hand-written fixtures
-./cptool fixture add input small -w ./example/a_plus_b --from ./local/small.in
-./cptool fixture add validator pass small -w ./example/a_plus_b --from ./local/small.in
-./cptool fixture add checker fail mismatch -w ./example/a_plus_b --input ./local/input.in --output ./local/wrong.out --answer ./local/answer.ans
-./cptool fixture check -w ./example/a_plus_b
-
-# run validator and checker fixtures, or one explicit local file set
-./cptool test validator -w ./example/a_plus_b
-./cptool test validator -w ./example/a_plus_b --input ./data/sample-001.in
-./cptool test checker -w ./example/a_plus_b
-./cptool test checker -w ./example/a_plus_b --input ./data/sample-001.in --output ./tmp/std.out --answer ./data/sample-001.ans
-
-# print only a compact run summary for large outputs
-./cptool case run std sample[0] -w ./example/a_plus_b --summary-only
-
-# print a machine-readable run summary
-./cptool case run std sample[0] -w ./example/a_plus_b --json
-
-# temporarily override configured run limits while debugging
-./cptool case run std sample[0] -w ./example/a_plus_b --time-limit-secs 5 --memory-limit-mb 1024
-
-# stress test programs with generated temporary inputs
-./cptool test stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10
-./cptool test stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10 {case}
-
-# run stress plans declared in problem.yaml
-./cptool test plan -w ./example/a_plus_b --name small
-./cptool test plan -w ./example/a_plus_b --summary-only
-./cptool test plan -w ./example/a_plus_b --summary-only --json
-./cptool test plan -w ./example/a_plus_b --positive-only --summary-only --json
-./cptool test plan -w ./example/a_plus_b --negative-only --summary-only --json
-./cptool test plan -w ./example/a_plus_b --wait-for-generation-lock 10
-
-# check common package structure and generated data issues
+# 检查题包结构、生成数据、样例和 stress plan
 ./cptool pkg check -w ./example/a_plus_b
-./cptool pkg check -w ./example/a_plus_b --json
-./cptool pkg check -w ./example/a_plus_b --json --wait-for-generation-lock 10
 
-# collect check, generation, and stress-plan evidence
+# 收集机器可读证据
 ./cptool report evidence -w ./example/a_plus_b --json
-./cptool report evidence -w ./example/a_plus_b --json --wait-for-generation-lock 10
-./cptool report evidence -w ./example/a_plus_b --json --reuse-existing-stress-plan ./stress-plan-summary.json
 
-# export problem to online judge format; currently only support syzoj
-./cptool pkg export -w ./example/a_plus_b --oj syzoj
-
-# for more information
+# 查看命令和参数帮助
 ./cptool --help
+./cptool case gen --help
 ```
 
-`problem.yaml` is the problem description file. The `a_plus_b` example uses:
+每次 `case gen` 成功后都会重建输出目录内容。手写输入必须放在 `fixtures/input/`，再通过 `:file` case 进入正式数据。
 
-```yaml
-name: a_plus_b
-time_limit_secs: 3.0
-memory_limit_mb: 512.0
-cpp_compile_args: [-O2, -std=c++14, -I../assets/testlib/]
-programs:
-  gen:
-    info: !cpp
-      path: ./src/gen.cpp
-  std:
-    info: !cpp
-      path: ./src/std.cpp
-    time_limit_secs: 1.0
-  val:
-    info: !cpp
-      path: ./src/val.cpp
-solution: std
-validator: val
-generator: gen
-output:
-  allow_empty: false
-test:
-  type: min
-  bundles:
-    sample:
-      cases:
-      - [20]
-    main:
-      cases:
-      - [10]
-      - args: [10000000]
-      - [1000000000]
-    corner:
-      cases:
-      - generator: :file
-        args: [fixtures/input/small.in]
-  tasks:
-  - name: sample
-    score: 1.0
-    bundles: [sample]
-  - name: main
-    score: 99.0
-    bundles: [main, corner]
-    dependencies: [sample]
-stress:
-  plans:
-  - name: small
-    args: ["10", "{case}"]
-    against: [std, brute]
-    cases: 100
-```
+## 文档
 
-Programs can also use `!command` or `!python`; omitted program limits inherit top-level `time_limit_secs` and `memory_limit_mb`, and omitted C++ compile args inherit top-level `cpp_compile_args`. Individual programs can override any inherited value, such as the `std` time limit above. The top-level `generator` is shared by official data cases and stress plans. Test cases should use args-only shorthand (`- [...]`) or args-only mapping (`args: [...]`) when they use the default generator; write full form (`generator: other_gen`, `args: [...]`) only when a case needs a different generator. A bundle-level `generator` overrides the top-level generator for that bundle, and a full case `generator` overrides both defaults. Stress plans may omit `generator` to use the top-level default. Tasks can omit `type` when `test.type` is declared; a task-level `type` overrides that default. The reserved generator name `:file` copies a hand-written input fixture for official data cases; stress plans cannot use `:file`. Pass exactly one `.in` path under `fixtures/input/`, resolved relative to the package directory. On Windows, cptool adds `-static` to effective C++ compile args so cached executables do not depend on MinGW runtime DLLs at run time.
+- [题包命令](docs/pkg.md)：`pkg init`、`pkg check`、`pkg clean` 和 `pkg export`。
+- [配置命令](docs/add.md)：`add program`、`add bundle`、`add task`、`add validator` 和 `add checker`。
+- [用例命令](docs/case.md)：`case gen` 和 `case run`。
+- [测试资产命令](docs/fixtures.md)：`fixture add` 和 `fixture check`。
+- [测试命令](docs/test.md)：validator/checker 测试、临时 stress 和 stress 计划。
+- [报告命令](docs/report.md)：证据聚合。
+- [题包 YAML](docs/problem-yaml.md)：题包配置、generator、bundle、task 和 stress 计划。
+- [内置 checker](docs/builtin-checkers.md)：checker 选择和语义。
 
-## Notes
+## 开发检查
 
-+ Syzoj export is not fully supported yet.
-+ `--version` prints the package version and the git commit embedded at build time, for example `cptool 0.11.0 (commit abc1234)`; local builds from a modified checkout append `-dirty`.
-+ Commands are grouped by task: `pkg` manages lifecycle/check/clean/export, `add` edits package configuration and simple source scaffolds, `case` generates official data and runs programs, `test` runs validator/checker/stress workflows, and `report` collects evidence.
-+ `pkg init` creates only the cptool-managed scaffold: `problem.yaml`, `statement.md`, `editorial.md`, `src/`, `data/`, `fixtures/`, `.cptool/failures/`, and a package `.gitignore`. By default `--root DIR` creates `DIR/problems/<slug>`; when `DIR` is already named `problems`, it creates `DIR/<slug>` instead to avoid accidental `problems/problems/<slug>` scaffolds. The scaffold writes top-level defaults `time_limit_secs: 3.0`, `memory_limit_mb: 512.0`, and `cpp_compile_args: [-O2, -std=c++20]`; add per-program limits or `compile_args` in `problem.yaml` only when a package needs tighter, looser, or program-specific settings. New packages include a self-contained `src/testlib.h`, a testlib `src/gen.cpp` placeholder, and a testlib `src/val.cpp` placeholder; update both placeholders to match the problem before publishing data.
-+ C++ generators should include `testlib.h`, call `registerGen(argc, argv, 1)`, parse fixed arguments with `opt<T>(index)`, and use `rnd`/`println`. `registerGen` seeds `rnd` uniquely from the full command line, so generators should not read a seed argument and reseed `std::mt19937` by hand.
-+ `add program` registers an existing source. Without `--path`, it detects exactly one existing file among `src/<name>.cpp`, `src/<name>.py`, and `src/<name>`; with `--path`, the specified source file must already exist.
-+ `add validator` registers `validator: <name>` and a matching existing program source. It follows the same source detection as `add program`. If a matching program already exists, it only sets the top-level validator field.
-+ `add checker` registers `checker: <name>` and a matching program. With `--builtin <id>`, it copies a built-in testlib checker to `src/<name>.cpp`. Without `--builtin`, it follows the same existing-source detection as `add program`.
-+ `case gen` writes data to `data/` by default. It stages generated files first and moves them into place only after the selected cases succeed. Every successful generation rebuilds the output directory contents and leaves only the newly generated files, so handwritten inputs belong in `fixtures/input/` and must be referenced through `:file` cases. Use `--summary-only` to suppress per-file `generated` lines and print cases, bundles, elapsed time, input/answer bytes, and warning counts.
-+ `pkg clean` removes generated data and local cache without running generation. With no flags it removes `data/*.in`, `data/*.ans`, `.cptool/cache`, and `.cptool/failures`; use `--data` or `--cache` to target only one side. It refuses to remove data while a generation lock or staging directory exists.
-+ `case gen`, implicit selector generation in `case run`, `pkg check`, `test plan`, and `report evidence` support `--wait-for-generation-lock <SECONDS>`. Pass a positive timeout such as `--wait-for-generation-lock 10` to poll every 250ms while another generation is in progress. The wait mode never deletes stale locks; it times out with a retry/prewarm hint.
-+ `case run` uses a bundle case such as `sample[0]` by default, but can also read `--stdin-path` or `--stdin-text`. Use `--summary-only` to suppress full stdout and print size/line/hash fields, or `--hide-stdout` to keep only the status line while still allowing `--stdout-path`.
-+ `case run`, `case gen`, `test stress`, `test plan`, and `pkg check` support `--json` for machine-readable evidence. `--json` can be combined with `--summary-only` where that flag exists; JSON mode suppresses progress/raw-output text on stdout so the result can be parsed directly.
-+ `case gen` warns when a non-empty input produces an empty answer. Set `output.allow_empty: true` in `problem.yaml` for tasks where empty output is valid. In `--summary-only` mode, `empty_answer` and generator-output warnings are counted in the summary. JSON reports include `validator_configured` and `validator_calls`; validator failures include the bundle, case, staged input path, generator name, and generator args.
-+ `fixture add input` stores hand-written inputs in `fixtures/input/` for official `:file` data cases. `fixture add validator` stores expected pass/fail validator inputs, and `fixture add checker` stores expected pass/fail checker triples. `fixture check` reports incomplete checker fixtures and input fixtures that are not referenced by any `:file` test case.
-+ `test validator` runs all validator fixtures by default, or one explicit `--input` file. It normalizes non-native line endings on disk before running the validator and emits `warning: input_line_endings_normalized` when it rewrites a file. Pass `--no-fix-line-endings` when you need to verify exact bytes without rewriting the fixture.
-+ `test checker` runs all checker fixtures by default, or one explicit `--input --output --answer` file set.
-+ `pkg check` reports common structure, unknown `problem.yaml` fields, program paths, validator declaration, task/bundle coverage, generated data completeness/staleness, stress-plan shape, sample generation, and sample output issues. It exits non-zero when errors are found, and reports `data_generation_in_progress` instead of inspecting data during a concurrent `case gen`. In JSON mode this issue includes `kind: "lock"`, `transient: true`, and `retry_after: "wait_for_generation_then_retry"` so orchestrators can wait and retry instead of treating it as a final package failure. Missing generated data is split into `kind: "not_generated"` when no generated `.in/.ans` files exist and `kind: "missing"` when an existing data set is incomplete; those issues include `next_action`, usually `cptool case gen -w <problem_dir>`. If no `validator` is configured, `pkg check` emits `warning: validator_missing`; set `validator_omitted_reason: "..."` in `problem.yaml` when omission is intentional.
-+ `report evidence` aggregates the most common audit commands into one report: `pkg check`, `case gen` summary, and `test plan` summary, plus the cptool version. Use `--json` for machine-readable reports; use `--wait-for-generation-lock <SECONDS>` to pass the same wait timeout through the internal check, generation, and stress-plan steps; use `--skip-gen` or `--skip-stress-plan` when a package intentionally cannot run that section. For recovery or audit reruns, pass `--reuse-existing-stress-plan <PATH>` with JSON previously produced by `test plan --summary-only --json` to fill the stress-plan section without rerunning plans or creating new failure artifacts.
-+ `test stress` is for ad-hoc correctness checks. It does not run official bundles and does not assume `brute` is safe on large data. Arguments after `--` support `{case}` (1-based) and `{case0}` (0-based); fixed args without placeholders are passed literally for every case. The final summary includes `unique_input_hashes=N`, which is useful for noticing fixed-argument repeated inputs. If `cases > 1` but all generated inputs have the same hash, `stress` still passes but prints `warning: repeated_input ... random_coverage=false`; JSON warnings include `random_coverage: false`. Multiple `cptool test stress` processes can run against the same package concurrently; compile cache hits are reused and failure files are created atomically. If all compared programs succeed but all stdout streams are empty on a non-empty generated input, `stress` still passes but prints `warning: all_empty_output`.
-+ `test plan` runs `stress.plans` from `problem.yaml`. Plan args support `{case}` (1-based) and `{case0}` (0-based). Plans default to `expect: pass`; use `expect: fail` for wrong-program evidence. Negative plans run every case, succeed when at least one `wrong_answer` or `program_failed` is observed, save the first failure artifacts, and report `failed_cases`, `passed_cases`, and `failure_ratio`. Use `--positive-only` to run only positive `expect: pass` plans, or `--negative-only` to run only negative `expect: fail` plans. Use `--summary-only` to print one compact line per plan, including unique input hashes, empty stdout case counts, and warning counts.
-+ C++ compilation automatically adds the source file's directory to the include path, so `#include "common.hpp"` works for headers beside the source even though cptool compiles a cached copy. On Windows, effective compile args also include `-static` unless already present, avoiding MinGW runtime DLL lookup failures in CI and other clean environments. Compile failures include compiler path/version, flags, static-link status, cache key, and cache exe path. Windows runtime errors for common NTSTATUS exit codes include a diagnostic hint in failure reports.
-+ `case run`, `case gen`, `test stress`, and `test plan` default to a 32 MiB per-program stdout/stderr limit; pass `--output-limit-bytes` to override it where supported.
-
-## Development Checks
-
-Before considering any cptool change complete, run the cptool script-level full check from the cptool repository root:
+任何 cptool 改动完成前，都应在 cptool 仓库根目录运行统一检查入口：
 
 ```powershell
 python scripts/check.py
 ```
 
-This is the canonical local verification entrypoint. It runs formatting, clippy, and the full Rust test suite in order, stopping at the first failure. Do not treat a change as verified after only running individual `cargo` commands unless `python scripts/check.py` has also passed.
+该脚本会依次运行格式检查、clippy 和完整 Rust 测试套件，遇到第一个失败即停止。
 
-## Release
+## 发布
 
-On Windows, publish a GitHub release from a clean checkout with:
+Windows 下，从干净 checkout 发布 GitHub release：
 
 ```powershell
 .\scripts\release.ps1 -Version 0.11.0
 ```
 
-Replace `0.11.0` with the current `Cargo.toml` version. The script runs `scripts/check.py`, builds release artifacts with `scripts/build_release.py`, pushes the current branch and tag, then creates the GitHub release with the generated archives and `SHA256SUMS.txt`.
+把 `0.11.0` 替换成当前 `Cargo.toml` 版本。脚本会运行 `scripts/check.py`，用 `scripts/build_release.py` 构建发布产物，推送当前分支和 tag，然后创建 GitHub release，并上传生成的压缩包与 `SHA256SUMS.txt`。
