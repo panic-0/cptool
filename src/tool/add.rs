@@ -1,4 +1,3 @@
-use super::package::DEFAULT_PROGRAM_CPP;
 use super::schema::{
     CommandProgram, CppProgram, OutputConfig, Problem, Program, ProgramInfo, TestBundle, TestCase,
     TestTask, TestTaskType,
@@ -83,24 +82,12 @@ pub fn add_program(options: AddProgramOptions) -> Result<()> {
         );
     }
 
-    let (kind, path, should_create) = resolve_program_path(
+    let (kind, path) = resolve_program_path(
         &work_dir,
         &options.name,
         options.kind,
         options.path.as_deref(),
     )?;
-    if should_create {
-        let abs_path = resolve_path(&work_dir, &path);
-        if let Some(parent) = abs_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let source = if kind == AddProgramKind::Cpp {
-            DEFAULT_PROGRAM_CPP
-        } else {
-            ""
-        };
-        std::fs::write(&abs_path, source)?;
-    }
 
     let program = program_from_parts(
         kind,
@@ -185,15 +172,7 @@ pub fn add_validator(options: AddValidatorOptions) -> Result<()> {
         return write_problem(&work_dir, &problem);
     }
 
-    let (kind, source_path, should_create) =
-        resolve_program_path(&work_dir, &options.name, None, None)?;
-    if should_create {
-        let abs_source = resolve_path(&work_dir, &source_path);
-        if let Some(parent) = abs_source.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&abs_source, "")?;
-    }
+    let (kind, source_path) = resolve_program_path(&work_dir, &options.name, None, None)?;
 
     problem.programs.insert(
         options.name.clone(),
@@ -231,7 +210,7 @@ pub fn add_checker(options: AddCheckerOptions) -> Result<()> {
         );
     }
 
-    let (kind, source_path, should_create) = if let Some(builtin) = &options.builtin {
+    let (kind, source_path) = if let Some(builtin) = &options.builtin {
         let source_path = PathBuf::from(format!("./src/{}.cpp", options.name));
         let abs_source = resolve_path(&work_dir, &source_path);
         if abs_source.exists() && !options.replace {
@@ -245,17 +224,10 @@ pub fn add_checker(options: AddCheckerOptions) -> Result<()> {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&abs_source, source)?;
-        (AddProgramKind::Cpp, source_path, false)
+        (AddProgramKind::Cpp, source_path)
     } else {
         resolve_program_path(&work_dir, &options.name, None, None)?
     };
-    if should_create {
-        let abs_source = resolve_path(&work_dir, &source_path);
-        if let Some(parent) = abs_source.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&abs_source, "")?;
-    }
 
     problem.programs.insert(
         options.name.clone(),
@@ -333,12 +305,17 @@ fn resolve_program_path(
     name: &str,
     kind: Option<AddProgramKind>,
     explicit_path: Option<&Path>,
-) -> Result<(AddProgramKind, PathBuf, bool)> {
+) -> Result<(AddProgramKind, PathBuf)> {
     if let Some(path) = explicit_path {
+        let path = normalize_package_path(path);
+        let abs_path = resolve_path(work_dir, &path);
+        if !abs_path.is_file() {
+            anyhow::bail!("source file {} does not exist", abs_path.display());
+        }
         let kind = kind
-            .or_else(|| infer_kind(path))
+            .or_else(|| infer_kind(&path))
             .unwrap_or(AddProgramKind::Command);
-        return Ok((kind, normalize_package_path(path), false));
+        return Ok((kind, path));
     }
 
     let candidates = [
@@ -357,7 +334,7 @@ fn resolve_program_path(
     ];
     let existing = candidates
         .iter()
-        .filter(|(_, path)| resolve_path(work_dir, path).exists())
+        .filter(|(_, path)| resolve_path(work_dir, path).is_file())
         .cloned()
         .collect::<Vec<_>>();
 
@@ -366,23 +343,24 @@ fn resolve_program_path(
             .iter()
             .find(|(candidate_kind, _)| *candidate_kind == kind)
         {
-            return Ok((kind, path.clone(), false));
+            return Ok((kind, path.clone()));
         }
         let path = match kind {
             AddProgramKind::Cpp => PathBuf::from(format!("./src/{name}.cpp")),
             AddProgramKind::Python => PathBuf::from(format!("./src/{name}.py")),
             AddProgramKind::Command => PathBuf::from(format!("./src/{name}")),
         };
-        return Ok((kind, path, true));
+        anyhow::bail!(
+            "source file {} does not exist",
+            resolve_path(work_dir, &path).display()
+        );
     }
 
     match existing.as_slice() {
-        [] => Ok((
-            AddProgramKind::Cpp,
-            PathBuf::from(format!("./src/{name}.cpp")),
-            true,
-        )),
-        [(kind, path)] => Ok((*kind, path.clone(), false)),
+        [] => anyhow::bail!(
+            "no source file found for `{name}`; create src/{name}.cpp, src/{name}.py, or src/{name}, or pass --path to an existing source"
+        ),
+        [(kind, path)] => Ok((*kind, path.clone())),
         _ => anyhow::bail!(
             "multiple source candidates found for `{name}`; use `add program {name} --path ...` or `--kind ...` first, then register the role"
         ),
@@ -671,9 +649,15 @@ mod tests {
     }
 
     #[test]
-    fn add_program_creates_default_cpp() {
+    fn add_program_requires_existing_source_and_registers_cpp() {
         let root = temp_test_dir("cptool-add-program");
         let problem_dir = init_package(&root, "Add Program").unwrap();
+        let source_path = problem_dir.join("src").join("foo.cpp");
+        std::fs::write(
+            &source_path,
+            "#include <bits/stdc++.h>\nint main(){return 0;}\n",
+        )
+        .unwrap();
 
         add_program(AddProgramOptions {
             work_dir: problem_dir.clone(),
@@ -687,15 +671,6 @@ mod tests {
         })
         .unwrap();
 
-        assert!(problem_dir.join("src").join("foo.cpp").exists());
-        let source = std::fs::read_to_string(problem_dir.join("src").join("foo.cpp")).unwrap();
-        assert_eq!(source, DEFAULT_PROGRAM_CPP);
-        assert!(source.contains("int main(int argc, char *argv[])"));
-        let normalized_source = source.replace("\r\n", "\n");
-        assert!(
-            normalized_source
-                .contains("cin.tie(nullptr);\n    ios::sync_with_stdio(false);\n\n    return 0;")
-        );
         let problem = load_problem(&problem_dir).unwrap();
         let ProgramInfo::Cpp(cpp) = &problem.programs["foo"].info else {
             panic!("expected C++ program");
@@ -703,6 +678,60 @@ mod tests {
         assert_eq!(cpp.path, PathBuf::from("./src/foo.cpp"));
         assert_eq!(cpp.compile_args, ["-O2", "-std=c++20"]);
         assert_eq!(problem.programs["foo"].time_limit_secs, 3.0);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn add_program_rejects_missing_source() {
+        let root = temp_test_dir("cptool-add-program-missing-source");
+        let problem_dir = init_package(&root, "Add Program Missing Source").unwrap();
+
+        let err = add_program(AddProgramOptions {
+            work_dir: problem_dir.clone(),
+            name: "foo".to_string(),
+            kind: None,
+            path: None,
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("no source file found for `foo`"));
+        assert!(!problem_dir.join("src").join("foo.cpp").exists());
+
+        let err = add_program(AddProgramOptions {
+            work_dir: problem_dir.clone(),
+            name: "bar".to_string(),
+            kind: Some(AddProgramKind::Cpp),
+            path: None,
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("source file"));
+        assert!(err.contains("bar.cpp"));
+
+        let err = add_program(AddProgramOptions {
+            work_dir: problem_dir.clone(),
+            name: "baz".to_string(),
+            kind: None,
+            path: Some(PathBuf::from("./src/missing.py")),
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("source file"));
+        assert!(err.contains("missing.py"));
 
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -844,7 +873,7 @@ mod tests {
     }
 
     #[test]
-    fn add_validator_creates_default_cpp_without_source() {
+    fn add_validator_rejects_missing_source() {
         let root = temp_test_dir("cptool-add-validator-create");
         let problem_dir = init_package(&root, "Add Validator Create").unwrap();
         let mut problem = read_problem(&problem_dir).unwrap();
@@ -853,7 +882,7 @@ mod tests {
         write_problem(&problem_dir, &problem).unwrap();
         std::fs::remove_file(problem_dir.join("src").join("val.cpp")).unwrap();
 
-        add_validator(AddValidatorOptions {
+        let err = add_validator(AddValidatorOptions {
             work_dir: problem_dir.clone(),
             name: "val".to_string(),
             time_limit_secs: None,
@@ -861,14 +890,15 @@ mod tests {
             compile_args: Vec::new(),
             replace: false,
         })
-        .unwrap();
+        .unwrap_err()
+        .to_string();
 
         let source_path = problem_dir.join("src").join("val.cpp");
-        assert!(source_path.is_file());
-        assert_eq!(std::fs::read_to_string(source_path).unwrap(), "");
+        assert!(err.contains("no source file found for `val`"));
+        assert!(!source_path.exists());
         let problem = load_problem(&problem_dir).unwrap();
-        assert_eq!(problem.validator_name.as_deref(), Some("val"));
-        assert!(matches!(problem.programs["val"].info, ProgramInfo::Cpp(_)));
+        assert!(problem.validator_name.is_none());
+        assert!(!problem.programs.contains_key("val"));
 
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -964,12 +994,12 @@ mod tests {
     }
 
     #[test]
-    fn add_checker_creates_default_cpp_without_builtin_or_source() {
+    fn add_checker_rejects_missing_source_without_builtin() {
         let root = temp_test_dir("cptool-add-checker-create");
         let problem_dir = init_package(&root, "Add Checker Create").unwrap();
         remove_default_checker(&problem_dir);
 
-        add_checker(AddCheckerOptions {
+        let err = add_checker(AddCheckerOptions {
             work_dir: problem_dir.clone(),
             name: "chk".to_string(),
             builtin: None,
@@ -978,14 +1008,15 @@ mod tests {
             compile_args: Vec::new(),
             replace: false,
         })
-        .unwrap();
+        .unwrap_err()
+        .to_string();
 
         let source_path = problem_dir.join("src").join("chk.cpp");
-        assert!(source_path.is_file());
-        assert_eq!(std::fs::read_to_string(source_path).unwrap(), "");
+        assert!(err.contains("no source file found for `chk`"));
+        assert!(!source_path.exists());
         let problem = load_problem(&problem_dir).unwrap();
-        assert_eq!(problem.checker_name.as_deref(), Some("chk"));
-        assert!(matches!(problem.programs["chk"].info, ProgramInfo::Cpp(_)));
+        assert!(problem.checker_name.is_none());
+        assert!(!problem.programs.contains_key("chk"));
 
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -995,6 +1026,11 @@ mod tests {
         let root = temp_test_dir("cptool-add-checker-existing-program");
         let problem_dir = init_package(&root, "Add Checker Existing Program").unwrap();
         remove_default_checker(&problem_dir);
+        std::fs::write(
+            problem_dir.join("src").join("chk.cpp"),
+            "#include \"testlib.h\"\nint main(int argc, char** argv) { registerTestlibCmd(argc, argv); quitf(_ok, \"ok\"); }\n",
+        )
+        .unwrap();
         add_program(AddProgramOptions {
             work_dir: problem_dir.clone(),
             name: "chk".to_string(),

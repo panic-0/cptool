@@ -526,7 +526,7 @@ pub(super) enum ReportCommands {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum AddCommands {
-    #[command(about = "Register a program, auto-creating src/<name>.cpp when needed")]
+    #[command(about = "Register an existing program source")]
     Program {
         #[arg(help = "Program key to add under problem.yaml programs")]
         name: String,
