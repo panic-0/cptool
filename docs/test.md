@@ -25,11 +25,11 @@
 ## 临时 Stress
 
 ```bash
-./cptool test stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10
-./cptool test stress -w ./example/a_plus_b --generator gen --against std --against brute --cases 100 -- 10 {case}
+./cptool test stress -w ./example/a_plus_b --generator gen --cases 100 std brute -- 10
+./cptool test stress -w ./example/a_plus_b --generator gen --cases 100 std brute -- 10 {case}
 ```
 
-`test stress` 生成临时输入并比较已注册程序。它不运行正式 bundle，也不假设 `brute` 能处理大数据。
+`test stress` 生成临时输入并比较两份已注册程序或源码。它不运行正式 bundle，也不假设 `brute` 能处理大数据。
 
 `--` 后的参数支持 `{case}`（从 1 开始）和 `{case0}`（从 0 开始）。不含占位符的固定参数会在每个 case 中原样传入。如果多个 case 的生成输入完全相同，stress 仍会通过，但会报告重复输入 warning。
 

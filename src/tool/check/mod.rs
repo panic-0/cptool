@@ -375,11 +375,11 @@ fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Probl
                 format!("{location}.cases"),
             );
         }
-        if plan.against.len() < 2 {
+        if plan.against.len() != 2 {
             report.error_at(
-                codes::STRESS_PLAN_AGAINST_TOO_FEW,
+                codes::STRESS_PLAN_AGAINST_COUNT,
                 format!(
-                    "stress plan `{}` must compare at least two programs or sources",
+                    "stress plan `{}` must compare exactly two programs or sources",
                     plan.name
                 ),
                 Some(work_dir.join("problem.yaml")),
@@ -913,7 +913,7 @@ mod tests {
             CheckSeverity::Warning,
         );
         assert_issue(&report, "stress_plan_empty", CheckSeverity::Error);
-        assert_issue(&report, "stress_plan_against_too_few", CheckSeverity::Error);
+        assert_issue(&report, "stress_plan_against_count", CheckSeverity::Error);
         assert_issue(&report, "stress_plan_program_missing", CheckSeverity::Error);
 
         std::fs::remove_dir_all(root).unwrap();

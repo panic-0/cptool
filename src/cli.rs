@@ -152,7 +152,8 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
         TestCommands::Stress {
             work_dir,
             generator,
-            against,
+            std,
+            alt,
             cases,
             output_limit_bytes,
             failure_dir,
@@ -161,7 +162,7 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
         } => handle_stress(StressCommandOptions {
             work_dir,
             generator,
-            against,
+            against: vec![std, alt],
             cases,
             output_limit_bytes,
             failure_dir,

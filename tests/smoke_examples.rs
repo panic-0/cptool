@@ -48,9 +48,7 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "--against",
             "std",
-            "--against",
             "brute",
             "--cases",
             "3",
@@ -450,9 +448,12 @@ fn cli_help_describes_new_workflow_commands() {
 
     let stress = run_cptool(["test", "stress", "--help"], None);
     let stress_stdout = String::from_utf8_lossy(&stress.stdout);
+    assert!(stress_stdout.contains("<STD>"));
+    assert!(stress_stdout.contains("<ALT>"));
     assert!(stress_stdout.contains("{case}"));
     assert!(stress_stdout.contains("{case0}"));
     assert!(stress_stdout.contains("--json"));
+    assert!(!stress_stdout.contains("--against"));
 }
 #[test]
 fn wait_for_generation_lock_rejects_zero_seconds() {

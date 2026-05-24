@@ -57,9 +57,7 @@ fn stress_uses_configured_checker_instead_of_text_comparison() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "--against",
             "std",
-            "--against",
             "alt",
             "--cases",
             "1",
@@ -405,9 +403,7 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "--against",
             "std",
-            "--against",
             "brute",
             "--cases",
             "2",
@@ -446,9 +442,7 @@ fn stress_reports_single_unique_input_hash_for_fixed_args() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "--against",
             "std",
-            "--against",
             "brute",
             "--cases",
             "3",
@@ -486,9 +480,7 @@ fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "--against",
             "std",
-            "--against",
             "brute",
             "--cases",
             "3",
@@ -531,9 +523,7 @@ fn stress_expands_case_placeholder_and_reports_unique_inputs() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "--against",
             "std",
-            "--against",
             "brute",
             "--cases",
             "3",
@@ -731,7 +721,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
         problem_dir
             .join(".cptool")
             .join("failures")
-            .join("stress-bad-is-detected-001.txt")
+            .join("stress-001.txt")
             .exists()
     );
 

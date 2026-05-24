@@ -223,8 +223,8 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         expect_failure,
     } = options;
     let cases = args_by_case.len();
-    if against.len() < 2 {
-        anyhow::bail!("stress requires at least two --against programs or sources");
+    if against.len() != 2 {
+        anyhow::bail!("stress requires exactly two programs or sources");
     }
     let work_dir = normalize_work_dir(work_dir)?;
     let problem = load_problem(&work_dir)?;
@@ -692,13 +692,10 @@ fn save_stress_failure_artifacts(
 
 fn create_failure_input(
     failure_dir: &Path,
-    plan_name: Option<&str>,
+    _plan_name: Option<&str>,
 ) -> Result<(PathBuf, std::fs::File)> {
-    let prefix = plan_name
-        .map(|name| format!("stress-{}", sanitize_artifact_label(name)))
-        .unwrap_or_else(|| "stress".to_string());
     for id in 1.. {
-        let stem = failure_dir.join(format!("{prefix}-{id:03}"));
+        let stem = failure_dir.join(format!("stress-{id:03}"));
         let input_path = stem.with_extension("in");
         match std::fs::OpenOptions::new()
             .write(true)
@@ -749,10 +746,7 @@ fn write_checker_output(
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("stress");
-    let artifact_stem = stem.with_file_name(format!(
-        "{base}-checker-{}",
-        sanitize_artifact_label(&checker.participant)
-    ));
+    let artifact_stem = stem.with_file_name(format!("{base}-checker"));
     let stdout_path = artifact_stem.with_extension("out");
     let stderr_path = artifact_stem.with_extension("err");
     let report_path = checker
@@ -777,36 +771,12 @@ fn write_checker_output(
     })
 }
 
-fn result_artifact_stem(stem: &Path, index: usize, label: &str) -> PathBuf {
+fn result_artifact_stem(stem: &Path, index: usize, _label: &str) -> PathBuf {
     let base = stem
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("stress");
-    stem.with_file_name(format!(
-        "{base}-{}-{}",
-        index + 1,
-        sanitize_artifact_label(label)
-    ))
-}
-
-fn sanitize_artifact_label(label: &str) -> String {
-    let sanitized = label
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
-                ch
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string();
-    if sanitized.is_empty() {
-        "program".to_string()
-    } else {
-        sanitized
-    }
+    stem.with_file_name(format!("{base}-{}", index + 1))
 }
 
 pub(crate) fn normalize_output(text: &str) -> String {
@@ -879,13 +849,13 @@ mod tests {
     use crate::tool::temp_test_dir;
 
     #[test]
-    fn failure_input_stem_includes_sanitized_plan_name() {
+    fn failure_input_stem_uses_short_stable_name() {
         let root = temp_test_dir("cptool-stress-plan-failure");
         std::fs::create_dir_all(&root).unwrap();
 
         let (stem, _file) = create_failure_input(&root, Some("small cases")).unwrap();
 
-        assert_eq!(stem.file_name().unwrap(), "stress-small-cases-001");
+        assert_eq!(stem.file_name().unwrap(), "stress-001");
         std::fs::remove_dir_all(root).unwrap();
     }
 

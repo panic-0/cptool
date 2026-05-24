@@ -271,20 +271,18 @@ pub(super) enum TestCommands {
         json: bool,
     },
     #[command(
-        about = "Stress test several programs on temporary generated inputs",
-        long_about = "Stress test several programs on temporary generated inputs. Generator args after -- support {case} and {case0}; {case} is 1-based and {case0} is 0-based."
+        about = "Stress test two programs on temporary generated inputs",
+        long_about = "Stress test two programs on temporary generated inputs. Generator args after -- support {case} and {case0}; {case} is 1-based and {case0} is 0-based."
     )]
     Stress {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
         #[arg(long, help = "Generator program name from problem.yaml or source path")]
         generator: String,
-        #[arg(
-            long,
-            required = true,
-            help = "Program name or source path to compare; pass at least two"
-        )]
-        against: Vec<String>,
+        #[arg(value_name = "STD", help = "Standard program name or source path")]
+        std: String,
+        #[arg(value_name = "ALT", help = "Alternative program name or source path")]
+        alt: String,
         #[arg(
             long,
             default_value_t = 100,
