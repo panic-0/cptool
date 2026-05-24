@@ -80,7 +80,7 @@ pub struct ValidatorFixture {
 pub struct CheckerFixture {
     pub name: String,
     pub expect: JudgeExpectation,
-    pub dir: PathBuf,
+    pub path: PathBuf,
     pub input_path: PathBuf,
     pub output_path: PathBuf,
     pub answer_path: PathBuf,
@@ -143,13 +143,13 @@ pub fn add_checker_fixture(options: AddCheckerFixtureOptions) -> Result<AddFixtu
         .answer_from
         .as_deref()
         .context("checker fixture requires --answer")?;
-    let dir = work_dir
+    let stem = work_dir
         .join(CHECKER_DIR)
         .join(options.expect.as_str())
         .join(name);
-    let input_path = dir.join("input.in");
-    let output_path = dir.join("output.out");
-    let answer_path = dir.join("answer.ans");
+    let input_path = stem.with_extension("in");
+    let output_path = stem.with_extension("out");
+    let answer_path = stem.with_extension("ans");
     let input_replaced =
         write_fixture_file(&work_dir, &input_path, Some(input_from), options.replace)?;
     let output_replaced =
@@ -199,7 +199,7 @@ pub fn check_fixtures(work_dir: PathBuf) -> Result<FixtureCheckReport> {
                 errors.push(FixtureIssue {
                     code: "incomplete_checker_fixture",
                     path: path.clone(),
-                    message: "checker fixture must contain input.in, output.out, and answer.ans"
+                    message: "checker fixture must contain matching .in, .out, and .ans files"
                         .to_string(),
                 });
             } else if path.metadata().map(|metadata| metadata.len()).unwrap_or(0) == 0 {
@@ -339,22 +339,28 @@ fn list_checker_fixtures(work_dir: &Path) -> Result<Vec<CheckerFixture>> {
         if !root.exists() {
             continue;
         }
+        let mut names = BTreeSet::new();
         for entry in std::fs::read_dir(&root)
             .with_context(|| format!("failed to read fixture dir {}", root.display()))?
         {
             let entry = entry?;
-            let dir = entry.path();
-            if !dir.is_dir() {
+            let path = entry.path();
+            if !path.is_file() {
                 continue;
             }
-            let name = fixture_file_name(&dir)?;
+            if let Some("in" | "out" | "ans") = path.extension().and_then(|value| value.to_str()) {
+                names.insert(fixture_file_stem(&path)?);
+            }
+        }
+        for name in names {
+            let stem = root.join(&name);
             fixtures.push(CheckerFixture {
                 name,
                 expect,
-                input_path: dir.join("input.in"),
-                output_path: dir.join("output.out"),
-                answer_path: dir.join("answer.ans"),
-                dir,
+                path: stem.clone(),
+                input_path: stem.with_extension("in"),
+                output_path: stem.with_extension("out"),
+                answer_path: stem.with_extension("ans"),
             });
         }
     }
@@ -367,13 +373,6 @@ fn list_checker_fixtures(work_dir: &Path) -> Result<Vec<CheckerFixture>> {
 fn fixture_file_stem(path: &Path) -> Result<String> {
     path.file_stem()
         .and_then(|stem| stem.to_str())
-        .map(str::to_string)
-        .with_context(|| format!("fixture path is not valid UTF-8: {}", path.display()))
-}
-
-fn fixture_file_name(path: &Path) -> Result<String> {
-    path.file_name()
-        .and_then(|name| name.to_str())
         .map(str::to_string)
         .with_context(|| format!("fixture path is not valid UTF-8: {}", path.display()))
 }

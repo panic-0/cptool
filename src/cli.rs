@@ -348,10 +348,10 @@ fn print_fixture_list_report(report: tool::FixtureListReport, json: bool) -> any
         }
         for checker in &report.checkers {
             println!(
-                "checker {}/{} dir={}",
+                "checker {}/{} path={}",
                 checker.expect.as_str(),
                 checker.name,
-                checker.dir.display()
+                checker.path.display()
             );
         }
     }
@@ -931,7 +931,7 @@ fn shorten_fixture_list_paths(report: &mut tool::FixtureListReport, work_dir: &P
         validator.path = PathBuf::from(terminal_path(&validator.path, Some(work_dir)));
     }
     for checker in &mut report.checkers {
-        checker.dir = PathBuf::from(terminal_path(&checker.dir, Some(work_dir)));
+        checker.path = PathBuf::from(terminal_path(&checker.path, Some(work_dir)));
         checker.input_path = PathBuf::from(terminal_path(&checker.input_path, Some(work_dir)));
         checker.output_path = PathBuf::from(terminal_path(&checker.output_path, Some(work_dir)));
         checker.answer_path = PathBuf::from(terminal_path(&checker.answer_path, Some(work_dir)));
@@ -1186,7 +1186,7 @@ impl FixtureDisplay for tool::CheckerFixture {
     }
 
     fn fixture_path(&self) -> &Path {
-        &self.dir
+        &self.path
     }
 }
 

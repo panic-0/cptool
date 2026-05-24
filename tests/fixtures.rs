@@ -243,6 +243,39 @@ fn test_checker_runs_all_checker_fixtures() {
         ],
         None,
     );
+    assert_eq!(
+        std::fs::read_to_string(
+            problem_dir
+                .join("fixtures")
+                .join("checker")
+                .join("pass")
+                .join("good.in")
+        )
+        .unwrap(),
+        "7\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(
+            problem_dir
+                .join("fixtures")
+                .join("checker")
+                .join("pass")
+                .join("good.out")
+        )
+        .unwrap(),
+        "007\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(
+            problem_dir
+                .join("fixtures")
+                .join("checker")
+                .join("pass")
+                .join("good.ans")
+        )
+        .unwrap(),
+        "7\n"
+    );
     run_cptool(
         [
             "fixture",
@@ -308,15 +341,15 @@ fn checker_fixture_requires_sources_and_check_rejects_empty_files() {
     let stderr = String::from_utf8_lossy(&missing_sources.stderr);
     assert!(stderr.contains("requires --input"), "{stderr}");
 
-    let fixture_dir = problem_dir
+    let fixture_stem = problem_dir
         .join("fixtures")
         .join("checker")
         .join("pass")
         .join("empty");
-    std::fs::create_dir_all(&fixture_dir).unwrap();
-    std::fs::write(fixture_dir.join("input.in"), "").unwrap();
-    std::fs::write(fixture_dir.join("output.out"), "7\n").unwrap();
-    std::fs::write(fixture_dir.join("answer.ans"), "7\n").unwrap();
+    std::fs::create_dir_all(fixture_stem.parent().unwrap()).unwrap();
+    std::fs::write(fixture_stem.with_extension("in"), "").unwrap();
+    std::fs::write(fixture_stem.with_extension("out"), "7\n").unwrap();
+    std::fs::write(fixture_stem.with_extension("ans"), "7\n").unwrap();
 
     let check = run_cptool_allow_failure(
         [
