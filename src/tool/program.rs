@@ -389,7 +389,7 @@ fn resolve_local_include(include: &str, current_dir: &Path, source_root: &Path) 
         let Ok(candidate) = candidate.canonicalize() else {
             continue;
         };
-        if candidate.is_file() && candidate.starts_with(source_root) {
+        if candidate.is_file() {
             return Some(candidate);
         }
     }
@@ -890,6 +890,44 @@ time.sleep(60)
         assert_eq!(decode_output(&first_output.stdout), "1\n");
 
         std::fs::write(&header, "#define ANSWER 2\n").unwrap();
+        let second_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let second_output = std::process::Command::new(&second_exe).output().unwrap();
+
+        assert_ne!(first_exe, second_exe);
+        assert_eq!(decode_output(&second_output.stdout), "2\n");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cpp_compile_cache_key_includes_relative_headers_outside_source_dir() {
+        if command_version_first_line("g++").is_none() {
+            return;
+        }
+        let root = temp_test_dir("cptool-cpp-external-header-cache-key");
+        let src_dir = root.join("src");
+        let shared_dir = root.join("shared");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&shared_dir).unwrap();
+        let shared = shared_dir.join("common.hpp");
+        std::fs::write(&shared, "#define ANSWER 1\n").unwrap();
+        std::fs::write(
+            src_dir.join("bridge.hpp"),
+            "#pragma once\n#include \"../shared/common.hpp\"\n",
+        )
+        .unwrap();
+        let main = src_dir.join("main.cpp");
+        std::fs::write(
+            &main,
+            "#include \"bridge.hpp\"\n#include <iostream>\nint main(){ std::cout << ANSWER << '\\n'; }\n",
+        )
+        .unwrap();
+
+        let first_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let first_output = std::process::Command::new(&first_exe).output().unwrap();
+        assert_eq!(decode_output(&first_output.stdout), "1\n");
+
+        std::fs::write(&shared, "#define ANSWER 2\n").unwrap();
         let second_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
         let second_output = std::process::Command::new(&second_exe).output().unwrap();
 

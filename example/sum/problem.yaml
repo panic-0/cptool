@@ -1,83 +1,94 @@
 name: sum
+time_limit_secs: 1.0
+memory_limit_mb: 512.0
+cpp_compile_args: [-O2, -std=c++20]
 programs:
   gen:
     info: !cpp
       path: ./src/gen.cpp
-      compile_args: [-O2, -std=c++14, -I../../third_party/testlib/]
-    time_limit_secs: 5.0
-    memory_limit_mb: 512.0
   std:
     info: !cpp
       path: ./src/std.cpp
-      compile_args: [-O2, -std=c++14]
-    time_limit_secs: 5.0
-    memory_limit_mb: 512.0
+  brute:
+    info: !cpp
+      path: ./src/brute.cpp
   wrong:
     info: !cpp
       path: ./src/wrong.cpp
-      compile_args: [-O2, -std=c++14]
-    time_limit_secs: 5.0
-    memory_limit_mb: 512.0
   val:
     info: !cpp
       path: ./src/val.cpp
       # testlib validators are compile-heavy; O0 keeps smoke/CI cold builds fast.
-      compile_args: [-O0, -I../../third_party/testlib/]
-    time_limit_secs: 5.0
-    memory_limit_mb: 512.0
+      compile_args: [-O0, -std=c++20]
   chk:
     info: !cpp
-      path: ../../third_party/testlib/checkers/lcmp.cpp
-      compile_args: [-O2, -I../../third_party/testlib/]
-    time_limit_secs: 5.0
-    memory_limit_mb: 512.0
+      path: ./src/chk.cpp
 solution: std
 validator: val
 checker: chk
 generator: gen
 test:
-  # The top-level generator is the default for all bundles and stress plans.
-  # Task type defaults can be declared globally for all tasks.
+  # 顶层 generator 是所有 bundle 和 stress plan 的默认生成器。
+  # task 的 type 可以在 test.type 统一声明。
   type: min
   bundles:
+    sample:
+      cases:
+      # 手写样例放在 fixtures/input，再通过 :file 进入正式数据。
+      - generator: :file
+        args: [fixtures/input/sample.in]
+    corner:
+      cases:
+      # 覆盖模数边界和 a_i 在模意义下等于 1 的特殊分母。
+      - generator: :file
+        args: [fixtures/input/edge_mod.in]
+      - generator: :file
+        args: [fixtures/input/one_mod.in]
     s1:
       cases:
-      # Args-only shorthand; uses the top-level generator.
-      - [998, 10]
-      # Args-only mapping; also uses the top-level generator.
-      - args: [999, 1000000000]
-      - [1000, 1000000000]
+      # args-only 简写，参数为 max_n, max_k, max_a, min_k。
+      - [20, 20, 1000, 1]
+      # args-only mapping，同样使用顶层 generator。
+      - args: [100, 100, 1000000, 1]
+      - [1000, 1000, 1000000000, 1]
     s2:
       cases:
-      # Args-only shorthand; uses the top-level generator.
-      - [49998, 10]
-      - [49999, 1000000000]
-      - [50000, 1000000000]
+      - [5000, 100000, 1000000000, 1]
+      - [20000, 1000, 1000000000, 1]
+      - [50000, 100000, 1000000000, 1]
     s3:
       cases:
-      # Prefer args-only cases when the top-level generator is used.
-      - [199998, 10]
-      - [199999, 1000000000]
-      - [200000, 1000000000]
+      # 接近约束上限的数据。
+      - [100000, 1, 1000000000, 1]
+      - [100000, 100000, 1000000000, 1]
   tasks:
-  # Omitting type uses test.type.
+  - name: sample
+    score: 0.0
+    bundles: [sample]
+  # 省略 type 时使用 test.type。
   - name: s1
     score: 10.0
-    bundles: [s1]
+    bundles: [s1, corner]
+    dependencies: [sample]
   - name: s2
     score: 30.0
     bundles: [s2]
-    dependencies: [s1]
-  # Explicit task type remains valid when a task needs its own behavior.
+    dependencies: [sample, s1]
+  # 单个 task 仍然可以显式写 type。
   - name: s3
     score: 60.0
     type: min
     bundles: [s3]
-    dependencies: [s1, s2]
+    dependencies: [sample, s1, s2]
 stress:
   plans:
-  - name: catches-no-mod
-    args: [5, 1000000000]
+  - name: std-vs-brute-small
+    args: [20, 30, 1000, 1, "{case}"]
+    against: [std, brute]
+    cases: 5
+    expect: pass
+  - name: catches-first-power-only
+    args: [10, 8, 1000000000, 2, "{case}"]
     against: [std, wrong]
     cases: 3
     expect: fail
