@@ -17,7 +17,7 @@ mod yaml_shape;
 
 use markdown_sample::{check_statement_sample_output, find_sample_bundle};
 use package_audit::{check_package_text_audit, check_report_stress_plan_classification};
-pub use report::{CheckIssue, CheckOptions, CheckReport, CheckSeverity};
+pub use report::{CheckIssue, CheckIssueDetail, CheckOptions, CheckReport, CheckSeverity};
 use yaml_shape::check_unknown_yaml_fields;
 
 #[cfg(test)]
@@ -233,6 +233,7 @@ fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem:
     };
     let next_action = format!("cptool case gen -w {}", work_dir.display());
     for (bundle_name, bundle) in &problem.test.bundles {
+        let mut details = Vec::new();
         for case_index in 0..bundle.cases.len() {
             for extension in ["in", "ans"] {
                 let path = data_dir.join(format!("{bundle_name}-{case_index}.{extension}"));
@@ -246,17 +247,41 @@ fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem:
                             "generated data file `{bundle_name}-{case_index}.{extension}` is missing from an existing generated data set"
                         )
                     };
-                    report.action_error_at(
-                        codes::GENERATED_DATA_MISSING,
+                    details.push(CheckIssueDetail {
+                        path,
+                        location: format!("test.bundles.{bundle_name}.cases[{case_index}]"),
                         message,
-                        Some(path),
-                        format!("test.bundles.{bundle_name}.cases[{case_index}]"),
-                        missing_kind,
-                        next_action.clone(),
-                    );
+                    });
                 }
             }
         }
+        if details.is_empty() {
+            continue;
+        }
+        let file_count = details.len();
+        let case_count = bundle.cases.len();
+        let message = if missing_kind == "not_generated" {
+            format!(
+                "bundle `{bundle_name}` has {file_count} missing generated data files across {case_count} cases because no generated .in/.ans files are present"
+            )
+        } else {
+            format!(
+                "bundle `{bundle_name}` has {file_count} missing generated data files across {case_count} cases in an existing generated data set"
+            )
+        };
+        let first_path = details.first().map(|detail| detail.path.clone());
+        report.issues.push(CheckIssue {
+            severity: CheckSeverity::Error,
+            code: codes::GENERATED_DATA_MISSING.to_string(),
+            message,
+            path: first_path,
+            details,
+            kind: Some(missing_kind.to_string()),
+            transient: None,
+            retry_after: None,
+            next_action: Some(next_action.clone()),
+            location: Some(format!("test.bundles.{bundle_name}")),
+        });
     }
 }
 

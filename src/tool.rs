@@ -20,7 +20,8 @@ pub use add::{
     AddValidatorOptions, add_bundle, add_checker, add_program, add_task, add_validator,
 };
 pub use check::{
-    CheckIssue, CheckOptions, CheckReport, CheckSeverity, check_problem_package_with_options,
+    CheckIssue, CheckIssueDetail, CheckOptions, CheckReport, CheckSeverity,
+    check_problem_package_with_options,
 };
 pub use clean::{CleanOptions, CleanReport, clean_package_with_options};
 pub use data::{

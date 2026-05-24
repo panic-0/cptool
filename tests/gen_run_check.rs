@@ -1577,6 +1577,15 @@ fn check_json_reports_missing_and_stale_generated_data() {
     );
     let missing_value: Value = serde_json::from_slice(&missing.stdout).unwrap();
     assert!(!missing.status.success());
+    assert_eq!(
+        missing_value["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|issue| issue["code"] == "generated_data_missing")
+            .count(),
+        1
+    );
     let missing_issue = find_issue(&missing_value, "generated_data_missing");
     assert_eq!(missing_issue["severity"], "error");
     assert_eq!(missing_issue["kind"], "not_generated");
@@ -1585,6 +1594,18 @@ fn check_json_reports_missing_and_stale_generated_data() {
             .as_str()
             .unwrap()
             .contains("no generated .in/.ans files are present")
+    );
+    assert_eq!(
+        missing_issue["details"].as_array().unwrap().len(),
+        2,
+        "the single aggregate issue should retain per-file details"
+    );
+    assert!(
+        missing_issue["details"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|detail| detail["location"] == "test.bundles.sample.cases[0]")
     );
     assert_eq!(
         missing_issue["next_action"],
