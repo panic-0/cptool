@@ -10,6 +10,7 @@ const SERVICE_NOISE: &[&str] = &[
     "rate limit",
     "server-side",
 ];
+const MIN_NON_HEADING_BODY_CHARS: usize = 20;
 
 pub(super) fn check_package_text_audit(report: &mut CheckReport, work_dir: &Path) {
     check_markdown_placeholders(report, work_dir);
@@ -73,6 +74,24 @@ fn placeholder_pattern(text: &str) -> Option<&'static str> {
     if contains_ascii_word_ci(text, "todo") {
         return Some(r"\bTODO\b");
     }
+    if text.contains("题面占位") {
+        return Some("题面占位");
+    }
+    if text.contains("题解占位") {
+        return Some("题解占位");
+    }
+    if text.contains("待补充") {
+        return Some("待补充");
+    }
+    if let Some(pattern) = generic_heading_pattern(text)
+        && non_heading_body_chars(text) < MIN_NON_HEADING_BODY_CHARS
+    {
+        return Some(pattern);
+    }
+    None
+}
+
+fn generic_heading_pattern(text: &str) -> Option<&'static str> {
     if text
         .lines()
         .any(|line| heading_starts_with(line, "statement"))
@@ -91,16 +110,15 @@ fn placeholder_pattern(text: &str) -> Option<&'static str> {
     if text.lines().any(|line| exact_heading(line, "题解")) {
         return Some(r"#\s*题解\s*$");
     }
-    if text.contains("题面占位") {
-        return Some("题面占位");
-    }
-    if text.contains("题解占位") {
-        return Some("题解占位");
-    }
-    if text.contains("待补充") {
-        return Some("待补充");
-    }
     None
+}
+
+fn non_heading_body_chars(text: &str) -> usize {
+    text.lines()
+        .filter(|line| markdown_heading_text(line).is_none())
+        .flat_map(str::chars)
+        .filter(|ch| !ch.is_whitespace())
+        .count()
 }
 
 fn contains_ascii_word_ci(text: &str, word: &str) -> bool {
@@ -135,7 +153,11 @@ fn exact_heading(line: &str, expected: &str) -> bool {
 
 fn markdown_heading_text(line: &str) -> Option<&str> {
     let trimmed = line.trim();
-    let rest = trimmed.strip_prefix('#')?;
+    let hashes = trimmed.chars().take_while(|ch| *ch == '#').count();
+    if !(1..=6).contains(&hashes) {
+        return None;
+    }
+    let rest = &trimmed[hashes..];
     Some(rest.trim())
 }
 

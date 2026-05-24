@@ -956,6 +956,64 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn check_allows_generic_chinese_titles_with_substantial_body() {
+        let root = temp_test_dir("cptool-check-generic-title-body");
+        let problem_dir = create_minimal_check_package(&root, None, Some("simple input"));
+        std::fs::write(
+            problem_dir.join("statement.md"),
+            "# 题面\n\n给定一张图，请输出所有关键边。输入包含 n 和 m，随后给出每条边。\n",
+        )
+        .unwrap();
+        std::fs::write(
+            problem_dir.join("editorial.md"),
+            "# 题解\n\n先求支配关系，再枚举桥。正确性来自 DFS 树性质，复杂度为 $O(n+m)$。\n",
+        )
+        .unwrap();
+
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
+
+        assert_no_issue(&report, "placeholder_text");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_warns_on_generic_titles_without_substantial_body() {
+        let root = temp_test_dir("cptool-check-short-generic-title");
+        let problem_dir = create_minimal_check_package(&root, None, Some("simple input"));
+        std::fs::write(problem_dir.join("statement.md"), "# 题面\n\n太短\n").unwrap();
+        std::fs::write(problem_dir.join("editorial.md"), "# 题解\n\n简略\n").unwrap();
+
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
+
+        assert_issue(&report, "placeholder_text", CheckSeverity::Warning);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn check_warns_on_explicit_placeholder_words_even_with_body() {
+        let root = temp_test_dir("cptool-check-explicit-placeholder-word");
+        let problem_dir = create_minimal_check_package(&root, None, Some("simple input"));
+        std::fs::write(
+            problem_dir.join("statement.md"),
+            "# 题面\n\n给定一个整数 n，请输出满足条件的答案。输入输出格式完整明确。\n",
+        )
+        .unwrap();
+        std::fs::write(
+            problem_dir.join("editorial.md"),
+            "# 题解\n\n题解占位。后续会写入完整证明和复杂度分析。\n",
+        )
+        .unwrap();
+
+        let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
+
+        assert_issue(&report, "placeholder_text", CheckSeverity::Warning);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     fn create_minimal_check_package(
         root: &Path,
         validator: Option<&str>,
