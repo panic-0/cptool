@@ -10,6 +10,9 @@ pub(super) struct RunJsonSummary<'a> {
     label: &'a str,
     ok: bool,
     kind: &'a str,
+    verdict: &'a str,
+    phase: &'a str,
+    reason_code: &'a str,
     exit_code: Option<i32>,
     diagnostic: Option<&'a str>,
     elapsed_ms: u128,
@@ -20,6 +23,7 @@ pub(super) struct RunJsonSummary<'a> {
     stderr_nonempty: bool,
     truncated_stdout: bool,
     truncated_stderr: bool,
+    compile: &'a tool::CompileReport,
 }
 
 impl<'a> From<&'a tool::RunResult> for RunJsonSummary<'a> {
@@ -28,6 +32,9 @@ impl<'a> From<&'a tool::RunResult> for RunJsonSummary<'a> {
             label: &result.label,
             ok: result.ok,
             kind: &result.kind,
+            verdict: &result.verdict,
+            phase: &result.phase,
+            reason_code: &result.reason_code,
             exit_code: result.exit_code,
             diagnostic: result.diagnostic.as_deref(),
             elapsed_ms: result.elapsed_ms,
@@ -38,6 +45,7 @@ impl<'a> From<&'a tool::RunResult> for RunJsonSummary<'a> {
             stderr_nonempty: !result.stderr_bytes.is_empty(),
             truncated_stdout: result.truncated_stdout,
             truncated_stderr: result.truncated_stderr,
+            compile: &result.compile,
         }
     }
 }

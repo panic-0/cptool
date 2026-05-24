@@ -1,7 +1,7 @@
 use super::problem::resolve_path;
 use super::schema::{
-    CommandProgram, CppProgram, DEFAULT_MEMORY_LIMIT_MB, DEFAULT_TIME_LIMIT_SECS, Problem,
-    ProgramInfo, RunResult, default_compile_args,
+    CommandProgram, CompileFailure, CompileReport, CppProgram, DEFAULT_MEMORY_LIMIT_MB,
+    DEFAULT_TIME_LIMIT_SECS, Problem, ProgramInfo, RunResult, default_compile_args,
 };
 use anyhow::{Context, Result};
 use fs4::TryLockError;
@@ -93,6 +93,7 @@ pub(crate) fn run_spec(
     input: Option<&[u8]>,
     output_limit_bytes: usize,
 ) -> Result<RunResult> {
+    let mut compile_report = CompileReport::not_applicable();
     let mut command = match &spec.info {
         ProgramInfo::Command(program) => {
             let mut command = std::process::Command::new(&program.path);
@@ -110,8 +111,22 @@ pub(crate) fn run_spec(
             command
         }
         ProgramInfo::Cpp(program) => {
-            let exe = compile_cpp(work_dir, &program.path, &program.compile_args)?;
-            std::process::Command::new(exe)
+            let compile = match compile_cpp(work_dir, &program.path, &program.compile_args) {
+                Ok(compile) => compile,
+                Err(err) => {
+                    if let Some(failure) = err.downcast_ref::<CppCompileFailure>() {
+                        let result = compile_failure_result(
+                            &spec.label,
+                            failure.report.clone(),
+                            failure.message.clone(),
+                        );
+                        return Err(CompileFailure::new(result, failure.message.clone()).into());
+                    }
+                    return Err(err);
+                }
+            };
+            compile_report = compile.report;
+            std::process::Command::new(compile.exe_path)
         }
     };
     command.current_dir(work_dir);
@@ -167,6 +182,9 @@ pub(crate) fn run_spec(
             label: spec.label.clone(),
             ok: false,
             kind: "timeout".to_string(),
+            verdict: "TLE".to_string(),
+            phase: "unknown".to_string(),
+            reason_code: "timeout".to_string(),
             exit_code: None,
             diagnostic: None,
             elapsed_ms,
@@ -176,6 +194,7 @@ pub(crate) fn run_spec(
             stderr: stderr_text,
             truncated_stdout: stdout.truncated,
             truncated_stderr: stderr.truncated,
+            compile: compile_report,
         });
     };
     let stdout = stdout?;
@@ -185,6 +204,12 @@ pub(crate) fn run_spec(
     let stdout_text = decode_output(&stdout_bytes);
     let stderr_text = decode_output(&stderr_bytes);
     let exit_code = status.code().map(|code| code as i32);
+    let (verdict, reason_code) = classify_run_verdict(
+        status.success(),
+        stdout.truncated,
+        stderr.truncated,
+        exit_code,
+    );
     Ok(RunResult {
         label: spec.label.clone(),
         ok: status.success(),
@@ -194,6 +219,9 @@ pub(crate) fn run_spec(
             "runtime_error"
         }
         .to_string(),
+        verdict: verdict.to_string(),
+        phase: "unknown".to_string(),
+        reason_code: reason_code.to_string(),
         exit_code,
         diagnostic: if status.success() {
             None
@@ -207,14 +235,35 @@ pub(crate) fn run_spec(
         stderr: stderr_text,
         truncated_stdout: stdout.truncated,
         truncated_stderr: stderr.truncated,
+        compile: compile_report,
     })
 }
+
+#[derive(Clone, Debug)]
+pub(crate) struct CompileOutcome {
+    pub(crate) exe_path: PathBuf,
+    pub(crate) report: CompileReport,
+}
+
+#[derive(Clone, Debug)]
+struct CppCompileFailure {
+    report: CompileReport,
+    message: String,
+}
+
+impl std::fmt::Display for CppCompileFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CppCompileFailure {}
 
 pub(crate) fn compile_cpp(
     work_dir: &Path,
     source: &Path,
     compile_args: &[String],
-) -> Result<PathBuf> {
+) -> Result<CompileOutcome> {
     let source = resolve_path(work_dir, source);
     let effective_compile_args = effective_cpp_compile_args(&source, compile_args);
     let cache_inputs = collect_cpp_cache_inputs(&source)?;
@@ -233,12 +282,21 @@ pub(crate) fn compile_cpp(
     std::fs::create_dir_all(&cache_dir)
         .with_context(|| format!("failed to create C++ cache dir {}", cache_dir.display()))?;
     let exe = cache_dir.join(if cfg!(windows) { "main.exe" } else { "main" });
+    let stdout_path = cache_dir.join("compile.stdout");
+    let stderr_path = cache_dir.join("compile.stderr");
+    let diagnostics = cpp_compile_diagnostics(&digest, &exe, &effective_compile_args, &toolchain);
     if exe.exists() {
-        return Ok(exe);
+        return Ok(CompileOutcome {
+            exe_path: exe.clone(),
+            report: cached_compile_report(&diagnostics, &stdout_path, &stderr_path, false),
+        });
     }
     let _lock = acquire_compile_lock(&cache_dir, &exe)?;
     if exe.exists() {
-        return Ok(exe);
+        return Ok(CompileOutcome {
+            exe_path: exe.clone(),
+            report: cached_compile_report(&diagnostics, &stdout_path, &stderr_path, false),
+        });
     }
     let cached_source = cache_dir.join("main.cpp");
     std::fs::write(&cached_source, code).with_context(|| {
@@ -256,7 +314,7 @@ pub(crate) fn compile_cpp(
         std::fs::remove_file(&temp_exe)
             .with_context(|| format!("failed to remove stale temp exe {}", temp_exe.display()))?;
     }
-    let diagnostics = cpp_compile_diagnostics(&digest, &exe, &effective_compile_args, &toolchain);
+    let started = Instant::now();
     let output = std::process::Command::new("g++")
         .current_dir(work_dir)
         .arg(&cached_source)
@@ -265,14 +323,28 @@ pub(crate) fn compile_cpp(
         .args(&effective_compile_args)
         .output()
         .with_context(|| format!("failed to run g++\n{}", diagnostics.render()))?;
+    let elapsed_ms = started.elapsed().as_millis();
+    std::fs::write(&stdout_path, &output.stdout)
+        .with_context(|| format!("failed to write compiler stdout {}", stdout_path.display()))?;
+    std::fs::write(&stderr_path, &output.stderr)
+        .with_context(|| format!("failed to write compiler stderr {}", stderr_path.display()))?;
+    let report = compile_report_from_output(
+        &diagnostics,
+        &stdout_path,
+        &stderr_path,
+        &output,
+        elapsed_ms,
+        false,
+    );
     if !output.status.success() {
         let _ = std::fs::remove_file(&temp_exe);
-        anyhow::bail!(
+        let message = format!(
             "compile failed for {}:\n{}\n{}",
             source.display(),
             diagnostics.render(),
             String::from_utf8_lossy(&output.stderr)
         );
+        return Err(CppCompileFailure { report, message }.into());
     }
     std::fs::rename(&temp_exe, &exe).with_context(|| {
         format!(
@@ -281,7 +353,111 @@ pub(crate) fn compile_cpp(
             exe.display()
         )
     })?;
-    Ok(exe)
+    Ok(CompileOutcome {
+        exe_path: exe,
+        report,
+    })
+}
+
+fn compile_failure_result(label: &str, compile: CompileReport, message: String) -> RunResult {
+    RunResult {
+        label: label.to_string(),
+        ok: false,
+        kind: "compile_error".to_string(),
+        verdict: "CE".to_string(),
+        phase: "compile".to_string(),
+        reason_code: "compile_failed".to_string(),
+        exit_code: compile.exit_code,
+        diagnostic: Some(message),
+        elapsed_ms: compile.elapsed_ms.unwrap_or(0),
+        stdout_bytes: Vec::new(),
+        stderr_bytes: Vec::new(),
+        stdout: String::new(),
+        stderr: compile.stderr.clone(),
+        truncated_stdout: false,
+        truncated_stderr: false,
+        compile,
+    }
+}
+
+fn classify_run_verdict(
+    success: bool,
+    truncated_stdout: bool,
+    truncated_stderr: bool,
+    _exit_code: Option<i32>,
+) -> (&'static str, &'static str) {
+    if truncated_stdout {
+        ("OLE", "stdout_limit_exceeded")
+    } else if truncated_stderr {
+        ("UKE", "stderr_limit_exceeded")
+    } else if success {
+        ("AC", "ok")
+    } else {
+        ("RE", "nonzero_exit")
+    }
+}
+
+fn cached_compile_report(
+    diagnostics: &CppCompileDiagnostics,
+    stdout_path: &Path,
+    stderr_path: &Path,
+    truncated: bool,
+) -> CompileReport {
+    let stdout = std::fs::read(stdout_path).unwrap_or_default();
+    let stderr = std::fs::read(stderr_path).unwrap_or_default();
+    let missing_cached_output = !stdout_path.exists() || !stderr_path.exists();
+    CompileReport {
+        applicable: true,
+        status: "ok".to_string(),
+        cached: true,
+        compiler: Some(diagnostics.gpp_path.clone()),
+        args: diagnostics.compile_args.clone(),
+        cache_key: Some(diagnostics.cache_key.clone()),
+        exe_path: Some(diagnostics.exe_path.clone()),
+        exit_code: Some(0),
+        elapsed_ms: None,
+        stdout: decode_output(&stdout),
+        stderr: decode_output(&stderr),
+        stdout_path: Some(stdout_path.to_path_buf()),
+        stderr_path: Some(stderr_path.to_path_buf()),
+        stdout_bytes: stdout.len(),
+        stderr_bytes: stderr.len(),
+        truncated,
+        missing_cached_output,
+    }
+}
+
+fn compile_report_from_output(
+    diagnostics: &CppCompileDiagnostics,
+    stdout_path: &Path,
+    stderr_path: &Path,
+    output: &std::process::Output,
+    elapsed_ms: u128,
+    cached: bool,
+) -> CompileReport {
+    CompileReport {
+        applicable: true,
+        status: if output.status.success() {
+            "ok".to_string()
+        } else {
+            "failed".to_string()
+        },
+        cached,
+        compiler: Some(diagnostics.gpp_path.clone()),
+        args: diagnostics.compile_args.clone(),
+        cache_key: Some(diagnostics.cache_key.clone()),
+        exe_path: Some(diagnostics.exe_path.clone()),
+        exit_code: output.status.code().map(|code| code as i32),
+        elapsed_ms: Some(elapsed_ms),
+        stdout: decode_output(&output.stdout),
+        stderr: decode_output(&output.stderr),
+        stdout_path: Some(stdout_path.to_path_buf()),
+        stderr_path: Some(stderr_path.to_path_buf()),
+        stdout_bytes: output.stdout.len(),
+        stderr_bytes: output.stderr.len(),
+        truncated: false,
+        missing_cached_output: false,
+    }
 }
 
 fn effective_cpp_compile_args(source: &Path, compile_args: &[String]) -> Vec<String> {
@@ -861,7 +1037,9 @@ time.sleep(60)
         )
         .unwrap();
 
-        let exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let exe = compile_cpp(&root, &main, &default_compile_args())
+            .unwrap()
+            .exe_path;
 
         assert!(exe.exists());
 
@@ -885,12 +1063,16 @@ time.sleep(60)
         )
         .unwrap();
 
-        let first_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let first_exe = compile_cpp(&root, &main, &default_compile_args())
+            .unwrap()
+            .exe_path;
         let first_output = std::process::Command::new(&first_exe).output().unwrap();
         assert_eq!(decode_output(&first_output.stdout), "1\n");
 
         std::fs::write(&header, "#define ANSWER 2\n").unwrap();
-        let second_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let second_exe = compile_cpp(&root, &main, &default_compile_args())
+            .unwrap()
+            .exe_path;
         let second_output = std::process::Command::new(&second_exe).output().unwrap();
 
         assert_ne!(first_exe, second_exe);
@@ -923,12 +1105,16 @@ time.sleep(60)
         )
         .unwrap();
 
-        let first_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let first_exe = compile_cpp(&root, &main, &default_compile_args())
+            .unwrap()
+            .exe_path;
         let first_output = std::process::Command::new(&first_exe).output().unwrap();
         assert_eq!(decode_output(&first_output.stdout), "1\n");
 
         std::fs::write(&shared, "#define ANSWER 2\n").unwrap();
-        let second_exe = compile_cpp(&root, &main, &default_compile_args()).unwrap();
+        let second_exe = compile_cpp(&root, &main, &default_compile_args())
+            .unwrap()
+            .exe_path;
         let second_output = std::process::Command::new(&second_exe).output().unwrap();
 
         assert_ne!(first_exe, second_exe);
@@ -993,8 +1179,8 @@ time.sleep(60)
             compile_cpp(&second_root, &second_main, &default_compile_args())
         });
 
-        let first_exe = first.join().unwrap().unwrap();
-        let second_exe = second.join().unwrap().unwrap();
+        let first_exe = first.join().unwrap().unwrap().exe_path;
+        let second_exe = second.join().unwrap().unwrap().exe_path;
 
         assert_eq!(first_exe, second_exe);
         assert!(first_exe.exists());

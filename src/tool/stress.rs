@@ -1,7 +1,7 @@
 use super::judge::run_configured_checker_on_bytes;
 use super::problem::{FILE_GENERATOR_NAME, load_problem, normalize_work_dir, resolve_path};
 use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
-use super::schema::RunResult;
+use super::schema::{CompileReport, RunResult};
 use super::stress_args::direct_stress_args_by_case;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -181,6 +181,9 @@ pub struct ExpectedStressFailure {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ExpectedStressOutput {
     pub label: String,
+    pub verdict: String,
+    pub reason_code: String,
+    pub compile: CompileReport,
     pub status_line: String,
     pub stdout_path: PathBuf,
     pub stderr_path: PathBuf,
@@ -190,6 +193,9 @@ pub struct ExpectedStressOutput {
 pub struct ExpectedCheckerOutput {
     pub checker: String,
     pub participant: String,
+    pub verdict: String,
+    pub reason_code: String,
+    pub compile: CompileReport,
     pub status_line: String,
     pub stdout_path: PathBuf,
     pub stderr_path: PathBuf,
@@ -396,6 +402,9 @@ struct StressFailure {
 
 struct StressOutputArtifact {
     label: String,
+    verdict: String,
+    reason_code: String,
+    compile: CompileReport,
     status_line: String,
     stdout_path: PathBuf,
     stderr_path: PathBuf,
@@ -405,6 +414,9 @@ struct StressCheckerFailure {
     checker: String,
     participant: String,
     status_line: String,
+    verdict: String,
+    reason_code: String,
+    compile: CompileReport,
     kind: String,
     exit_code: Option<i32>,
     truncated_stdout: bool,
@@ -417,6 +429,9 @@ struct StressCheckerFailure {
 struct StressCheckerArtifact {
     checker: String,
     participant: String,
+    verdict: String,
+    reason_code: String,
+    compile: CompileReport,
     status_line: String,
     stdout_path: PathBuf,
     stderr_path: PathBuf,
@@ -435,6 +450,9 @@ impl From<StressOutputArtifact> for ExpectedStressOutput {
     fn from(artifact: StressOutputArtifact) -> Self {
         Self {
             label: artifact.label,
+            verdict: artifact.verdict,
+            reason_code: artifact.reason_code,
+            compile: artifact.compile,
             status_line: artifact.status_line,
             stdout_path: artifact.stdout_path,
             stderr_path: artifact.stderr_path,
@@ -447,6 +465,9 @@ impl From<StressCheckerArtifact> for ExpectedCheckerOutput {
         Self {
             checker: artifact.checker,
             participant: artifact.participant,
+            verdict: artifact.verdict,
+            reason_code: artifact.reason_code,
+            compile: artifact.compile,
             status_line: artifact.status_line,
             stdout_path: artifact.stdout_path,
             stderr_path: artifact.stderr_path,
@@ -597,10 +618,14 @@ fn classify_checker_failure(
             continue;
         };
         if !check.result.ok {
+            let (verdict, reason_code) = checker_failure_verdict(&check.result);
             return Ok(Some(StressCheckerFailure {
                 checker: check.checker,
                 participant: participant.label.clone(),
                 status_line: check.result.status_line(),
+                verdict: verdict.to_string(),
+                reason_code: reason_code.to_string(),
+                compile: check.result.compile,
                 kind: check.result.kind,
                 exit_code: check.result.exit_code,
                 truncated_stdout: check.result.truncated_stdout,
@@ -612,6 +637,14 @@ fn classify_checker_failure(
         }
     }
     Ok(None)
+}
+
+fn checker_failure_verdict(result: &RunResult) -> (&str, &str) {
+    if checker_run_is_rejection(result) {
+        ("WA", "checker_rejected")
+    } else {
+        (&result.verdict, &result.reason_code)
+    }
 }
 
 fn failure_reason(failure: &StressCheckerFailure) -> String {
@@ -633,6 +666,13 @@ fn checker_failure_satisfies_expect_fail(failure: &StressCheckerFailure) -> bool
         && matches!(failure.exit_code, Some(1 | 2))
         && !failure.truncated_stdout
         && !failure.truncated_stderr
+}
+
+fn checker_run_is_rejection(result: &RunResult) -> bool {
+    result.kind == "runtime_error"
+        && matches!(result.exit_code, Some(1 | 2))
+        && !result.truncated_stdout
+        && !result.truncated_stderr
 }
 
 fn save_stress_failure(
@@ -730,6 +770,9 @@ fn write_stress_outputs(stem: &Path, results: &[RunResult]) -> Result<Vec<Stress
             })?;
             Ok(StressOutputArtifact {
                 label: result.label.clone(),
+                verdict: result.verdict.clone(),
+                reason_code: result.reason_code.clone(),
+                compile: result.compile.clone(),
                 status_line: result.status_line(),
                 stdout_path,
                 stderr_path,
@@ -764,6 +807,9 @@ fn write_checker_output(
     Ok(StressCheckerArtifact {
         checker: checker.checker.clone(),
         participant: checker.participant.clone(),
+        verdict: checker.verdict.clone(),
+        reason_code: checker.reason_code.clone(),
+        compile: checker.compile.clone(),
         status_line: checker.status_line.clone(),
         stdout_path,
         stderr_path,

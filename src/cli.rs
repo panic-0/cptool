@@ -450,7 +450,7 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
         args,
     } = options;
     let (program, selector) = normalize_run_positionals(program, case);
-    let result = tool::run(RunOptions {
+    let result = match tool::run(RunOptions {
         work_dir,
         program,
         source,
@@ -464,7 +464,28 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
         generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
         time_limit_secs,
         memory_limit_mb,
-    })?;
+    }) {
+        Ok(result) => result,
+        Err(err) => {
+            if let Some(failure) = err.downcast_ref::<tool::CompileFailure>() {
+                let result = failure.result.as_ref();
+                if json {
+                    self::json::print(&self::json::RunJsonSummary::from(result))?;
+                } else {
+                    println!(
+                        "{} {}",
+                        result.status_line(),
+                        result.compile.summary_fragment()
+                    );
+                    if !result.stderr.is_empty() {
+                        eprint!("{}", result.stderr);
+                    }
+                }
+                std::process::exit(2);
+            }
+            return Err(err);
+        }
+    };
     if json {
         self::json::print(&self::json::RunJsonSummary::from(&result))?;
     } else if summary_only {
@@ -475,7 +496,11 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
             );
         }
     } else {
-        println!("{}", result.status_line());
+        println!(
+            "{} {}",
+            result.status_line(),
+            result.compile.summary_fragment()
+        );
     }
     if !json && !summary_only && !hide_stdout && stdout_path.is_none() && !result.stdout.is_empty()
     {
@@ -486,6 +511,36 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
     }
     if !result.ok {
         std::process::exit(2);
+    }
+    Ok(())
+}
+
+fn unwrap_or_print_compile_failure<T>(result: anyhow::Result<T>, json: bool) -> anyhow::Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(err) => {
+            if let Some(failure) = err.downcast_ref::<tool::CompileFailure>() {
+                print_compile_failure(failure, json)?;
+                std::process::exit(2);
+            }
+            Err(err)
+        }
+    }
+}
+
+fn print_compile_failure(failure: &tool::CompileFailure, json: bool) -> anyhow::Result<()> {
+    let result = failure.result.as_ref();
+    if json {
+        self::json::print(&self::json::RunJsonSummary::from(result))?;
+    } else {
+        println!(
+            "{} {}",
+            result.status_line(),
+            result.compile.summary_fragment()
+        );
+        if !result.stderr.is_empty() {
+            eprint!("{}", result.stderr);
+        }
     }
     Ok(())
 }
@@ -522,13 +577,20 @@ fn handle_gen(options: GenCommandOptions) -> anyhow::Result<()> {
         generation_lock_timeout: generation_lock_timeout(wait_for_generation_lock),
     };
     if json {
-        let report = tool::generate_data_report_with_options(options)?;
+        let report = unwrap_or_print_compile_failure(
+            tool::generate_data_report_with_options(options),
+            json,
+        )?;
         self::json::print(&display_generate_report(report, &display_work_dir))?;
     } else if summary_only {
-        let report = tool::generate_data_report_with_options(options)?;
+        let report = unwrap_or_print_compile_failure(
+            tool::generate_data_report_with_options(options),
+            json,
+        )?;
         println!("{}", report.summary_line());
     } else {
-        let generated = tool::generate_data_with_options(options)?;
+        let generated =
+            unwrap_or_print_compile_failure(tool::generate_data_with_options(options), json)?;
         for path in generated {
             println!(
                 "generated {}",
@@ -566,28 +628,34 @@ struct StressCommandOptions {
 
 fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
     if options.json {
-        let summary = tool::stress_with_options(tool::StressOptions {
-            work_dir: &options.work_dir,
-            generator: &options.generator,
-            against: &options.against,
-            cases: options.cases,
-            args: &options.args,
-            failure_dir: options.failure_dir.as_deref(),
-            output_limit_bytes: options.output_limit_bytes,
-            print_progress: false,
-            print_warnings: false,
-        })?;
+        let summary = unwrap_or_print_compile_failure(
+            tool::stress_with_options(tool::StressOptions {
+                work_dir: &options.work_dir,
+                generator: &options.generator,
+                against: &options.against,
+                cases: options.cases,
+                args: &options.args,
+                failure_dir: options.failure_dir.as_deref(),
+                output_limit_bytes: options.output_limit_bytes,
+                print_progress: false,
+                print_warnings: false,
+            }),
+            options.json,
+        )?;
         let summary = display_stress_summary(summary, &options.work_dir);
         self::json::print(&self::json::StressJsonSummary::from(&summary))?;
     } else {
-        let summary = tool::stress_with_summary(
-            &options.work_dir,
-            &options.generator,
-            &options.against,
-            options.cases,
-            &options.args,
-            options.failure_dir.as_deref(),
-            options.output_limit_bytes,
+        let summary = unwrap_or_print_compile_failure(
+            tool::stress_with_summary(
+                &options.work_dir,
+                &options.generator,
+                &options.against,
+                options.cases,
+                &options.args,
+                options.failure_dir.as_deref(),
+                options.output_limit_bytes,
+            ),
+            options.json,
         )?;
         println!(
             "stress passed: {} cases unique_input_hashes={}",
@@ -620,12 +688,18 @@ fn handle_stress_plan(options: StressPlanCommandOptions) -> anyhow::Result<()> {
         generation_lock_timeout: generation_lock_timeout(options.wait_for_generation_lock),
     };
     if options.json {
-        let summaries = tool::stress_plan_collect_with_options(stress_options)?;
+        let summaries = unwrap_or_print_compile_failure(
+            tool::stress_plan_collect_with_options(stress_options),
+            options.json,
+        )?;
         let summaries = display_stress_summaries(summaries, &options.work_dir);
         let report = self::json::StressPlanJsonReport::from_summaries(&summaries);
         self::json::print(&report)?;
     } else {
-        tool::stress_plan_with_options(stress_options)?;
+        unwrap_or_print_compile_failure(
+            tool::stress_plan_with_options(stress_options),
+            options.json,
+        )?;
     }
     Ok(())
 }
@@ -1026,15 +1100,18 @@ fn handle_test_validator(options: TestValidatorCommandOptions) -> anyhow::Result
     match (options.input, options.fixture) {
         (Some(input), None) => {
             let display_work_dir = options.work_dir.clone();
-            let report = tool::judge_validator(tool::JudgeValidatorOptions {
-                work_dir: options.work_dir,
-                validator: options.validator,
-                input_path: input,
-                expect: convert_judge_expectation(options.expect),
-                output_limit_bytes: options.output_limit_bytes,
-                fix_line_endings: options.fix_line_endings,
-                line_ending_hints: options.line_ending_hints,
-            })?;
+            let report = unwrap_or_print_compile_failure(
+                tool::judge_validator(tool::JudgeValidatorOptions {
+                    work_dir: options.work_dir,
+                    validator: options.validator,
+                    input_path: input,
+                    expect: convert_judge_expectation(options.expect),
+                    output_limit_bytes: options.output_limit_bytes,
+                    fix_line_endings: options.fix_line_endings,
+                    line_ending_hints: options.line_ending_hints,
+                }),
+                options.json,
+            )?;
             print_judge_report(&report, options.json, Some(&display_work_dir))?;
             if !report.ok {
                 std::process::exit(2);
@@ -1094,15 +1171,18 @@ fn run_validator_fixture_batch(
     let display_work_dir = work_dir.clone();
     let mut reports = Vec::new();
     for fixture in fixtures {
-        let report = tool::judge_validator(tool::JudgeValidatorOptions {
-            work_dir: work_dir.clone(),
-            validator: validator.clone(),
-            input_path: fixture.path.clone(),
-            expect: fixture.expect,
-            output_limit_bytes,
-            fix_line_endings,
-            line_ending_hints,
-        })?;
+        let report = unwrap_or_print_compile_failure(
+            tool::judge_validator(tool::JudgeValidatorOptions {
+                work_dir: work_dir.clone(),
+                validator: validator.clone(),
+                input_path: fixture.path.clone(),
+                expect: fixture.expect,
+                output_limit_bytes,
+                fix_line_endings,
+                line_ending_hints,
+            }),
+            json,
+        )?;
         reports.push((fixture, report));
     }
     print_judge_fixture_batch("validator", &reports, json, &display_work_dir)?;
@@ -1255,15 +1335,18 @@ fn handle_test_checker(options: TestCheckerCommandOptions) -> anyhow::Result<()>
     ) {
         (Some(input), Some(output), Some(answer), None) => {
             let display_work_dir = options.work_dir.clone();
-            let report = tool::judge_checker(tool::JudgeCheckerOptions {
-                work_dir: options.work_dir,
-                checker: options.checker,
-                input_path: input,
-                output_path: output,
-                answer_path: answer,
-                expect: convert_judge_expectation(options.expect),
-                output_limit_bytes: options.output_limit_bytes,
-            })?;
+            let report = unwrap_or_print_compile_failure(
+                tool::judge_checker(tool::JudgeCheckerOptions {
+                    work_dir: options.work_dir,
+                    checker: options.checker,
+                    input_path: input,
+                    output_path: output,
+                    answer_path: answer,
+                    expect: convert_judge_expectation(options.expect),
+                    output_limit_bytes: options.output_limit_bytes,
+                }),
+                options.json,
+            )?;
             print_judge_report(&report, options.json, Some(&display_work_dir))?;
             if !report.ok {
                 std::process::exit(2);
@@ -1315,15 +1398,18 @@ fn run_checker_fixture_batch(
     let display_work_dir = work_dir.clone();
     let mut reports = Vec::new();
     for fixture in fixtures {
-        let report = tool::judge_checker(tool::JudgeCheckerOptions {
-            work_dir: work_dir.clone(),
-            checker: checker.clone(),
-            input_path: fixture.input_path.clone(),
-            output_path: fixture.output_path.clone(),
-            answer_path: fixture.answer_path.clone(),
-            expect: fixture.expect,
-            output_limit_bytes,
-        })?;
+        let report = unwrap_or_print_compile_failure(
+            tool::judge_checker(tool::JudgeCheckerOptions {
+                work_dir: work_dir.clone(),
+                checker: checker.clone(),
+                input_path: fixture.input_path.clone(),
+                output_path: fixture.output_path.clone(),
+                answer_path: fixture.answer_path.clone(),
+                expect: fixture.expect,
+                output_limit_bytes,
+            }),
+            json,
+        )?;
         reports.push((fixture, report));
     }
     print_judge_fixture_batch("checker", &reports, json, &display_work_dir)?;

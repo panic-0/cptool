@@ -258,11 +258,23 @@ fn report_from_result(
     kind: JudgeKind,
     program: String,
     expect: JudgeExpectation,
-    run: RunResult,
+    mut run: RunResult,
     report_path: Option<PathBuf>,
     report: Option<String>,
     warnings: Vec<JudgeWarning>,
 ) -> JudgeReport {
+    run.set_phase(kind.as_str());
+    if !run.ok
+        && matches!(run.exit_code, Some(1 | 2))
+        && !run.truncated_stdout
+        && !run.truncated_stderr
+    {
+        let reason = match kind {
+            JudgeKind::Validator => "validator_rejected",
+            JudgeKind::Checker => "checker_rejected",
+        };
+        run.set_verdict("WA", reason);
+    }
     let observed = if run.ok {
         JudgeObserved::Pass
     } else {

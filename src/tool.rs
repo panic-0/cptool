@@ -45,9 +45,9 @@ pub use problem::load_problem;
 pub(crate) use problem::resolve_path;
 pub use run::run;
 pub use schema::{
-    CommandProgram, CppProgram, DEFAULT_OUTPUT_LIMIT_BYTES, OutputConfig, Problem, Program,
-    ProgramInfo, RunOptions, RunResult, Stress, StressPlan, StressPlanExpectation, Test,
-    TestBundle, TestCase, TestTask, TestTaskType,
+    CommandProgram, CompileFailure, CompileReport, CppProgram, DEFAULT_OUTPUT_LIMIT_BYTES,
+    OutputConfig, Problem, Program, ProgramInfo, RunOptions, RunResult, Stress, StressPlan,
+    StressPlanExpectation, Test, TestBundle, TestCase, TestTask, TestTaskType,
 };
 pub use stress::{
     ExpectedCheckerOutput, ExpectedStressFailure, ExpectedStressOutput, StressOptions,
@@ -207,6 +207,9 @@ mod tests {
             label: "slow".to_string(),
             ok: false,
             kind: "timeout".to_string(),
+            verdict: "TLE".to_string(),
+            phase: "unknown".to_string(),
+            reason_code: "timeout".to_string(),
             exit_code: None,
             diagnostic: None,
             elapsed_ms: 1001,
@@ -216,6 +219,7 @@ mod tests {
             stderr: String::new(),
             truncated_stdout: false,
             truncated_stderr: false,
+            compile: CompileReport::not_applicable(),
         };
 
         assert_eq!(
@@ -249,6 +253,9 @@ mod tests {
             label: label.to_string(),
             ok,
             kind: kind.to_string(),
+            verdict: if ok { "AC" } else { "TLE" }.to_string(),
+            phase: "unknown".to_string(),
+            reason_code: if ok { "ok" } else { "timeout" }.to_string(),
             exit_code: None,
             diagnostic: None,
             elapsed_ms: 1,
@@ -258,6 +265,7 @@ mod tests {
             stderr: stderr.to_string(),
             truncated_stdout: false,
             truncated_stderr: false,
+            compile: CompileReport::not_applicable(),
         }
     }
 }

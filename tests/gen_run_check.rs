@@ -94,6 +94,115 @@ fn run_json_prints_machine_readable_summary_without_program_stdout() {
 }
 
 #[test]
+fn run_json_reports_cpp_compile_output_and_cache_hits() {
+    if std::process::Command::new("g++")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-run-cpp-compile-json");
+    run_cptool(
+        ["pkg", "init", "compile_json_problem", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("compile_json_problem");
+
+    let first = run_cptool(
+        [
+            "case",
+            "run",
+            "std",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--stdin-text",
+            "",
+            "--json",
+        ],
+        None,
+    );
+    let first_value: Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(first_value["ok"], true);
+    assert_eq!(first_value["verdict"], "AC");
+    assert_eq!(first_value["compile"]["applicable"], true);
+    assert_eq!(first_value["compile"]["status"], "ok");
+    assert_eq!(first_value["compile"]["cached"], false);
+    assert!(std::path::Path::new(first_value["compile"]["stdout_path"].as_str().unwrap()).exists());
+    assert!(std::path::Path::new(first_value["compile"]["stderr_path"].as_str().unwrap()).exists());
+
+    let second = run_cptool(
+        [
+            "case",
+            "run",
+            "std",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--stdin-text",
+            "",
+            "--json",
+        ],
+        None,
+    );
+    let second_value: Value = serde_json::from_slice(&second.stdout).unwrap();
+    assert_eq!(second_value["compile"]["cached"], true);
+    assert_eq!(second_value["compile"]["missing_cached_output"], false);
+}
+
+#[test]
+fn run_json_reports_cpp_compile_errors_as_ce_with_compiler_stderr() {
+    if std::process::Command::new("g++")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-run-cpp-ce-json");
+    run_cptool(
+        ["pkg", "init", "compile_error_problem", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("compile_error_problem");
+    std::fs::write(
+        problem_dir.join("src").join("std.cpp"),
+        "int main(){ syntax }\n",
+    )
+    .unwrap();
+
+    let output = run_cptool_allow_failure(
+        [
+            "case",
+            "run",
+            "std",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--stdin-text",
+            "",
+            "--json",
+        ],
+        None,
+    );
+    assert!(!output.status.success());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["kind"], "compile_error");
+    assert_eq!(value["verdict"], "CE");
+    assert_eq!(value["phase"], "compile");
+    assert_eq!(value["reason_code"], "compile_failed");
+    assert_eq!(value["compile"]["status"], "failed");
+    assert!(
+        value["compile"]["stderr"]
+            .as_str()
+            .unwrap()
+            .contains("syntax")
+    );
+    assert!(std::path::Path::new(value["compile"]["stderr_path"].as_str().unwrap()).exists());
+}
+
+#[test]
 fn judge_validator_accepts_input_file_and_expect_fail() {
     if !python_available() {
         return;

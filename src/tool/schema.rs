@@ -3,6 +3,8 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_yml::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -37,6 +39,9 @@ pub struct RunResult {
     pub label: String,
     pub ok: bool,
     pub kind: String,
+    pub verdict: String,
+    pub phase: String,
+    pub reason_code: String,
     pub exit_code: Option<i32>,
     pub diagnostic: Option<String>,
     pub elapsed_ms: u128,
@@ -46,6 +51,7 @@ pub struct RunResult {
     pub stderr: String,
     pub truncated_stdout: bool,
     pub truncated_stderr: bool,
+    pub compile: CompileReport,
 }
 
 impl RunResult {
@@ -86,20 +92,115 @@ impl RunResult {
 
     pub fn summary_line(&self) -> String {
         format!(
-            "{} stdout_bytes={} stdout_lines={} stdout_sha256={} stderr_bytes={} stderr_nonempty={}",
+            "{} stdout_bytes={} stdout_lines={} stdout_sha256={} stderr_bytes={} stderr_nonempty={} {}",
             self.status_line(),
             self.stdout_bytes.len(),
             count_lines(&self.stdout_bytes),
             sha256_hex(&self.stdout_bytes),
             self.stderr_bytes.len(),
             !self.stderr_bytes.is_empty(),
+            self.compile.summary_fragment(),
         )
+    }
+
+    pub fn set_phase(&mut self, phase: impl Into<String>) {
+        self.phase = phase.into();
+    }
+
+    pub fn set_verdict(&mut self, verdict: impl Into<String>, reason_code: impl Into<String>) {
+        self.verdict = verdict.into();
+        self.reason_code = reason_code.into();
     }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompileReport {
+    pub applicable: bool,
+    pub status: String,
+    pub cached: bool,
+    pub compiler: Option<String>,
+    pub args: Vec<String>,
+    pub cache_key: Option<String>,
+    pub exe_path: Option<PathBuf>,
+    pub exit_code: Option<i32>,
+    pub elapsed_ms: Option<u128>,
+    pub stdout: String,
+    pub stderr: String,
+    pub stdout_path: Option<PathBuf>,
+    pub stderr_path: Option<PathBuf>,
+    pub stdout_bytes: usize,
+    pub stderr_bytes: usize,
+    pub truncated: bool,
+    #[serde(default)]
+    pub missing_cached_output: bool,
+}
+
+impl CompileReport {
+    pub fn not_applicable() -> Self {
+        Self {
+            applicable: false,
+            status: "skipped".to_string(),
+            cached: false,
+            compiler: None,
+            args: Vec::new(),
+            cache_key: None,
+            exe_path: None,
+            exit_code: None,
+            elapsed_ms: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            stdout_path: None,
+            stderr_path: None,
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+            truncated: false,
+            missing_cached_output: false,
+        }
+    }
+
+    pub fn summary_fragment(&self) -> String {
+        if !self.applicable {
+            return "compile=skipped".to_string();
+        }
+        let cached = if self.cached { ",cached" } else { "" };
+        let missing = if self.missing_cached_output {
+            ",missing_cached_output"
+        } else {
+            ""
+        };
+        format!(
+            "compile={}{}{} stdout_bytes={} stderr_bytes={}",
+            self.status, cached, missing, self.stdout_bytes, self.stderr_bytes
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CompileFailure {
+    pub result: Box<RunResult>,
+    pub message: String,
+}
+
+impl CompileFailure {
+    pub fn new(result: RunResult, message: String) -> Self {
+        Self {
+            result: Box::new(result),
+            message,
+        }
+    }
+}
+
+impl fmt::Display for CompileFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl Error for CompileFailure {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommandProgram {
@@ -601,6 +702,9 @@ mod tests {
             label: "std".to_string(),
             ok: true,
             kind: "ok".to_string(),
+            verdict: "AC".to_string(),
+            phase: "unknown".to_string(),
+            reason_code: "ok".to_string(),
             exit_code: Some(0),
             diagnostic: None,
             elapsed_ms: 12,
@@ -610,11 +714,12 @@ mod tests {
             stderr: "warn".to_string(),
             truncated_stdout: false,
             truncated_stderr: false,
+            compile: CompileReport::not_applicable(),
         };
 
         assert_eq!(
             result.summary_line(),
-            "std: ok exit=0 elapsed=12ms stdout_bytes=3 stdout_lines=2 stdout_sha256=7e18f737311b2dc3b2f269dd78396b0351f14fb66efa879f768cb23181883c78 stderr_bytes=4 stderr_nonempty=true"
+            "std: ok exit=0 elapsed=12ms stdout_bytes=3 stdout_lines=2 stdout_sha256=7e18f737311b2dc3b2f269dd78396b0351f14fb66efa879f768cb23181883c78 stderr_bytes=4 stderr_nonempty=true compile=skipped"
         );
     }
 
@@ -624,6 +729,9 @@ mod tests {
             label: "std".to_string(),
             ok: true,
             kind: "ok".to_string(),
+            verdict: "AC".to_string(),
+            phase: "unknown".to_string(),
+            reason_code: "ok".to_string(),
             exit_code: Some(0),
             diagnostic: None,
             elapsed_ms: 1,
@@ -633,6 +741,7 @@ mod tests {
             stderr: String::new(),
             truncated_stdout: false,
             truncated_stderr: false,
+            compile: CompileReport::not_applicable(),
         };
 
         assert!(result.summary_line().contains("stdout_lines=0"));
@@ -698,6 +807,9 @@ test:
             label: "std".to_string(),
             ok: false,
             kind: "runtime_error".to_string(),
+            verdict: "RE".to_string(),
+            phase: "unknown".to_string(),
+            reason_code: "nonzero_exit".to_string(),
             exit_code: Some(-1073741819),
             diagnostic: Some("hint: access violation".to_string()),
             elapsed_ms: 1,
@@ -707,6 +819,7 @@ test:
             stderr: String::new(),
             truncated_stdout: false,
             truncated_stderr: false,
+            compile: CompileReport::not_applicable(),
         };
 
         assert_eq!(
