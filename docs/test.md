@@ -10,7 +10,7 @@
 ./cptool test validator -w ./example/a_plus_b --json
 ```
 
-不指定输入时，`test validator` 会运行所有 validator fixture。运行前它会把非本平台换行规范化到磁盘上，并在改写文件时输出 `warning: input_line_endings_normalized`。需要验证精确字节时，传 `--no-fix-line-endings`。
+不指定输入时，`test validator` 会运行所有 validator fixture。运行前它会把非本平台换行规范化到磁盘上；普通规范化不作为 warning。需要验证精确字节时，传 `--no-fix-line-endings`。
 
 ## Checker 测试
 
