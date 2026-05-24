@@ -13,7 +13,7 @@ fn stress_plan_runs_named_plan() {
         ["pkg", "init", "stress_plan_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_plan_problem");
+    let problem_dir = temp.path().join("stress_plan_problem");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
 
@@ -46,7 +46,7 @@ fn stress_uses_configured_checker_instead_of_text_comparison() {
         ["pkg", "init", "stress_checker", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_checker");
+    let problem_dir = temp.path().join("stress_checker");
     configure_checker_python_problem(&problem_dir);
 
     let output = run_cptool(
@@ -85,7 +85,7 @@ fn stress_plan_expect_fail_records_checker_rejection_artifact() {
         ["pkg", "init", "stress_checker_fail", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_checker_fail");
+    let problem_dir = temp.path().join("stress_checker_fail");
     configure_checker_python_problem(&problem_dir);
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
@@ -146,7 +146,7 @@ fn stress_plan_expect_fail_rejects_checker_infrastructure_failure() {
         ["pkg", "init", "stress_checker_crash", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_checker_crash");
+    let problem_dir = temp.path().join("stress_checker_crash");
     configure_checker_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("chk.py"),
@@ -208,10 +208,7 @@ fn stress_plan_json_waits_for_generation_lock_and_stays_parseable() {
         ["pkg", "init", "stress_plan_json_wait_lock", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp
-        .path()
-        .join("problems")
-        .join("stress_plan_json_wait_lock");
+    let problem_dir = temp.path().join("stress_plan_json_wait_lock");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
@@ -250,7 +247,7 @@ fn stress_plan_summary_only_suppresses_case_progress() {
         ["pkg", "init", "stress_plan_summary", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_plan_summary");
+    let problem_dir = temp.path().join("stress_plan_summary");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
 
@@ -288,7 +285,7 @@ fn stress_plan_summary_only_json_prints_plan_summaries() {
         ["pkg", "init", "stress_plan_json", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_plan_json");
+    let problem_dir = temp.path().join("stress_plan_json");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
 
@@ -326,7 +323,7 @@ fn stress_plan_can_filter_positive_and_negative_plans() {
         ["pkg", "init", "stress_plan_filters", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_plan_filters");
+    let problem_dir = temp.path().join("stress_plan_filters");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("bad.py"),
@@ -387,7 +384,7 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
         ["pkg", "init", "stress_empty_output", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_empty_output");
+    let problem_dir = temp.path().join("stress_empty_output");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("solve.py"),
@@ -431,7 +428,7 @@ fn stress_reports_single_unique_input_hash_for_fixed_args() {
         ["pkg", "init", "stress_fixed_args", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_fixed_args");
+    let problem_dir = temp.path().join("stress_fixed_args");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
@@ -469,7 +466,7 @@ fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
 
     let temp = TempWorkspace::new("cptool-stress-json");
     run_cptool(["pkg", "init", "stress_json", "--root"], Some(temp.path()));
-    let problem_dir = temp.path().join("problems").join("stress_json");
+    let problem_dir = temp.path().join("stress_json");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
@@ -512,7 +509,7 @@ fn stress_expands_case_placeholder_and_reports_unique_inputs() {
         ["pkg", "init", "stress_case_placeholder", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_case_placeholder");
+    let problem_dir = temp.path().join("stress_case_placeholder");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
@@ -551,10 +548,7 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
         ["pkg", "init", "stress_plan_empty_summary", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp
-        .path()
-        .join("problems")
-        .join("stress_plan_empty_summary");
+    let problem_dir = temp.path().join("stress_plan_empty_summary");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
     std::fs::write(
@@ -597,10 +591,7 @@ fn stress_plan_expands_case_placeholders() {
         ["pkg", "init", "stress_plan_placeholders", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp
-        .path()
-        .join("problems")
-        .join("stress_plan_placeholders");
+    let problem_dir = temp.path().join("stress_plan_placeholders");
     configure_python_problem(&problem_dir);
     overwrite_generator_for_stress_plan_placeholders(&problem_dir);
     append_stress_plan_with_case_placeholders(&problem_dir);
@@ -634,10 +625,7 @@ fn stress_plan_rejects_file_generator() {
         ["pkg", "init", "stress_plan_file_generator", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp
-        .path()
-        .join("problems")
-        .join("stress_plan_file_generator");
+    let problem_dir = temp.path().join("stress_plan_file_generator");
     configure_python_problem(&problem_dir);
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
@@ -683,7 +671,7 @@ fn stress_plan_expect_fail_treats_wrong_answer_as_success() {
         ["pkg", "init", "stress_plan_expect_fail", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("stress_plan_expect_fail");
+    let problem_dir = temp.path().join("stress_plan_expect_fail");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("bad.py"),

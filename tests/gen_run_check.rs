@@ -14,7 +14,7 @@ fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
         ["pkg", "init", "summary_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("summary_problem");
+    let problem_dir = temp.path().join("summary_problem");
     configure_python_problem(&problem_dir);
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
@@ -67,7 +67,7 @@ fn run_json_prints_machine_readable_summary_without_program_stdout() {
         ["pkg", "init", "run_json_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("run_json_problem");
+    let problem_dir = temp.path().join("run_json_problem");
     configure_python_problem(&problem_dir);
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
@@ -104,7 +104,7 @@ fn judge_validator_accepts_input_file_and_expect_fail() {
         ["pkg", "init", "judge_validator", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("judge_validator");
+    let problem_dir = temp.path().join("judge_validator");
     configure_python_problem(&problem_dir);
     add_validator_program(
         &problem_dir,
@@ -178,10 +178,7 @@ fn judge_validator_normalizes_input_line_endings_by_default() {
         ["pkg", "init", "judge_validator_line_endings", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp
-        .path()
-        .join("problems")
-        .join("judge_validator_line_endings");
+    let problem_dir = temp.path().join("judge_validator_line_endings");
     configure_python_problem(&problem_dir);
     let expected = if cfg!(windows) {
         "b'ok\\r\\nnext\\r\\n'"
@@ -272,7 +269,7 @@ fn gen_file_generator_copies_fixture_and_writes_answer() {
         ["pkg", "init", "file_generator", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("file_generator");
+    let problem_dir = temp.path().join("file_generator");
     configure_python_problem(&problem_dir);
     let yaml_path = problem_dir.join("problem.yaml");
     std::fs::write(
@@ -330,7 +327,7 @@ fn gen_file_generator_can_be_problem_default_and_normalizes_copied_input() {
         ["pkg", "init", "file_generator_default", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("file_generator_default");
+    let problem_dir = temp.path().join("file_generator_default");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("problem.yaml"),
@@ -404,7 +401,7 @@ fn gen_file_generator_reports_bad_arguments_and_missing_files() {
         ["pkg", "init", "file_generator_errors", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("file_generator_errors");
+    let problem_dir = temp.path().join("file_generator_errors");
     configure_python_problem(&problem_dir);
 
     for (case_line, expected) in [
@@ -477,7 +474,7 @@ fn judge_checker_runs_with_file_paths_and_no_stdin_text() {
         ["pkg", "init", "judge_checker", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("judge_checker");
+    let problem_dir = temp.path().join("judge_checker");
     configure_checker_python_problem(&problem_dir);
     std::fs::write(problem_dir.join("input.in"), "7\n").unwrap();
     std::fs::write(problem_dir.join("answer.ans"), "7\n").unwrap();
@@ -548,7 +545,7 @@ fn run_can_override_time_and_memory_limits() {
         ["pkg", "init", "run_limit_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("run_limit_problem");
+    let problem_dir = temp.path().join("run_limit_problem");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("solve.py"),
@@ -610,7 +607,7 @@ fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
 
     let temp = TempWorkspace::new("cptool-empty-answer");
     run_cptool(["pkg", "init", "empty_answer", "--root"], Some(temp.path()));
-    let problem_dir = temp.path().join("problems").join("empty_answer");
+    let problem_dir = temp.path().join("empty_answer");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("solve.py"),
@@ -672,7 +669,7 @@ fn gen_summary_only_prints_compact_success_totals() {
 
     let temp = TempWorkspace::new("cptool-gen-summary");
     run_cptool(["pkg", "init", "gen_summary", "--root"], Some(temp.path()));
-    let problem_dir = temp.path().join("problems").join("gen_summary");
+    let problem_dir = temp.path().join("gen_summary");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
@@ -705,7 +702,7 @@ fn gen_default_output_prints_paths_relative_to_work_dir() {
         ["pkg", "init", "gen_short_paths", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("gen_short_paths");
+    let problem_dir = temp.path().join("gen_short_paths");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(["case", "gen", "-w", problem_dir.to_str().unwrap()], None);
@@ -739,7 +736,7 @@ fn gen_summary_only_json_prints_report() {
 
     let temp = TempWorkspace::new("cptool-gen-json");
     run_cptool(["pkg", "init", "gen_json", "--root"], Some(temp.path()));
-    let problem_dir = temp.path().join("problems").join("gen_json");
+    let problem_dir = temp.path().join("gen_json");
     configure_python_problem(&problem_dir);
 
     let output = run_cptool(
@@ -776,7 +773,7 @@ fn gen_and_export_cover_multiple_bundles_cases_and_tasks() {
         ["pkg", "init", "diverse_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("diverse_problem");
+    let problem_dir = temp.path().join("diverse_problem");
     configure_diverse_python_problem(&problem_dir);
 
     let summary = run_cptool(
@@ -876,7 +873,7 @@ fn gen_warns_when_generator_stdout_is_empty() {
         ["pkg", "init", "empty_generator", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("empty_generator");
+    let problem_dir = temp.path().join("empty_generator");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("gen.py"),
@@ -909,7 +906,7 @@ fn gen_rebuilds_data_dir_and_preserves_on_failure() {
         ["pkg", "init", "rebuild_data_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("rebuild_data_problem");
+    let problem_dir = temp.path().join("rebuild_data_problem");
     configure_python_problem(&problem_dir);
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
@@ -972,7 +969,7 @@ fn clean_command_removes_data_files_and_cache() {
         ["pkg", "init", "clean_command_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("clean_command_problem");
+    let problem_dir = temp.path().join("clean_command_problem");
     let data_dir = problem_dir.join("data");
     let cache_dir = problem_dir.join(".cptool").join("cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
@@ -1011,7 +1008,7 @@ fn clean_command_can_target_only_data_or_cache() {
         ["pkg", "init", "clean_targets_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("clean_targets_problem");
+    let problem_dir = temp.path().join("clean_targets_problem");
     let data_dir = problem_dir.join("data");
     let cache_dir = problem_dir.join(".cptool").join("cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
@@ -1055,7 +1052,7 @@ fn clean_command_refuses_during_data_generation() {
         ["pkg", "init", "clean_lock_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("clean_lock_problem");
+    let problem_dir = temp.path().join("clean_lock_problem");
     let data_dir = problem_dir.join("data");
     std::fs::write(data_dir.join("sample-0.in"), "input").unwrap();
     std::fs::write(data_dir.join("sample-0.ans"), "answer").unwrap();
@@ -1086,7 +1083,7 @@ fn clean_command_refuses_when_staging_dir_exists() {
         ["pkg", "init", "clean_staging_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("clean_staging_problem");
+    let problem_dir = temp.path().join("clean_staging_problem");
     let data_dir = problem_dir.join("data");
     std::fs::write(data_dir.join("sample-0.in"), "input").unwrap();
     std::fs::create_dir_all(data_dir.join(".cptool-gen-leftover")).unwrap();
@@ -1119,7 +1116,7 @@ fn gen_waits_for_generation_lock_when_requested() {
         ["pkg", "init", "gen_wait_lock", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("gen_wait_lock");
+    let problem_dir = temp.path().join("gen_wait_lock");
     configure_python_problem(&problem_dir);
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
@@ -1155,7 +1152,7 @@ fn run_waits_for_generation_lock_before_implicit_case_generation() {
         ["pkg", "init", "run_wait_lock", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("run_wait_lock");
+    let problem_dir = temp.path().join("run_wait_lock");
     configure_python_problem(&problem_dir);
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
@@ -1191,7 +1188,7 @@ fn gen_json_reports_validator_stats() {
         ["pkg", "init", "gen_validator_json", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("gen_validator_json");
+    let problem_dir = temp.path().join("gen_validator_json");
     configure_python_problem(&problem_dir);
     add_validator_program(&problem_dir, "import sys\nsys.stdin.buffer.read()\n");
 
@@ -1224,7 +1221,7 @@ fn gen_validator_failure_reports_case_and_generator_args() {
         ["pkg", "init", "gen_validator_failure", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("gen_validator_failure");
+    let problem_dir = temp.path().join("gen_validator_failure");
     configure_python_problem(&problem_dir);
     add_validator_program(&problem_dir, "import sys\nsys.exit(3)\n");
 
@@ -1257,7 +1254,7 @@ fn check_command_reports_valid_and_invalid_packages() {
         ["pkg", "init", "check_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("check_problem");
+    let problem_dir = temp.path().join("check_problem");
     configure_python_problem(&problem_dir);
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
@@ -1284,7 +1281,7 @@ fn check_json_reports_status_and_issue_counts() {
         ["pkg", "init", "check_json_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("check_json_problem");
+    let problem_dir = temp.path().join("check_json_problem");
     configure_python_problem(&problem_dir);
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 
@@ -1370,7 +1367,7 @@ fn check_json_keeps_package_audit_warning_codes_stable() {
         ["pkg", "init", "package_contract", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("package_contract");
+    let problem_dir = temp.path().join("package_contract");
     configure_python_problem(&problem_dir);
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
@@ -1430,7 +1427,7 @@ fn check_json_reports_missing_and_stale_generated_data() {
         ["pkg", "init", "check_data_audit", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("check_data_audit");
+    let problem_dir = temp.path().join("check_data_audit");
     let display_problem_dir = problem_dir.display().to_string().replace('\\', "/");
     configure_python_problem(&problem_dir);
 
@@ -1505,7 +1502,7 @@ fn check_text_reports_generated_data_next_action() {
         ["pkg", "init", "check_data_next_action", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("check_data_next_action");
+    let problem_dir = temp.path().join("check_data_next_action");
     let display_problem_dir = problem_dir.display().to_string().replace('\\', "/");
     configure_python_problem(&problem_dir);
 
@@ -1556,7 +1553,7 @@ fn check_json_marks_generation_lock_as_transient() {
         ["pkg", "init", "check_json_lock", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("check_json_lock");
+    let problem_dir = temp.path().join("check_json_lock");
     configure_python_problem(&problem_dir);
     std::fs::create_dir_all(problem_dir.join("data").join(".cptool-gen.lock")).unwrap();
 
@@ -1594,7 +1591,7 @@ fn check_json_waits_for_generation_lock_and_stays_parseable() {
         ["pkg", "init", "check_json_wait_lock", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("check_json_wait_lock");
+    let problem_dir = temp.path().join("check_json_wait_lock");
     configure_python_problem(&problem_dir);
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);

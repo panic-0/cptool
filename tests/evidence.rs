@@ -13,7 +13,7 @@ fn evidence_json_aggregates_check_gen_and_stress_plan() {
         ["pkg", "init", "evidence_json_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("evidence_json_problem");
+    let problem_dir = temp.path().join("evidence_json_problem");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
 
@@ -50,10 +50,7 @@ fn evidence_markdown_renders_quality_report_section() {
         ["pkg", "init", "evidence_markdown_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp
-        .path()
-        .join("problems")
-        .join("evidence_markdown_problem");
+    let problem_dir = temp.path().join("evidence_markdown_problem");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("bad.py"),
@@ -101,7 +98,7 @@ fn evidence_json_out_writes_utf8_sidecar_and_preserves_stdout() {
         ["pkg", "init", "evidence_json_out", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("evidence_json_out");
+    let problem_dir = temp.path().join("evidence_json_out");
     configure_unicode_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
     let out_path = problem_dir
@@ -143,7 +140,7 @@ fn evidence_markdown_out_writes_same_quality_section_as_stdout() {
         ["pkg", "init", "evidence_markdown_out", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("evidence_markdown_out");
+    let problem_dir = temp.path().join("evidence_markdown_out");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
     let out_path = problem_dir.join("report-evidence.md");
@@ -181,7 +178,7 @@ fn evidence_text_out_does_not_replace_existing_directory_on_failure() {
         ["pkg", "init", "evidence_out_failure", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("evidence_out_failure");
+    let problem_dir = temp.path().join("evidence_out_failure");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
     let out_path = problem_dir.join("existing-target");
@@ -216,10 +213,7 @@ fn evidence_json_can_reuse_stress_plan_report_without_new_failure_artifacts() {
         ["pkg", "init", "evidence_reuse_stress_plan", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp
-        .path()
-        .join("problems")
-        .join("evidence_reuse_stress_plan");
+    let problem_dir = temp.path().join("evidence_reuse_stress_plan");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("bad.py"),
@@ -290,7 +284,7 @@ fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
         ["pkg", "init", "evidence_json_wait_lock", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("evidence_json_wait_lock");
+    let problem_dir = temp.path().join("evidence_json_wait_lock");
     configure_python_problem(&problem_dir);
     append_stress_plan(&problem_dir);
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);

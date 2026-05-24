@@ -9,7 +9,7 @@
 ./cptool pkg init p_agent45 --root ./problems
 ```
 
-`--root` 可以传工作区根目录，也可以直接传 `problems/` 目录。默认情况下，`pkg init` 会创建 `DIR/problems/<slug>`；如果 `DIR` 本身已经叫 `problems`，则创建 `DIR/<slug>`，避免误生成 `problems/problems/<slug>`。
+`--root` 是直接接收题包的目录。默认情况下，`pkg init` 会创建 `./<slug>`；传 `--root ./problems` 时创建 `./problems/<slug>`，不会自动追加额外的 `problems/`。
 
 脚手架包含 `problem.yaml`、`statement.md`、`editorial.md`、`src/`、`data/`、`fixtures/`、`.cptool/failures/` 和题包 `.gitignore`。新题包包含自带的 testlib 模板，并写入顶层默认配置：
 

@@ -10,7 +10,7 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
 
     let temp = TempWorkspace::new("cptool-full-flow");
     run_cptool(["pkg", "init", "flow_problem", "--root"], Some(temp.path()));
-    let problem_dir = temp.path().join("problems").join("flow_problem");
+    let problem_dir = temp.path().join("flow_problem");
     configure_python_problem(&problem_dir);
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
@@ -90,7 +90,7 @@ fn init_scaffold_includes_working_testlib_validator() {
         ["pkg", "init", "testlib_validator", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("testlib_validator");
+    let problem_dir = temp.path().join("testlib_validator");
 
     assert!(problem_dir.join("src").join("val.cpp").exists());
     assert!(problem_dir.join("src").join("testlib.h").exists());
@@ -123,7 +123,7 @@ fn init_scaffold_includes_working_testlib_validator() {
 fn add_checker_builtin_copies_source_and_check_accepts_package() {
     let temp = TempWorkspace::new("cptool-add-checker-cli");
     run_cptool(["pkg", "init", "checker_cli", "--root"], Some(temp.path()));
-    let problem_dir = temp.path().join("problems").join("checker_cli");
+    let problem_dir = temp.path().join("checker_cli");
     std::fs::write(
         problem_dir.join("src").join("gen.cpp"),
         "int main(){return 0;}\n",
@@ -212,7 +212,7 @@ fn add_validator_registers_detected_source_and_check_accepts_package() {
         ["pkg", "init", "validator_cli", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("validator_cli");
+    let problem_dir = temp.path().join("validator_cli");
     configure_python_problem(&problem_dir);
     std::fs::remove_file(problem_dir.join("src").join("val.cpp")).unwrap();
     std::fs::write(
@@ -288,7 +288,7 @@ fn unicode_paths_and_utf8_data_flow_through_cli() {
         ["pkg", "init", "unicode_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("unicode_problem");
+    let problem_dir = temp.path().join("unicode_problem");
     configure_unicode_python_problem(&problem_dir);
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));

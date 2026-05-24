@@ -26,7 +26,7 @@ const DEFAULT_CHECKER_CPP: &str = concat!(
 
 pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     let slug = slugify(id)?;
-    let problem_dir = problems_dir_for_root(root).join(slug);
+    let problem_dir = root.join(slug);
     if problem_dir.exists() {
         anyhow::bail!("problem package already exists: {}", problem_dir.display());
     }
@@ -70,17 +70,6 @@ pub fn init_package(root: &Path, id: &str) -> Result<PathBuf> {
     Ok(problem_dir)
 }
 
-fn problems_dir_for_root(root: &Path) -> PathBuf {
-    if root
-        .file_name()
-        .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("problems"))
-    {
-        root.to_path_buf()
-    } else {
-        root.join("problems")
-    }
-}
-
 pub(crate) fn slugify(value: &str) -> Result<String> {
     let mut slug = String::new();
     let mut last_dash = false;
@@ -111,12 +100,12 @@ mod tests {
 
         let problem_dir = init_package(&root, "Default Root").unwrap();
 
-        assert_eq!(problem_dir, root.join("problems").join("default-root"));
+        assert_eq!(problem_dir, root.join("default-root"));
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn init_package_accepts_existing_problems_dir_as_root() {
+    fn init_package_uses_existing_problems_dir_directly() {
         let root = temp_test_dir("cptool-init-root-problems");
         let problems_dir = root.join("problems");
 
@@ -124,6 +113,18 @@ mod tests {
 
         assert_eq!(problem_dir, problems_dir.join("agent-45"));
         assert!(!problems_dir.join("problems").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn init_package_uses_non_problems_root_directly() {
+        let root = temp_test_dir("cptool-init-root-custom");
+        let custom_dir = root.join("custom");
+
+        let problem_dir = init_package(&custom_dir, "Custom Root").unwrap();
+
+        assert_eq!(problem_dir, custom_dir.join("custom-root"));
+        assert!(!custom_dir.join("problems").exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

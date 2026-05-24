@@ -52,13 +52,13 @@ pub(super) enum Commands {
 pub(super) enum PkgCommands {
     #[command(about = "Create a minimal competitive-programming problem package")]
     Init {
-        #[arg(help = "Problem id or display name used to create <problems-dir>/<slug>")]
+        #[arg(help = "Problem id or display name used to create <root>/<slug>")]
         id: String,
         #[arg(
             short,
             long,
             default_value = ".",
-            help = "Workspace root that receives problems/, or the problems/ directory itself"
+            help = "Directory that receives the package directly"
         )]
         root: PathBuf,
     },

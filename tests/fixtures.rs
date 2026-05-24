@@ -13,7 +13,7 @@ fn fixture_add_input_and_check_requires_usage() {
         ["pkg", "init", "fixture_input", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("fixture_input");
+    let problem_dir = temp.path().join("fixture_input");
     configure_python_problem(&problem_dir);
     std::fs::write(problem_dir.join("source.in"), "2 5\n").unwrap();
 
@@ -98,7 +98,7 @@ fn fixture_add_reports_actual_replacement() {
         ["pkg", "init", "fixture_replace", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("fixture_replace");
+    let problem_dir = temp.path().join("fixture_replace");
 
     let create_with_replace = run_cptool(
         [
@@ -148,7 +148,7 @@ fn test_validator_runs_all_validator_fixtures() {
         ["pkg", "init", "fixture_validator", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("fixture_validator");
+    let problem_dir = temp.path().join("fixture_validator");
     configure_python_problem(&problem_dir);
     add_validator_program(
         &problem_dir,
@@ -218,7 +218,7 @@ fn test_checker_runs_all_checker_fixtures() {
         ["pkg", "init", "fixture_checker", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("fixture_checker");
+    let problem_dir = temp.path().join("fixture_checker");
     configure_checker_python_problem(&problem_dir);
     std::fs::write(problem_dir.join("input.in"), "7\n").unwrap();
     std::fs::write(problem_dir.join("answer.ans"), "7\n").unwrap();
@@ -322,7 +322,7 @@ fn checker_fixture_requires_sources_and_check_rejects_empty_files() {
         ["pkg", "init", "fixture_checker_empty", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("problems").join("fixture_checker_empty");
+    let problem_dir = temp.path().join("fixture_checker_empty");
     configure_checker_python_problem(&problem_dir);
 
     let missing_sources = run_cptool_allow_failure(
@@ -377,10 +377,7 @@ fn test_checker_reports_missing_explicit_paths() {
         ["pkg", "init", "fixture_checker_missing_explicit", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp
-        .path()
-        .join("problems")
-        .join("fixture_checker_missing_explicit");
+    let problem_dir = temp.path().join("fixture_checker_missing_explicit");
     configure_checker_python_problem(&problem_dir);
 
     let output = run_cptool_allow_failure(

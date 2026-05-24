@@ -6,7 +6,7 @@ CP Tool 是面向算法竞赛题包的确定性命令行工具。它负责创建
 
 ```bash
 # 创建题包
-./cptool pkg init a_plus_b
+./cptool pkg init a_plus_b --root ./example
 
 # 生成正式数据到 data/
 ./cptool case gen -w ./example/a_plus_b
