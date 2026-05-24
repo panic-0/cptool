@@ -409,6 +409,7 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(test_validator_stdout.contains("--fixture"));
     assert!(test_validator_stdout.contains("--expect"));
     assert!(test_validator_stdout.contains("--no-fix-line-endings"));
+    assert!(test_validator_stdout.contains("--line-ending-hints"));
     assert!(!test_validator_stdout.contains("--stdin-text"));
 
     let add_checker = run_cptool(["add", "checker", "--help"], None);

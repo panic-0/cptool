@@ -216,16 +216,38 @@ if data != {expected}:
     );
     let pass_value: Value = serde_json::from_slice(&pass.stdout).unwrap();
     assert_eq!(pass_value["ok"], true);
-    assert_eq!(
-        pass_value["warnings"][0]["code"],
-        "input_line_endings_normalized"
-    );
+    assert_eq!(pass_value["warnings"].as_array().unwrap().len(), 0);
     let native = if cfg!(windows) {
         b"ok\r\nnext\r\n".as_slice()
     } else {
         b"ok\nnext\n".as_slice()
     };
     assert_eq!(std::fs::read(&fixture).unwrap(), native);
+
+    if cfg!(windows) {
+        std::fs::write(&fixture, b"ok\nnext\n").unwrap();
+    } else {
+        std::fs::write(&fixture, b"ok\r\nnext\r\n").unwrap();
+    }
+    let hinted = run_cptool(
+        [
+            "test",
+            "validator",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--input",
+            "line_endings.in",
+            "--line-ending-hints",
+            "--json",
+        ],
+        None,
+    );
+    let hinted_value: Value = serde_json::from_slice(&hinted.stdout).unwrap();
+    assert_eq!(hinted_value["ok"], true);
+    assert_eq!(
+        hinted_value["warnings"][0]["code"],
+        "input_line_endings_normalized"
+    );
 
     let disabled_fixture = problem_dir.join("line_endings_disabled.in");
     if cfg!(windows) {

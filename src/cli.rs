@@ -117,6 +117,7 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             expect,
             output_limit_bytes,
             no_fix_line_endings,
+            line_ending_hints,
             json,
         } => handle_test_validator(TestValidatorCommandOptions {
             work_dir,
@@ -126,6 +127,7 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             expect,
             output_limit_bytes,
             fix_line_endings: !no_fix_line_endings,
+            line_ending_hints,
             json,
         })?,
         TestCommands::Checker {
@@ -1016,6 +1018,7 @@ struct TestValidatorCommandOptions {
     expect: JudgeExpectationArg,
     output_limit_bytes: usize,
     fix_line_endings: bool,
+    line_ending_hints: bool,
     json: bool,
 }
 
@@ -1030,6 +1033,7 @@ fn handle_test_validator(options: TestValidatorCommandOptions) -> anyhow::Result
                 expect: convert_judge_expectation(options.expect),
                 output_limit_bytes: options.output_limit_bytes,
                 fix_line_endings: options.fix_line_endings,
+                line_ending_hints: options.line_ending_hints,
             })?;
             print_judge_report(&report, options.json, Some(&display_work_dir))?;
             if !report.ok {
@@ -1044,6 +1048,7 @@ fn handle_test_validator(options: TestValidatorCommandOptions) -> anyhow::Result
                 vec![fixture],
                 options.output_limit_bytes,
                 options.fix_line_endings,
+                options.line_ending_hints,
                 options.json,
             )?;
             if !ok {
@@ -1063,6 +1068,7 @@ fn handle_test_validator(options: TestValidatorCommandOptions) -> anyhow::Result
                 fixtures,
                 options.output_limit_bytes,
                 options.fix_line_endings,
+                options.line_ending_hints,
                 options.json,
             )?;
             if !ok {
@@ -1082,6 +1088,7 @@ fn run_validator_fixture_batch(
     fixtures: Vec<tool::ValidatorFixture>,
     output_limit_bytes: usize,
     fix_line_endings: bool,
+    line_ending_hints: bool,
     json: bool,
 ) -> anyhow::Result<bool> {
     let display_work_dir = work_dir.clone();
@@ -1094,6 +1101,7 @@ fn run_validator_fixture_batch(
             expect: fixture.expect,
             output_limit_bytes,
             fix_line_endings,
+            line_ending_hints,
         })?;
         reports.push((fixture, report));
     }

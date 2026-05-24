@@ -230,6 +230,11 @@ pub(super) enum TestCommands {
             help = "Disable automatic native line-ending normalization before running the validator"
         )]
         no_fix_line_endings: bool,
+        #[arg(
+            long,
+            help = "Include informational line-ending normalization hints in validator reports"
+        )]
+        line_ending_hints: bool,
         #[arg(long, help = "Print the test result as JSON")]
         json: bool,
     },

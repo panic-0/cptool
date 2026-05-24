@@ -70,6 +70,7 @@ pub struct JudgeValidatorOptions {
     pub expect: JudgeExpectation,
     pub output_limit_bytes: usize,
     pub fix_line_endings: bool,
+    pub line_ending_hints: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -136,12 +137,12 @@ pub fn judge_validator(options: JudgeValidatorOptions) -> Result<JudgeReport> {
     let input_path = resolve_path(&work_dir, &options.input_path);
     let mut input = std::fs::read(&input_path)
         .with_context(|| format!("failed to read input {}", input_path.display()))?;
-    let warnings = if options.fix_line_endings {
+    let normalization_warnings = if options.fix_line_endings {
         fix_validator_input_line_endings(&mut input)
     } else {
         Vec::new()
     };
-    if !warnings.is_empty() {
+    if !normalization_warnings.is_empty() {
         std::fs::write(&input_path, &input).with_context(|| {
             format!(
                 "failed to normalize validator input {}",
@@ -149,6 +150,11 @@ pub fn judge_validator(options: JudgeValidatorOptions) -> Result<JudgeReport> {
             )
         })?;
     }
+    let warnings = if options.line_ending_hints {
+        normalization_warnings
+    } else {
+        Vec::new()
+    };
     let result = run_spec(
         &work_dir,
         &validator,
