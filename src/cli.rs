@@ -474,7 +474,7 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
                 } else {
                     println!(
                         "{} {}",
-                        result.status_line(),
+                        result.result_line(),
                         result.compile.summary_fragment()
                     );
                     if !result.stderr.is_empty() {
@@ -490,7 +490,7 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
         self::json::print(&self::json::RunJsonSummary::from(&result))?;
     } else if summary_only {
         println!("{}", result.summary_line());
-        if !result.ok {
+        if !result.is_success() {
             eprintln!(
                 "hint: rerun without --summary-only or use --stdout-path/--stderr-path to save full output"
             );
@@ -498,7 +498,7 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
     } else {
         println!(
             "{} {}",
-            result.status_line(),
+            result.result_line(),
             result.compile.summary_fragment()
         );
     }
@@ -509,7 +509,7 @@ fn handle_run(options: RunCommandOptions) -> anyhow::Result<()> {
     if !json && !summary_only && stderr_path.is_none() && !result.stderr.is_empty() {
         eprint!("{}", result.stderr);
     }
-    if !result.ok {
+    if !result.is_success() {
         std::process::exit(2);
     }
     Ok(())
@@ -535,7 +535,7 @@ fn print_compile_failure(failure: &tool::CompileFailure, json: bool) -> anyhow::
     } else {
         println!(
             "{} {}",
-            result.status_line(),
+            result.result_line(),
             result.compile.summary_fragment()
         );
         if !result.stderr.is_empty() {

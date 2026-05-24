@@ -180,8 +180,6 @@ pub(crate) fn run_spec(
         let stderr_text = decode_output(&stderr_bytes);
         return Ok(RunResult {
             label: spec.label.clone(),
-            ok: false,
-            kind: "timeout".to_string(),
             verdict: "TLE".to_string(),
             phase: "unknown".to_string(),
             reason_code: "timeout".to_string(),
@@ -212,13 +210,6 @@ pub(crate) fn run_spec(
     );
     Ok(RunResult {
         label: spec.label.clone(),
-        ok: status.success(),
-        kind: if status.success() {
-            "ok"
-        } else {
-            "runtime_error"
-        }
-        .to_string(),
         verdict: verdict.to_string(),
         phase: "unknown".to_string(),
         reason_code: reason_code.to_string(),
@@ -362,8 +353,6 @@ pub(crate) fn compile_cpp(
 fn compile_failure_result(label: &str, compile: CompileReport, message: String) -> RunResult {
     RunResult {
         label: label.to_string(),
-        ok: false,
-        kind: "compile_error".to_string(),
         verdict: "CE".to_string(),
         phase: "compile".to_string(),
         reason_code: "compile_failed".to_string(),
@@ -447,7 +436,7 @@ fn compile_report_from_output(
         args: diagnostics.compile_args.clone(),
         cache_key: Some(diagnostics.cache_key.clone()),
         exe_path: Some(diagnostics.exe_path.clone()),
-        exit_code: output.status.code().map(|code| code as i32),
+        exit_code: output.status.code(),
         elapsed_ms: Some(elapsed_ms),
         stdout: decode_output(&output.stdout),
         stderr: decode_output(&output.stderr),
@@ -907,7 +896,9 @@ sys.stdout.buffer.write(str(len(data)).encode("ascii"))
 
         let result = run_spec(&root, &spec, &[], Some(&input), 32).unwrap();
 
-        assert!(result.ok, "{}", result.status_line());
+        assert_eq!(result.verdict, "OLE");
+        assert_eq!(result.reason_code, "stdout_limit_exceeded");
+        assert_eq!(result.exit_code, Some(0));
         assert_eq!(result.stdout_bytes, vec![b'x'; 32]);
         assert!(result.truncated_stdout);
         assert!(!result.truncated_stderr);
@@ -950,8 +941,9 @@ time.sleep(60)
 
         let result = run_spec(&root, &spec, &[], None, 6).unwrap();
 
-        assert!(!result.ok);
-        assert_eq!(result.kind, "timeout");
+        assert!(!result.is_success());
+        assert_eq!(result.verdict, "TLE");
+        assert_eq!(result.reason_code, "timeout");
         assert_eq!(result.exit_code, None);
         assert_eq!(result.stdout_bytes, b"stdout");
         assert_eq!(result.stderr_bytes, b"stderr");

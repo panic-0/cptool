@@ -113,7 +113,7 @@ impl JudgeReport {
             self.program,
             self.expect.as_str(),
             self.observed.as_str(),
-            self.run.status_line()
+            self.run.result_line()
         )
     }
 }
@@ -264,7 +264,7 @@ fn report_from_result(
     warnings: Vec<JudgeWarning>,
 ) -> JudgeReport {
     run.set_phase(kind.as_str());
-    if !run.ok
+    if !run.is_success()
         && matches!(run.exit_code, Some(1 | 2))
         && !run.truncated_stdout
         && !run.truncated_stderr
@@ -275,7 +275,7 @@ fn report_from_result(
         };
         run.set_verdict("WA", reason);
     }
-    let observed = if run.ok {
+    let observed = if run.is_success() {
         JudgeObserved::Pass
     } else {
         JudgeObserved::Fail

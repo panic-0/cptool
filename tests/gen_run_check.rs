@@ -32,7 +32,8 @@ fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
     );
     let summary_stdout = String::from_utf8_lossy(&summary.stdout);
 
-    assert!(summary_stdout.contains("std: ok exit=0"));
+    assert!(summary_stdout.contains("std: verdict=AC"));
+    assert!(summary_stdout.contains("exit=0"));
     assert!(summary_stdout.contains("stdout_bytes=2"));
     assert!(summary_stdout.contains("stdout_lines=1"));
     assert!(summary_stdout.contains("stdout_sha256="));
@@ -53,7 +54,8 @@ fn run_summary_only_and_hide_stdout_do_not_print_full_stdout() {
     );
     let hidden_stdout = String::from_utf8_lossy(&hidden.stdout);
 
-    assert!(hidden_stdout.contains("std: ok exit=0"));
+    assert!(hidden_stdout.contains("std: verdict=AC"));
+    assert!(hidden_stdout.contains("exit=0"));
     assert!(!hidden_stdout.contains("\n7\n"));
 }
 #[test]
@@ -85,7 +87,7 @@ fn run_json_prints_machine_readable_summary_without_program_stdout() {
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
 
-    assert_eq!(value["ok"], true);
+    assert_eq!(value["verdict"], "AC");
     assert_eq!(value["stdout_bytes"], 2);
     assert_eq!(value["stdout_lines"], 1);
     assert_eq!(value["stderr_nonempty"], false);
@@ -124,7 +126,7 @@ fn run_json_reports_cpp_compile_output_and_cache_hits() {
         None,
     );
     let first_value: Value = serde_json::from_slice(&first.stdout).unwrap();
-    assert_eq!(first_value["ok"], true);
+    assert_eq!(first_value["verdict"], "AC");
     assert_eq!(first_value["verdict"], "AC");
     assert_eq!(first_value["compile"]["applicable"], true);
     assert_eq!(first_value["compile"]["status"], "ok");
@@ -187,8 +189,7 @@ fn run_json_reports_cpp_compile_errors_as_ce_with_compiler_stderr() {
     );
     assert!(!output.status.success());
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["ok"], false);
-    assert_eq!(value["kind"], "compile_error");
+    assert_eq!(value["verdict"], "CE");
     assert_eq!(value["verdict"], "CE");
     assert_eq!(value["phase"], "compile");
     assert_eq!(value["reason_code"], "compile_failed");
@@ -707,7 +708,8 @@ sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
     );
     let low_stdout = String::from_utf8_lossy(&low_limit.stdout);
     assert!(!low_limit.status.success());
-    assert!(low_stdout.contains("std: timeout exit=none"));
+    assert!(low_stdout.contains("std: verdict=TLE"));
+    assert!(low_stdout.contains("exit=none"));
 
     let high_limit = run_cptool(
         [
@@ -726,7 +728,8 @@ sys.stdout.buffer.write(f"{a + b}\n".encode("ascii"))
         None,
     );
     let high_stdout = String::from_utf8_lossy(&high_limit.stdout);
-    assert!(high_stdout.contains("std: ok exit=0"));
+    assert!(high_stdout.contains("std: verdict=AC"));
+    assert!(high_stdout.contains("exit=0"));
     assert!(high_stdout.contains("\n7\n"));
 }
 
@@ -1304,7 +1307,7 @@ fn run_waits_for_generation_lock_before_implicit_case_generation() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     handle.join().unwrap();
-    assert!(stdout.contains("std: ok"));
+    assert!(stdout.contains("std: verdict=AC"));
     assert!(stdout.contains("7\n"));
     assert!(stderr.contains("waiting for data generation lock:"));
 }

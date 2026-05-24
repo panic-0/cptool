@@ -37,8 +37,6 @@ pub struct RunOptions {
 #[derive(Clone, Debug)]
 pub struct RunResult {
     pub label: String,
-    pub ok: bool,
-    pub kind: String,
     pub verdict: String,
     pub phase: String,
     pub reason_code: String,
@@ -55,11 +53,17 @@ pub struct RunResult {
 }
 
 impl RunResult {
-    pub fn status_line(&self) -> String {
+    pub fn is_success(&self) -> bool {
+        self.verdict == "AC"
+    }
+
+    pub fn result_line(&self) -> String {
         let mut line = format!(
-            "{}: {} exit={} elapsed={}ms",
+            "{}: verdict={} phase={} reason={} exit={} elapsed={}ms",
             self.label,
-            self.kind,
+            self.verdict,
+            self.phase,
+            self.reason_code,
             self.exit_code
                 .map(|code| code.to_string())
                 .unwrap_or_else(|| "none".to_string()),
@@ -75,7 +79,7 @@ impl RunResult {
     }
 
     pub fn failure_report(&self, context: &str) -> String {
-        let mut report = format!("{context}: {}", self.status_line());
+        let mut report = format!("{context}: {}", self.result_line());
         if let Some(diagnostic) = &self.diagnostic {
             report.push_str("\ndiagnostic:\n");
             report.push_str(diagnostic);
@@ -93,7 +97,7 @@ impl RunResult {
     pub fn summary_line(&self) -> String {
         format!(
             "{} stdout_bytes={} stdout_lines={} stdout_sha256={} stderr_bytes={} stderr_nonempty={} {}",
-            self.status_line(),
+            self.result_line(),
             self.stdout_bytes.len(),
             count_lines(&self.stdout_bytes),
             sha256_hex(&self.stdout_bytes),
@@ -700,8 +704,6 @@ mod tests {
     fn run_summary_reports_sizes_lines_and_hash() {
         let result = RunResult {
             label: "std".to_string(),
-            ok: true,
-            kind: "ok".to_string(),
             verdict: "AC".to_string(),
             phase: "unknown".to_string(),
             reason_code: "ok".to_string(),
@@ -719,7 +721,7 @@ mod tests {
 
         assert_eq!(
             result.summary_line(),
-            "std: ok exit=0 elapsed=12ms stdout_bytes=3 stdout_lines=2 stdout_sha256=7e18f737311b2dc3b2f269dd78396b0351f14fb66efa879f768cb23181883c78 stderr_bytes=4 stderr_nonempty=true compile=skipped"
+            "std: verdict=AC phase=unknown reason=ok exit=0 elapsed=12ms stdout_bytes=3 stdout_lines=2 stdout_sha256=7e18f737311b2dc3b2f269dd78396b0351f14fb66efa879f768cb23181883c78 stderr_bytes=4 stderr_nonempty=true compile=skipped"
         );
     }
 
@@ -727,8 +729,6 @@ mod tests {
     fn run_summary_counts_empty_output_as_zero_lines() {
         let result = RunResult {
             label: "std".to_string(),
-            ok: true,
-            kind: "ok".to_string(),
             verdict: "AC".to_string(),
             phase: "unknown".to_string(),
             reason_code: "ok".to_string(),
@@ -805,8 +805,6 @@ test:
     fn failure_report_includes_optional_diagnostic_only_on_failure_path() {
         let result = RunResult {
             label: "std".to_string(),
-            ok: false,
-            kind: "runtime_error".to_string(),
             verdict: "RE".to_string(),
             phase: "unknown".to_string(),
             reason_code: "nonzero_exit".to_string(),
@@ -823,12 +821,12 @@ test:
         };
 
         assert_eq!(
-            result.status_line(),
-            "std: runtime_error exit=-1073741819 elapsed=1ms"
+            result.result_line(),
+            "std: verdict=RE phase=unknown reason=nonzero_exit exit=-1073741819 elapsed=1ms"
         );
         assert_eq!(
             result.failure_report("solution failed"),
-            "solution failed: std: runtime_error exit=-1073741819 elapsed=1ms\ndiagnostic:\nhint: access violation"
+            "solution failed: std: verdict=RE phase=unknown reason=nonzero_exit exit=-1073741819 elapsed=1ms\ndiagnostic:\nhint: access violation"
         );
     }
 

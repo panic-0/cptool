@@ -434,7 +434,7 @@ fn generate_one_case(
             Some(&generated.bytes),
             context.output_limit_bytes,
         )?;
-        if !validation.ok {
+        if !validation.is_success() {
             anyhow::bail!(
                 "{}",
                 validation.failure_report(&format!(
@@ -455,7 +455,7 @@ fn generate_one_case(
         Some(&generated.bytes),
         context.output_limit_bytes,
     )?;
-    if !answer.ok {
+    if !answer.is_success() {
         anyhow::bail!(
             "{}",
             answer.failure_report(&format!("solution failed for {}", input_path.display()))
@@ -532,7 +532,7 @@ pub(crate) fn generate_case_input(
         .get(generator_name)
         .with_context(|| format!("generator `{generator_name}` not found"))?;
     let generated = run_spec(work_dir, generator, args, None, output_limit_bytes)?;
-    if !generated.ok {
+    if !generated.is_success() {
         anyhow::bail!(
             "{}",
             generated.failure_report(&format!("generator failed for {context}"))

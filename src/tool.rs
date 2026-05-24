@@ -205,8 +205,6 @@ mod tests {
     fn run_result_reports_timeout_without_stderr() {
         let result = RunResult {
             label: "slow".to_string(),
-            ok: false,
-            kind: "timeout".to_string(),
             verdict: "TLE".to_string(),
             phase: "unknown".to_string(),
             reason_code: "timeout".to_string(),
@@ -223,20 +221,20 @@ mod tests {
         };
 
         assert_eq!(
-            result.status_line(),
-            "slow: timeout exit=none elapsed=1001ms"
+            result.result_line(),
+            "slow: verdict=TLE phase=unknown reason=timeout exit=none elapsed=1001ms"
         );
         assert_eq!(
             result.failure_report("generator failed"),
-            "generator failed: slow: timeout exit=none elapsed=1001ms"
+            "generator failed: slow: verdict=TLE phase=unknown reason=timeout exit=none elapsed=1001ms"
         );
     }
 
     #[test]
     fn stress_failure_classification_names_wa_and_program_failure() {
-        let ok_a = test_run_result("std", true, "ok", "1\n", "");
-        let ok_b = test_run_result("brute", true, "ok", "2\n", "");
-        let timeout = test_run_result("slow", false, "timeout", "", "");
+        let ok_a = test_run_result("std", "AC", "1\n", "");
+        let ok_b = test_run_result("brute", "AC", "2\n", "");
+        let timeout = test_run_result("slow", "TLE", "", "");
 
         assert_eq!(
             classify_stress_failure(&[ok_a.clone(), ok_b]).unwrap(),
@@ -244,18 +242,23 @@ mod tests {
         );
         assert_eq!(
             classify_stress_failure(&[ok_a, timeout]).unwrap(),
-            "program_failed: slow: timeout exit=none elapsed=1ms"
+            "program_failed: slow: verdict=TLE phase=unknown reason=timeout exit=none elapsed=1ms"
         );
     }
 
-    fn test_run_result(label: &str, ok: bool, kind: &str, stdout: &str, stderr: &str) -> RunResult {
+    fn test_run_result(label: &str, verdict: &str, stdout: &str, stderr: &str) -> RunResult {
         RunResult {
             label: label.to_string(),
-            ok,
-            kind: kind.to_string(),
-            verdict: if ok { "AC" } else { "TLE" }.to_string(),
+            verdict: verdict.to_string(),
             phase: "unknown".to_string(),
-            reason_code: if ok { "ok" } else { "timeout" }.to_string(),
+            reason_code: if verdict == "AC" {
+                "ok"
+            } else if verdict == "TLE" {
+                "timeout"
+            } else {
+                "nonzero_exit"
+            }
+            .to_string(),
             exit_code: None,
             diagnostic: None,
             elapsed_ms: 1,

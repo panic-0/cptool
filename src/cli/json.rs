@@ -8,8 +8,6 @@ use std::path::PathBuf;
 #[derive(Serialize)]
 pub(super) struct RunJsonSummary<'a> {
     label: &'a str,
-    ok: bool,
-    kind: &'a str,
     verdict: &'a str,
     phase: &'a str,
     reason_code: &'a str,
@@ -30,8 +28,6 @@ impl<'a> From<&'a tool::RunResult> for RunJsonSummary<'a> {
     fn from(result: &'a tool::RunResult) -> Self {
         Self {
             label: &result.label,
-            ok: result.ok,
-            kind: &result.kind,
             verdict: &result.verdict,
             phase: &result.phase,
             reason_code: &result.reason_code,

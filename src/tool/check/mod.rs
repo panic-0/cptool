@@ -607,12 +607,12 @@ fn check_sample_checker_sanity(
         &checker_report_path,
         DEFAULT_OUTPUT_LIMIT_BYTES,
     ) {
-        Ok(Some(run)) if run.result.ok => {}
+        Ok(Some(run)) if run.result.is_success() => {}
         Ok(Some(run)) => {
             let mut message = format!(
                 "checker `{}` rejected generated sample answer used as participant output: {}",
                 run.checker,
-                run.result.status_line()
+                run.result.result_line()
             );
             if let Some(report_text) = run.report
                 && !report_text.trim().is_empty()
