@@ -7,7 +7,6 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -749,11 +748,11 @@ fn save_stress_failure_artifacts(
 ) -> Result<SavedStressFailureArtifacts> {
     std::fs::create_dir_all(failure_dir)
         .with_context(|| format!("failed to create failure dir {}", failure_dir.display()))?;
-    let (stem, mut input_file) = create_failure_input(failure_dir, check_name)?;
+    let stem = failure_group_stem(failure_dir, check_name);
+    remove_failure_group_artifacts(&stem)?;
     let input_path = stem.with_extension("in");
     let report_path = stem.with_extension("txt");
-    input_file
-        .write_all(&failure.input)
+    std::fs::write(&input_path, &failure.input)
         .with_context(|| format!("failed to write expect input {}", input_path.display()))?;
     let artifacts = write_stress_outputs(&stem, &failure.results)?;
     let checker = if let Some(checker) = &failure.checker {
@@ -779,28 +778,67 @@ fn save_stress_failure_artifacts(
     })
 }
 
-fn create_failure_input(
-    failure_dir: &Path,
-    _check_name: Option<&str>,
-) -> Result<(PathBuf, std::fs::File)> {
-    for id in 1.. {
-        let stem = failure_dir.join(format!("expect-{id:03}"));
-        let input_path = stem.with_extension("in");
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&input_path)
-        {
-            Ok(file) => return Ok((stem, file)),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(err) => {
-                return Err(err).with_context(|| {
-                    format!("failed to create expect input {}", input_path.display())
-                });
-            }
+fn failure_group_stem(failure_dir: &Path, check_name: Option<&str>) -> PathBuf {
+    match check_name {
+        Some(name) => failure_dir.join(format!("expect-{}", safe_failure_name(name))),
+        None => failure_dir.join("batch"),
+    }
+}
+
+fn safe_failure_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in name.trim().chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            out.push(ch.to_ascii_lowercase());
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
         }
     }
-    unreachable!()
+    let trimmed = out.trim_matches('-');
+    if trimmed.is_empty() {
+        "unnamed".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn remove_failure_group_artifacts(stem: &Path) -> Result<()> {
+    let Some(parent) = stem.parent() else {
+        return Ok(());
+    };
+    let Some(base) = stem.file_name().and_then(|name| name.to_str()) else {
+        return Ok(());
+    };
+    if !parent.exists() {
+        return Ok(());
+    }
+    let prefix = format!("{base}-");
+    for entry in std::fs::read_dir(parent)
+        .with_context(|| format!("failed to list failure dir {}", parent.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("failed to read failure dir {}", parent.display()))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let matches_group = file_name
+            .strip_prefix(base)
+            .is_some_and(|rest| rest.starts_with('.') || rest.starts_with('-'))
+            || file_name.starts_with(&prefix);
+        if matches_group {
+            std::fs::remove_file(&path).with_context(|| {
+                format!("failed to remove stale failure artifact {}", path.display())
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn write_stress_outputs(stem: &Path, results: &[RunResult]) -> Result<Vec<StressOutputArtifact>> {
@@ -954,13 +992,32 @@ mod tests {
     use crate::tool::temp_test_dir;
 
     #[test]
-    fn failure_input_stem_uses_short_stable_name() {
+    fn failure_group_stem_uses_stable_check_name() {
         let root = temp_test_dir("cptool-expect-failure");
         std::fs::create_dir_all(&root).unwrap();
 
-        let (stem, _file) = create_failure_input(&root, Some("small cases")).unwrap();
+        let stem = failure_group_stem(&root, Some("small cases"));
 
-        assert_eq!(stem.file_name().unwrap(), "expect-001");
+        assert_eq!(stem.file_name().unwrap(), "expect-small-cases");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn remove_failure_group_artifacts_keeps_other_groups() {
+        let root = temp_test_dir("cptool-expect-failure-clean");
+        std::fs::create_dir_all(&root).unwrap();
+        let stem = root.join("expect-small");
+        std::fs::write(stem.with_extension("in"), "").unwrap();
+        std::fs::write(stem.with_extension("txt"), "").unwrap();
+        std::fs::write(root.join("expect-small-1.out"), "").unwrap();
+        std::fs::write(root.join("expect-other.txt"), "").unwrap();
+
+        remove_failure_group_artifacts(&stem).unwrap();
+
+        assert!(!stem.with_extension("in").exists());
+        assert!(!stem.with_extension("txt").exists());
+        assert!(!root.join("expect-small-1.out").exists());
+        assert!(root.join("expect-other.txt").exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 

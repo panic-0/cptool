@@ -751,9 +751,10 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
         problem_dir
             .join(".cptool")
             .join("failures")
-            .join("expect-001.txt")
+            .join("expect-bad-is-detected-fail-bad.txt")
             .exists()
     );
+    assert_eq!(count_failure_reports(&problem_dir), 1);
 
     let json_output = run_cptool(
         [
@@ -787,5 +788,6 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
             .join(failure["report_path"].as_str().unwrap())
             .exists()
     );
+    assert_eq!(count_failure_reports(&problem_dir), 1);
     assert_eq!(failure["outputs"].as_array().unwrap().len(), 2);
 }
