@@ -4,7 +4,7 @@ use super::data::{
 };
 use super::judge::run_configured_checker_on_files;
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
-use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo, StressPlanExpectation};
+use super::schema::{DEFAULT_OUTPUT_LIMIT_BYTES, Problem, ProgramInfo};
 use super::temp_suffix;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -16,7 +16,7 @@ mod report;
 mod yaml_shape;
 
 use markdown_sample::{check_statement_sample_output, find_sample_bundle};
-use package_audit::{check_package_text_audit, check_report_stress_plan_classification};
+use package_audit::{check_package_text_audit, check_report_task_classification};
 pub use report::{CheckIssue, CheckIssueDetail, CheckOptions, CheckReport, CheckSeverity};
 use yaml_shape::check_unknown_yaml_fields;
 
@@ -51,8 +51,7 @@ pub fn check_problem_package_with_options(work_dir: &Path, options: CheckOptions
     check_program_paths(&mut report, &work_dir, &problem);
     check_problem_structure(&mut report, &work_dir, &problem);
     check_validator_declaration(&mut report, &work_dir, &problem);
-    check_stress_plans(&mut report, &work_dir, &problem);
-    check_report_stress_plan_classification(&mut report, &work_dir, &problem);
+    check_report_task_classification(&mut report, &work_dir, &problem);
     let data_dir = work_dir.join("data");
     let generation_status = if let Some(timeout) = options.generation_lock_timeout {
         wait_for_generation_status(&data_dir, timeout)
@@ -457,72 +456,6 @@ fn check_empty_answers(report: &mut CheckReport, work_dir: &Path, problem: &Prob
     }
 }
 
-fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Problem) {
-    let yaml_path = work_dir.join("problem.yaml");
-    let plans = &problem.stress.plans;
-    if plans.is_empty() {
-        return;
-    }
-    report.warning_at(
-        codes::STRESS_PLANS_MISSING,
-        "`stress.plans` is deprecated and is migrated to test.tasks expect when problem.yaml is loaded",
-        Some(yaml_path.clone()),
-        "stress.plans",
-    );
-
-    if !plans
-        .iter()
-        .any(|plan| plan.expect == StressPlanExpectation::Pass)
-    {
-        report.warning_at(
-            codes::STRESS_POSITIVE_PLAN_MISSING,
-            "`stress.plans` has no `expect: pass` plan",
-            Some(work_dir.join("problem.yaml")),
-            "stress.plans",
-        );
-    }
-
-    for (index, plan) in plans.iter().enumerate() {
-        let location = format!("stress.plans[{index}]");
-        if plan.cases == 0 {
-            report.error_at(
-                codes::STRESS_PLAN_EMPTY,
-                format!("stress plan `{}` has zero cases", plan.name),
-                Some(work_dir.join("problem.yaml")),
-                format!("{location}.cases"),
-            );
-        }
-        if plan.against.len() != 2 {
-            report.error_at(
-                codes::STRESS_PLAN_AGAINST_COUNT,
-                format!(
-                    "stress plan `{}` must compare exactly two programs or sources",
-                    plan.name
-                ),
-                Some(work_dir.join("problem.yaml")),
-                format!("{location}.against"),
-            );
-        }
-        for (field, value) in std::iter::once(("generator", plan.generator.as_str())).chain(
-            plan.against
-                .iter()
-                .map(|target| ("against", target.as_str())),
-        ) {
-            if !stress_program_exists(work_dir, problem, value) {
-                report.error_at(
-                    codes::STRESS_PLAN_PROGRAM_MISSING,
-                    format!(
-                        "stress plan `{}` {field} `{value}` is neither a configured program nor an existing source file",
-                        plan.name
-                    ),
-                    Some(work_dir.join("problem.yaml")),
-                    location.clone(),
-                );
-            }
-        }
-    }
-}
-
 fn task_dependency_cycle<'a>(
     problem: &'a Problem,
     task_index_by_name: &HashMap<&'a str, usize>,
@@ -570,18 +503,6 @@ fn task_dependency_cycle<'a>(
         }
     }
     None
-}
-
-fn stress_program_exists(work_dir: &Path, problem: &Problem, value: &str) -> bool {
-    if problem.programs.contains_key(value) {
-        return true;
-    }
-    let path = resolve_path(work_dir, Path::new(value));
-    path.is_file()
-        && matches!(
-            path.extension().and_then(|extension| extension.to_str()),
-            Some("cpp" | "cc" | "cxx" | "py")
-        )
 }
 
 fn is_data_io_file(path: &Path) -> bool {
@@ -1007,40 +928,6 @@ mod tests {
     }
 
     #[test]
-    fn check_stress_plans_reports_quality_and_shape_issues() {
-        let root = temp_test_dir("cptool-check-stress");
-        std::fs::create_dir_all(&root).unwrap();
-        let mut problem = minimal_problem();
-
-        let mut report = CheckReport::new(root.clone());
-        check_stress_plans(&mut report, &root, &problem);
-        assert_no_issue(&report, "stress_plans_missing");
-
-        problem.stress.plans.push(crate::tool::schema::StressPlan {
-            name: "bad".to_string(),
-            generator: "missing_gen.py".to_string(),
-            args: Vec::new(),
-            against: vec!["std".to_string()],
-            cases: 0,
-            expect: crate::tool::schema::StressPlanExpectation::Fail,
-        });
-        let mut report = CheckReport::new(root.clone());
-        check_stress_plans(&mut report, &root, &problem);
-
-        assert_issue(&report, "stress_plans_missing", CheckSeverity::Warning);
-        assert_issue(
-            &report,
-            "stress_positive_plan_missing",
-            CheckSeverity::Warning,
-        );
-        assert_issue(&report, "stress_plan_empty", CheckSeverity::Error);
-        assert_issue(&report, "stress_plan_against_count", CheckSeverity::Error);
-        assert_issue(&report, "stress_plan_program_missing", CheckSeverity::Error);
-
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
     fn check_reports_text_audit_issues() {
         let root = temp_test_dir("cptool-check-text-audit");
         let problem_dir = create_minimal_check_package(&root, None, Some("simple input"));
@@ -1070,7 +957,7 @@ mod tests {
         assert_issue(&report, "missing_failure_reference", CheckSeverity::Warning);
         assert_issue(
             &report,
-            "negative_plan_counted_as_positive",
+            "negative_task_counted_as_positive",
             CheckSeverity::Warning,
         );
 

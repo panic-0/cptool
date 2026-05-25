@@ -19,7 +19,7 @@
 - `src/tool/data.rs`：正式数据生成、暂存和提交流程。
 - `src/tool/fixture.rs`：手写 input、validator、checker fixture 的添加、检查和列表。
 - `src/tool/run.rs`：程序运行以及可选输出/报告写入。
-- `src/tool/stress.rs`、`src/tool/stress_plan.rs`、`src/tool/stress_args.rs`：临时对拍和配置化 stress plan。
+- `src/tool/stress.rs`、`src/tool/task_expect.rs`、`src/tool/stress_args.rs`：临时 batch 和配置化 task expect。
 - `src/tool/check/`：题包检查、YAML 形状检查、题面和样例审计。
 - `src/tool/report/`：证据聚合和渲染。
 - `example/`：smoke 测试使用的可执行示例题包。
@@ -43,12 +43,12 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features
 ```
 
-如果改动涉及示例题包、初始化、数据生成、stress plan 或 report evidence，应补充或更新 `tests/` 下对应集成测试，并先运行相关测试文件，再跑完整检查。
+如果改动涉及示例题包、初始化、数据生成、task expect 或 report evidence，应补充或更新 `tests/` 下对应集成测试，并先运行相关测试文件，再跑完整检查。
 
 ## 题包语义
 
 - `pkg init` 生成自包含题包脚手架，包括源码、数据和测试 fixture 目录。
-- 顶层默认值，例如运行限制、C++ 编译参数和 `generator`，应由 test cases 和 stress plans 复用；只有确实需要局部差异时才写 override。
+- 顶层默认值，例如运行限制、C++ 编译参数和 `generator`，应由 test cases 和 task expect 复用；只有确实需要局部差异时才写 override。
 - 保留 generator 名 `:file` 表示从题包内 `fixtures/input/*.in` 读取手写输入 fixture；它不是注册在 `programs` 里的程序。
 - 显式 validator 测试和复制 fixture 的生成路径默认会规范化输入换行。源 fixture 不应被回写，除非命令文档明确说明会这样做。
 - `pkg clean` 只面向生成数据和本地缓存。validator、checker、corner、failure examples 等长期 fixture 目录不应被清理，除非命令明确拥有它们。

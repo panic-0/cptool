@@ -56,6 +56,7 @@ pub fn stress_with_options(options: StressOptions<'_>) -> Result<StressSummary> 
         failure_dir: options.failure_dir,
         output_limit_bytes: options.output_limit_bytes,
         plan_name: None,
+        progress_label: "check",
         print_progress: options.print_progress,
         print_warnings: options.print_warnings,
         expect_failure: false,
@@ -90,7 +91,7 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
         print_warnings,
     } = options;
     if pass_programs.is_empty() && fail_programs.is_empty() {
-        anyhow::bail!("test stress requires at least one --pass or --fail program");
+        anyhow::bail!("test batch requires at least one --pass or --fail program");
     }
     let problem = load_problem(work_dir)?;
     let answer = if answer.is_empty() {
@@ -108,7 +109,8 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
             args_by_case: args_by_case.clone(),
             failure_dir,
             output_limit_bytes,
-            plan_name: Some(&format!("stress:pass:{program}")),
+            plan_name: Some(&format!("batch:pass:{program}")),
+            progress_label: "check",
             print_progress,
             print_warnings,
             expect_failure: false,
@@ -124,7 +126,8 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
             args_by_case: args_by_case.clone(),
             failure_dir,
             output_limit_bytes,
-            plan_name: Some(&format!("stress:fail:{program}")),
+            plan_name: Some(&format!("batch:fail:{program}")),
+            progress_label: "check",
             print_progress,
             print_warnings,
             expect_failure: true,
@@ -137,6 +140,7 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct StressSummary {
+    #[serde(default, alias = "task_name", alias = "check_name")]
     pub plan_name: Option<String>,
     #[serde(default)]
     pub checker: Option<String>,
@@ -284,6 +288,7 @@ pub(crate) struct StressRunOptions<'a> {
     pub(crate) failure_dir: Option<&'a Path>,
     pub(crate) output_limit_bytes: usize,
     pub(crate) plan_name: Option<&'a str>,
+    pub(crate) progress_label: &'a str,
     pub(crate) print_progress: bool,
     pub(crate) print_warnings: bool,
     pub(crate) expect_failure: bool,
@@ -299,6 +304,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         failure_dir,
         output_limit_bytes,
         plan_name,
+        progress_label,
         print_progress,
         print_warnings,
         expect_failure,
@@ -376,7 +382,9 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
                 }
                 if print_progress {
                     if let Some(plan_name) = plan_name {
-                        println!("plan `{plan_name}` case {case_index} expected failure observed");
+                        println!(
+                            "{progress_label} `{plan_name}` case {case_index} expected failure observed"
+                        );
                     } else {
                         println!("case {case_index} expected failure observed");
                     }
@@ -402,7 +410,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         }
         if print_progress {
             if let Some(plan_name) = plan_name {
-                println!("plan `{plan_name}` case {index} ok");
+                println!("{progress_label} `{plan_name}` case {index} ok");
             } else {
                 println!("case {index} ok");
             }
@@ -425,11 +433,11 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             if allow_expected_failure_absent {
                 return Ok(summary);
             }
-            let plan = plan_name
-                .map(|name| format!(" plan `{name}`"))
+            let check = plan_name
+                .map(|name| format!(" `{name}`"))
                 .unwrap_or_default();
             anyhow::bail!(
-                "stress{plan} expected failure but all {} cases passed",
+                "expect check{check} expected failure but all {} cases passed",
                 summary.cases
             );
         };
@@ -770,11 +778,11 @@ fn save_stress_failure(
     failure: StressFailure,
 ) -> Result<()> {
     let artifacts = save_stress_failure_artifacts(failure_dir, plan_name, &failure)?;
-    let plan = plan_name
-        .map(|name| format!(" plan `{name}`"))
+    let check = plan_name
+        .map(|name| format!(" `{name}`"))
         .unwrap_or_default();
     anyhow::bail!(
-        "stress{plan} failed on case {}; {}; saved {}.in, {}.txt, and per-program .out/.err files",
+        "expect check{check} failed on case {}; {}; saved {}.in, {}.txt, and per-program .out/.err files",
         failure.case_index,
         failure.reason,
         artifacts.stem.display(),
@@ -948,8 +956,8 @@ fn render_stress_failure(
     checker: Option<&StressCheckerArtifact>,
 ) -> String {
     let mut report = match plan_name {
-        Some(plan_name) => format!("stress plan `{plan_name}` failed on case {case_index}\n\n"),
-        None => format!("stress failed on case {case_index}\n\n"),
+        Some(plan_name) => format!("expect check `{plan_name}` failed on case {case_index}\n\n"),
+        None => format!("batch check failed on case {case_index}\n\n"),
     };
     report.push_str(&format!("reason: {reason}\n\n"));
     for artifact in artifacts {
@@ -1014,7 +1022,7 @@ mod tests {
             None,
         );
 
-        assert!(report.starts_with("stress plan `random` failed on case 2"));
+        assert!(report.starts_with("expect check `random` failed on case 2"));
         assert!(report.contains("reason: wrong_answer: output mismatch"));
     }
 

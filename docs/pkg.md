@@ -27,7 +27,7 @@ cpp_compile_args: [-O2, -std=c++20]
 ./cptool pkg check -w ./example/a_plus_b --json --wait-for-generation-lock 10
 ```
 
-`pkg check` 会检查题包结构、未知 `problem.yaml` 字段、程序路径、validator 声明、task 和 bundle 覆盖、生成数据完整性与陈旧文件、stress plan 结构、样例生成和样例输出。
+`pkg check` 会检查题包结构、未知 `problem.yaml` 字段、程序路径、validator 声明、task 和 bundle 覆盖、生成数据完整性与陈旧文件、样例生成和样例输出。
 
 如果数据正在并发生成，它会报告 `data_generation_in_progress`，而不是读取可能不完整的 `data/`。JSON 模式下，该 issue 包含 `kind: "lock"`、`transient: true` 和 `retry_after: "wait_for_generation_then_retry"`。
 

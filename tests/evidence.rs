@@ -3,7 +3,7 @@ use common::*;
 use serde_json::Value;
 
 #[test]
-fn evidence_json_aggregates_check_gen_and_stress_plan() {
+fn evidence_json_aggregates_check_gen_and_task() {
     if !python_available() {
         return;
     }
@@ -34,13 +34,13 @@ fn evidence_json_aggregates_check_gen_and_stress_plan() {
     assert_eq!(value["check"]["report"]["errors"], 0);
     assert_eq!(value["gen"]["status"], "ok");
     assert_eq!(value["gen"]["report"]["cases"], 1);
-    assert_eq!(value["stress_plan"]["status"], "ok");
+    assert_eq!(value["task"]["status"], "ok");
     assert!(
-        value["stress_plan"]["report"]
+        value["task"]["report"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|plan| plan["plan_name"] == "tiny:pass:brute" && plan["cases"] == 2)
+            .any(|task| task["plan_name"] == "tiny:pass:brute" && task["cases"] == 2)
     );
 }
 
@@ -85,9 +85,9 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     assert!(text.contains("- status: `pass`"));
     assert!(text.contains("### Generation"));
     assert!(text.contains("- validator_configured: false"));
-    assert!(text.contains("### Positive Stress Plans"));
+    assert!(text.contains("### Positive Task Checks"));
     assert!(text.contains("`tiny-pass:pass:brute`: cases=2 unique_input_hashes=1"));
-    assert!(text.contains("### Negative Stress Plans"));
+    assert!(text.contains("### Negative Task Checks"));
     assert!(text.contains("`bad-is-detected:fail:bad`: cases=2 unique_input_hashes=1"));
     assert!(text.contains("failed_cases=2 passed_cases=0 failure_ratio=1.000"));
 }
@@ -131,7 +131,7 @@ fn evidence_json_out_writes_utf8_sidecar_and_preserves_stdout() {
     let value: Value = serde_json::from_slice(&sidecar).unwrap();
     assert_eq!(value["check"]["status"], "ok");
     assert_eq!(value["gen"]["status"], "ok");
-    assert_eq!(value["stress_plan"]["status"], "ok");
+    assert_eq!(value["task"]["status"], "ok");
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn evidence_markdown_out_writes_same_quality_section_as_stdout() {
     assert!(sidecar.contains("## Tool Evidence"));
     assert!(sidecar.contains("### Check"));
     assert!(sidecar.contains("### Generation"));
-    assert!(sidecar.contains("### Positive Stress Plans"));
+    assert!(sidecar.contains("### Positive Task Checks"));
 }
 
 #[test]
@@ -208,17 +208,17 @@ fn evidence_text_out_does_not_replace_existing_directory_on_failure() {
 }
 
 #[test]
-fn evidence_json_can_reuse_stress_plan_report_without_new_failure_artifacts() {
+fn evidence_json_can_reuse_task_report_without_new_failure_artifacts() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-evidence-reuse-stress-plan");
+    let temp = TempWorkspace::new("cptool-evidence-reuse-task");
     run_cptool(
-        ["pkg", "init", "evidence_reuse_stress_plan", "--root"],
+        ["pkg", "init", "evidence_reuse_task", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("evidence_reuse_stress_plan");
+    let problem_dir = temp.path().join("evidence_reuse_task");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("bad.py"),
@@ -231,10 +231,10 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     .unwrap();
     append_expect_fail_stress_plan(&problem_dir);
 
-    let stress_plan = run_cptool(
+    let task = run_cptool(
         [
             "test",
-            "plan",
+            "task",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -242,8 +242,8 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
         ],
         None,
     );
-    let reused_path = problem_dir.join("stress-plan-summary.json");
-    std::fs::write(&reused_path, &stress_plan.stdout).unwrap();
+    let reused_path = problem_dir.join("task-summary.json");
+    std::fs::write(&reused_path, &task.stdout).unwrap();
     let failure_reports_before = count_failure_reports(&problem_dir);
 
     let evidence = run_cptool(
@@ -253,15 +253,15 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
             "-w",
             problem_dir.to_str().unwrap(),
             "--json",
-            "--reuse-existing-stress-plan",
+            "--reuse-existing-task",
             reused_path.to_str().unwrap(),
         ],
         None,
     );
     let value: Value = serde_json::from_slice(&evidence.stdout).unwrap();
 
-    assert_eq!(value["stress_plan"]["status"], "ok");
-    let reused_plan = value["stress_plan"]["report"]
+    assert_eq!(value["task"]["status"], "ok");
+    let reused_plan = value["task"]["report"]
         .as_array()
         .unwrap()
         .iter()
@@ -312,7 +312,7 @@ fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
     assert_eq!(value["check"]["status"], "ok");
     assert_eq!(value["check"]["report"]["status"], "pass");
     assert_eq!(value["gen"]["status"], "ok");
-    assert_eq!(value["stress_plan"]["status"], "ok");
+    assert_eq!(value["task"]["status"], "ok");
     assert!(stderr.contains("waiting for data generation lock:"));
     assert!(stderr.contains(GENERATION_LOCK_WAIT_TIMEOUT_LOG));
 }

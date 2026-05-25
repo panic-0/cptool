@@ -14,7 +14,7 @@ CP Tool 是面向算法竞赛题包的确定性命令行工具。它负责创建
 # 在一个已生成用例上运行标准程序
 ./cptool case run std sample[0] -w ./example/a_plus_b
 
-# 检查题包结构、生成数据、样例和 stress plan
+# 检查题包结构、生成数据、样例和 task expect
 ./cptool pkg check -w ./example/a_plus_b
 
 # 收集机器可读证据
@@ -33,9 +33,9 @@ CP Tool 是面向算法竞赛题包的确定性命令行工具。它负责创建
 - [配置命令](docs/add.md)：`add program`、`add bundle`、`add task`、`add validator` 和 `add checker`。
 - [用例命令](docs/case.md)：`case gen` 和 `case run`。
 - [测试资产命令](docs/fixtures.md)：`fixture add` 和 `fixture check`。
-- [测试命令](docs/test.md)：validator/checker 测试、临时 stress 和 stress 计划。
+- [测试命令](docs/test.md)：validator/checker 测试、临时 batch 和 task expect。
 - [报告命令](docs/report.md)：证据聚合。
-- [题包 YAML](docs/problem-yaml.md)：题包配置、generator、bundle、task 和 stress 计划。
+- [题包 YAML](docs/problem-yaml.md)：题包配置、generator、bundle 和 task pass/fail。
 - [内置 checker](docs/builtin-checkers.md)：checker 选择和语义。
 
 ## 开发检查

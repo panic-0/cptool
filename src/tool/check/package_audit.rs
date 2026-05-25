@@ -18,19 +18,19 @@ pub(super) fn check_package_text_audit(report: &mut CheckReport, work_dir: &Path
     check_report_service_noise_and_failure_refs(report, work_dir);
 }
 
-pub(super) fn check_report_stress_plan_classification(
+pub(super) fn check_report_task_classification(
     report: &mut CheckReport,
     work_dir: &Path,
     problem: &Problem,
 ) {
-    let negative_plan_names = problem
+    let negative_task_names = problem
         .test
         .tasks
         .iter()
         .filter(|task| !task.fail_programs.is_empty())
         .map(|task| task.name.as_str())
         .collect::<Vec<_>>();
-    if negative_plan_names.is_empty() {
+    if negative_task_names.is_empty() {
         return;
     }
 
@@ -39,14 +39,14 @@ pub(super) fn check_report_stress_plan_classification(
         return;
     };
 
-    for name in negative_plan_names {
+    for name in negative_task_names {
         if text
             .lines()
             .any(|line| line.contains("正向") && line.contains(name))
         {
             report.warning(
-                codes::NEGATIVE_PLAN_COUNTED_AS_POSITIVE,
-                format!("expect: fail plan appears in positive coverage text: {name}"),
+                codes::NEGATIVE_TASK_COUNTED_AS_POSITIVE,
+                format!("task fail check appears in positive coverage text: {name}"),
                 Some(path),
             );
             return;

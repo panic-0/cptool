@@ -31,7 +31,7 @@ pub(super) enum Commands {
         #[command(subcommand)]
         command: CaseCommands,
     },
-    #[command(about = "Run validator, checker, stress, and stress-plan tests")]
+    #[command(about = "Run validator, checker, task, and batch tests")]
     Test {
         #[command(subcommand)]
         command: TestCommands,
@@ -276,24 +276,14 @@ pub(super) enum TestCommands {
         json: bool,
     },
     #[command(
-        about = "Stress test two programs on temporary generated inputs",
-        long_about = "Stress test programs on temporary generated inputs. Generator args after -- support full-string {L:R} integer ranges."
+        about = "Batch check programs on temporary generated inputs",
+        long_about = "Batch check programs on temporary generated inputs. Generator args after -- support full-string {L:R} integer ranges."
     )]
-    Stress {
+    Batch {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
         #[arg(long, help = "Generator program name from problem.yaml or source path")]
         generator: String,
-        #[arg(
-            value_name = "STD",
-            help = "Deprecated standard program name or source path"
-        )]
-        std: Option<String>,
-        #[arg(
-            value_name = "ALT",
-            help = "Deprecated alternative program name or source path"
-        )]
-        alt: Option<String>,
         #[arg(long, help = "Reference answer program; defaults to problem solution")]
         answer: Option<String>,
         #[arg(long = "pass", help = "Program expected to match the answer program")]
@@ -307,7 +297,7 @@ pub(super) enum TestCommands {
         output_limit_bytes: usize,
         #[arg(long, help = "Directory for failed inputs and per-program outputs")]
         failure_dir: Option<PathBuf>,
-        #[arg(long, help = "Print the stress summary as JSON")]
+        #[arg(long, help = "Print the batch summary as JSON")]
         json: bool,
         #[arg(
             last = true,
@@ -316,14 +306,14 @@ pub(super) enum TestCommands {
         args: Vec<String>,
     },
     #[command(
-        name = "plan",
-        about = "Run stress plans declared in problem.yaml",
-        long_about = "Run task expect checks declared in problem.yaml."
+        name = "task",
+        about = "Run task expect checks declared in problem.yaml",
+        long_about = "Run test.tasks pass/fail checks declared in problem.yaml."
     )]
-    Plan {
+    Task {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long, help = "Run only the named stress plan; omit to run all plans")]
+        #[arg(long, help = "Run only the named task; omit to run all expect tasks")]
         name: Option<String>,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
@@ -338,22 +328,10 @@ pub(super) enum TestCommands {
         wait_for_generation_lock: Option<u64>,
         #[arg(
             long,
-            help = "Print one compact summary line per plan instead of per-case progress"
+            help = "Print one compact summary line per task check instead of per-case progress"
         )]
         summary_only: bool,
-        #[arg(
-            long,
-            conflicts_with = "negative_only",
-            help = "Run only task pass checks"
-        )]
-        positive_only: bool,
-        #[arg(
-            long,
-            conflicts_with = "positive_only",
-            help = "Run only task fail checks"
-        )]
-        negative_only: bool,
-        #[arg(long, help = "Print stress plan summaries as JSON")]
+        #[arg(long, help = "Print task check summaries as JSON")]
         json: bool,
     },
 }
@@ -492,7 +470,7 @@ pub(super) enum FixtureCheckerCommands {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum ReportCommands {
-    #[command(about = "Collect check, generation, and stress-plan evidence")]
+    #[command(about = "Collect check, generation, and task evidence")]
     Evidence {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
@@ -500,15 +478,15 @@ pub(super) enum ReportCommands {
         output_limit_bytes: usize,
         #[arg(long, help = "Skip official data generation evidence")]
         skip_gen: bool,
-        #[arg(long, help = "Skip stress-plan evidence")]
-        skip_stress_plan: bool,
+        #[arg(long, help = "Skip task expect evidence")]
+        skip_task: bool,
         #[arg(
             long,
             value_name = "PATH",
-            conflicts_with = "skip_stress_plan",
-            help = "Reuse JSON from `test plan --summary-only --json` instead of rerunning stress plans"
+            conflicts_with = "skip_task",
+            help = "Reuse JSON from `test task --summary-only --json` instead of rerunning task checks"
         )]
-        reuse_existing_stress_plan: Option<PathBuf>,
+        reuse_existing_task: Option<PathBuf>,
         #[arg(
             long,
             value_name = "SECONDS",

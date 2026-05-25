@@ -1606,7 +1606,7 @@ fn check_json_keeps_package_audit_warning_codes_stable() {
         "double_nested_problem_dir",
         "service_side_noise",
         "missing_failure_reference",
-        "negative_plan_counted_as_positive",
+        "negative_task_counted_as_positive",
     ] {
         let issue = find_issue(&value, code);
         assert_eq!(issue["severity"], "warning");

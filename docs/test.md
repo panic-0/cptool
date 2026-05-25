@@ -22,28 +22,26 @@
 
 不指定文件组时，`test checker` 会运行所有 checker fixture。显式测试 checker 时，必须同时提供 `--input`、`--output` 和 `--answer`。
 
-## 临时 Stress
+## 临时 Batch
 
 ```bash
-./cptool test stress -w ./example/a_plus_b --generator gen --pass brute -- 10 "{1:100}"
-./cptool test stress -w ./example/a_plus_b --generator gen --fail wrong -- 10 "{1:100}"
+./cptool test batch -w ./example/a_plus_b --generator gen --pass brute -- 10 "{1:100}"
+./cptool test batch -w ./example/a_plus_b --generator gen --fail wrong -- 10 "{1:100}"
 ```
 
-`test stress` 生成临时输入并运行临时 expect。它不运行正式 bundle，也不把数据写入 `data/`。默认参考答案是 `solution`，也可以用 `--answer PROGRAM` 覆盖。
+`test batch` 生成临时输入并运行临时 expect。它不运行正式 bundle，也不把数据写入 `data/`。默认参考答案是 `solution`，也可以用 `--answer PROGRAM` 覆盖。
 
 `--` 后的参数支持完整字符串 range：`"{L:R}"`。多个 range 做笛卡尔积展开；不含 range 的参数只生成一个临时 case。
 
-## Stress 计划
+## Task Expect
 
 ```bash
-./cptool test plan -w ./example/a_plus_b --name small
-./cptool test plan -w ./example/a_plus_b --summary-only
-./cptool test plan -w ./example/a_plus_b --summary-only --json
-./cptool test plan -w ./example/a_plus_b --positive-only --summary-only --json
-./cptool test plan -w ./example/a_plus_b --negative-only --summary-only --json
-./cptool test plan -w ./example/a_plus_b --wait-for-generation-lock 10
+./cptool test task -w ./example/a_plus_b --name small
+./cptool test task -w ./example/a_plus_b --summary-only
+./cptool test task -w ./example/a_plus_b --summary-only --json
+./cptool test task -w ./example/a_plus_b --wait-for-generation-lock 10
 ```
 
-`test plan` 运行 `problem.yaml` 中 `test.tasks[].pass` 和 `test.tasks[].fail`。有 `score` 的 task 仍然是正式数据；无 `score` 的 task 是 verify-only，不落盘、不导出。verify-only task 可以直接写 `cases`，这些临时 case 只服务于 `test plan`。
+`test task` 运行 `problem.yaml` 中 `test.tasks[].pass` 和 `test.tasks[].fail`。有 `score` 的 task 仍然是正式数据；无 `score` 的 task 是 verify-only，不落盘、不导出。verify-only task 可以直接写 `cases`，这些临时 case 只服务于 `test task`。
 
 `fail` 在至少观察到一个 WA/RE/TLE/OLE/UKE 时成功，并报告 `failed_cases`、`passed_cases` 和 `failure_ratio`。旧 `stress.plans` 会在读取时迁移到 task pass/fail。

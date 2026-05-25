@@ -458,7 +458,6 @@ fn render_problem(problem: &Problem) -> String {
         out.push_str(&format!("generator: {}\n", key_or_string(generator)));
     }
     render_test(&mut out, problem);
-    render_stress(&mut out, problem);
     out
 }
 
@@ -615,41 +614,10 @@ fn render_test(out: &mut String, problem: &Problem) {
     }
 }
 
-fn render_stress(out: &mut String, problem: &Problem) {
-    let stress = &problem.stress;
-    if stress.plans.is_empty() {
-        return;
-    }
-    out.push_str("stress:\n  plans:\n");
-    for plan in &stress.plans {
-        out.push_str(&format!("  - name: {}\n", key_or_string(&plan.name)));
-        if problem.generator_name.as_deref() != Some(plan.generator.as_str()) {
-            out.push_str(&format!(
-                "    generator: {}\n",
-                key_or_string(&plan.generator)
-            ));
-        }
-        out.push_str(&format!("    args: {}\n", inline_list(&plan.args)));
-        out.push_str(&format!("    against: {}\n", inline_list(&plan.against)));
-        out.push_str(&format!("    cases: {}\n", plan.cases));
-        out.push_str(&format!(
-            "    expect: {}\n",
-            stress_expect_name(plan.expect)
-        ));
-    }
-}
-
 fn task_type_name(task_type: TestTaskType) -> &'static str {
     match task_type {
         TestTaskType::Sum => "sum",
         TestTaskType::Min => "min",
-    }
-}
-
-fn stress_expect_name(expect: super::schema::StressPlanExpectation) -> &'static str {
-    match expect {
-        super::schema::StressPlanExpectation::Pass => "pass",
-        super::schema::StressPlanExpectation::Fail => "fail",
     }
 }
 

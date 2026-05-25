@@ -3,7 +3,7 @@ use common::*;
 use std::path::PathBuf;
 
 #[test]
-fn cli_runs_init_generate_run_stress_and_export_flow() {
+fn cli_runs_init_generate_run_batch_and_export_flow() {
     if !python_available() {
         return;
     }
@@ -43,7 +43,7 @@ fn cli_runs_init_generate_run_stress_and_export_flow() {
     run_cptool(
         [
             "test",
-            "stress",
+            "batch",
             "-w",
             problem_dir.to_str().unwrap(),
             "--generator",
@@ -428,30 +428,40 @@ fn cli_help_describes_new_workflow_commands() {
 
     let evidence = run_cptool(["report", "evidence", "--help"], None);
     let evidence_stdout = String::from_utf8_lossy(&evidence.stdout);
-    assert!(evidence_stdout.contains("Collect check, generation, and stress-plan evidence"));
+    assert!(evidence_stdout.contains("Collect check, generation, and task evidence"));
     assert!(evidence_stdout.contains("--json"));
     assert!(evidence_stdout.contains("--skip-gen"));
-    assert!(evidence_stdout.contains("--reuse-existing-stress-plan"));
+    assert!(evidence_stdout.contains("--reuse-existing-task"));
     assert!(evidence_stdout.contains("--wait-for-generation-lock"));
     assert!(evidence_stdout.contains("--out"));
 
-    let stress_plan = run_cptool(["test", "plan", "--help"], None);
-    let stress_plan_stdout = String::from_utf8_lossy(&stress_plan.stdout);
-    assert!(stress_plan_stdout.contains("--name"));
-    assert!(stress_plan_stdout.contains("Run only the named stress plan"));
-    assert!(stress_plan_stdout.contains("--summary-only"));
-    assert!(stress_plan_stdout.contains("--positive-only"));
-    assert!(stress_plan_stdout.contains("--negative-only"));
-    assert!(stress_plan_stdout.contains("--json"));
-    assert!(stress_plan_stdout.contains("--wait-for-generation-lock"));
+    let task = run_cptool(["test", "task", "--help"], None);
+    let task_stdout = String::from_utf8_lossy(&task.stdout);
+    assert!(task_stdout.contains("--name"));
+    assert!(task_stdout.contains("Run only the named task"));
+    assert!(task_stdout.contains("--summary-only"));
+    assert!(!task_stdout.contains("--positive-only"));
+    assert!(!task_stdout.contains("--negative-only"));
+    assert!(task_stdout.contains("--json"));
+    assert!(task_stdout.contains("--wait-for-generation-lock"));
 
-    let stress = run_cptool(["test", "stress", "--help"], None);
-    let stress_stdout = String::from_utf8_lossy(&stress.stdout);
-    assert!(stress_stdout.contains("--pass"));
-    assert!(stress_stdout.contains("--fail"));
-    assert!(stress_stdout.contains("{L:R}"));
-    assert!(stress_stdout.contains("--json"));
-    assert!(!stress_stdout.contains("--against"));
+    let batch = run_cptool(["test", "batch", "--help"], None);
+    let batch_stdout = String::from_utf8_lossy(&batch.stdout);
+    assert!(batch_stdout.contains("--pass"));
+    assert!(batch_stdout.contains("--fail"));
+    assert!(batch_stdout.contains("{L:R}"));
+    assert!(batch_stdout.contains("--json"));
+    assert!(!batch_stdout.contains("--against"));
+
+    for args in [
+        &["test", "task", "--positive-only"][..],
+        &["test", "task", "--negative-only"][..],
+        &["test", "plan", "--help"][..],
+        &["test", "stress", "--help"][..],
+    ] {
+        let output = run_cptool_slice_allow_failure(args, None);
+        assert!(!output.status.success(), "{args:?} unexpectedly succeeded");
+    }
 }
 #[test]
 fn wait_for_generation_lock_rejects_zero_seconds() {
@@ -459,7 +469,7 @@ fn wait_for_generation_lock_rejects_zero_seconds() {
         &["case", "gen", "--wait-for-generation-lock", "0"][..],
         &["case", "run", "--wait-for-generation-lock", "0"][..],
         &["pkg", "check", "--wait-for-generation-lock", "0"][..],
-        &["test", "plan", "--wait-for-generation-lock", "0"][..],
+        &["test", "task", "--wait-for-generation-lock", "0"][..],
         &["report", "evidence", "--wait-for-generation-lock", "0"][..],
     ] {
         let output = run_cptool_slice_allow_failure(args, None);

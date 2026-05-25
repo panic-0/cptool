@@ -151,11 +151,9 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             output_limit_bytes,
             json,
         })?,
-        TestCommands::Stress {
+        TestCommands::Batch {
             work_dir,
             generator,
-            std,
-            alt,
             answer,
             pass,
             fail,
@@ -163,16 +161,9 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             failure_dir,
             json,
             args,
-        } => handle_stress(StressCommandOptions {
+        } => handle_batch(BatchCommandOptions {
             work_dir,
             generator,
-            legacy_against: match (std, alt) {
-                (Some(std), Some(alt)) => Some(vec![std, alt]),
-                (None, None) => None,
-                _ => anyhow::bail!(
-                    "deprecated test stress positional mode requires both STD and ALT"
-                ),
-            },
             answer,
             pass,
             fail,
@@ -181,25 +172,21 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             json,
             args,
         })?,
-        TestCommands::Plan {
+        TestCommands::Task {
             work_dir,
             name,
             output_limit_bytes,
             failure_dir,
             wait_for_generation_lock,
             summary_only,
-            positive_only,
-            negative_only,
             json,
-        } => handle_stress_plan(StressPlanCommandOptions {
+        } => handle_task_expect(TaskExpectCommandOptions {
             work_dir,
             name,
             output_limit_bytes,
             failure_dir,
             wait_for_generation_lock,
             summary_only,
-            positive_only,
-            negative_only,
             json,
         })?,
     }
@@ -394,8 +381,8 @@ fn handle_report(command: ReportCommands) -> anyhow::Result<()> {
             work_dir,
             output_limit_bytes,
             skip_gen,
-            skip_stress_plan,
-            reuse_existing_stress_plan,
+            skip_task,
+            reuse_existing_task,
             wait_for_generation_lock,
             json,
             markdown,
@@ -404,8 +391,8 @@ fn handle_report(command: ReportCommands) -> anyhow::Result<()> {
             work_dir,
             output_limit_bytes,
             skip_gen,
-            skip_stress_plan,
-            reuse_existing_stress_plan,
+            skip_task,
+            reuse_existing_task,
             wait_for_generation_lock,
             json,
             markdown,
@@ -625,10 +612,9 @@ fn handle_clean(work_dir: PathBuf, data: bool, cache: bool, json: bool) -> anyho
     Ok(())
 }
 
-struct StressCommandOptions {
+struct BatchCommandOptions {
     work_dir: PathBuf,
     generator: String,
-    legacy_against: Option<Vec<String>>,
     answer: Option<String>,
     pass: Vec<String>,
     fail: Vec<String>,
@@ -638,17 +624,7 @@ struct StressCommandOptions {
     args: Vec<String>,
 }
 
-fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
-    if let Some(against) = options.legacy_against {
-        eprintln!(
-            "warning: deprecated test stress positional mode; use --answer {} --pass {}",
-            against[0], against[1]
-        );
-        return handle_legacy_stress(StressCommandOptions {
-            legacy_against: Some(against),
-            ..options
-        });
-    }
+fn handle_batch(options: BatchCommandOptions) -> anyhow::Result<()> {
     let answer = options.answer.unwrap_or_default();
     let args_by_case = tool::range_args(&options.args)?;
     let summaries = unwrap_or_print_compile_failure(
@@ -668,7 +644,7 @@ fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
     )?;
     if options.json {
         let summaries = display_stress_summaries(summaries, &options.work_dir);
-        let report = self::json::StressPlanJsonReport::from_summaries(&summaries);
+        let report = self::json::BatchJsonReport::from_summaries(&summaries);
         self::json::print(&report)?;
     } else {
         let cases = summaries
@@ -677,7 +653,7 @@ fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
             .max()
             .unwrap_or(0);
         println!(
-            "stress expect passed: {} cases checks={}",
+            "batch expect passed: {} cases checks={}",
             cases,
             summaries.len()
         );
@@ -685,82 +661,36 @@ fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn handle_legacy_stress(options: StressCommandOptions) -> anyhow::Result<()> {
-    let against = options
-        .legacy_against
-        .as_ref()
-        .expect("legacy stress requires positional programs");
-    if options.json {
-        let summary = unwrap_or_print_compile_failure(
-            tool::stress_with_options(tool::StressOptions {
-                work_dir: &options.work_dir,
-                generator: &options.generator,
-                against,
-                cases: 1,
-                args: &options.args,
-                failure_dir: options.failure_dir.as_deref(),
-                output_limit_bytes: options.output_limit_bytes,
-                print_progress: false,
-                print_warnings: false,
-            }),
-            options.json,
-        )?;
-        let summary = display_stress_summary(summary, &options.work_dir);
-        self::json::print(&self::json::StressJsonSummary::from(&summary))?;
-    } else {
-        let summary = unwrap_or_print_compile_failure(
-            tool::stress_with_summary(
-                &options.work_dir,
-                &options.generator,
-                against,
-                1,
-                &options.args,
-                options.failure_dir.as_deref(),
-                options.output_limit_bytes,
-            ),
-            options.json,
-        )?;
-        println!(
-            "stress passed: {} cases unique_input_hashes={}",
-            summary.cases, summary.unique_input_hashes
-        );
-    }
-    Ok(())
-}
-
-struct StressPlanCommandOptions {
+struct TaskExpectCommandOptions {
     work_dir: PathBuf,
     name: Option<String>,
     output_limit_bytes: usize,
     failure_dir: Option<PathBuf>,
     wait_for_generation_lock: Option<u64>,
     summary_only: bool,
-    positive_only: bool,
-    negative_only: bool,
     json: bool,
 }
 
-fn handle_stress_plan(options: StressPlanCommandOptions) -> anyhow::Result<()> {
-    let stress_options = tool::StressPlanOptions {
+fn handle_task_expect(options: TaskExpectCommandOptions) -> anyhow::Result<()> {
+    let task_options = tool::TaskExpectOptions {
         work_dir: &options.work_dir,
         name: options.name.as_deref(),
         failure_dir: options.failure_dir.as_deref(),
         output_limit_bytes: options.output_limit_bytes,
         summary_only: options.summary_only,
-        filter: stress_plan_filter(options.positive_only, options.negative_only),
         generation_lock_timeout: generation_lock_timeout(options.wait_for_generation_lock),
     };
     if options.json {
         let summaries = unwrap_or_print_compile_failure(
-            tool::stress_plan_collect_with_options(stress_options),
+            tool::task_expect_collect_with_options(task_options),
             options.json,
         )?;
         let summaries = display_stress_summaries(summaries, &options.work_dir);
-        let report = self::json::StressPlanJsonReport::from_summaries(&summaries);
+        let report = self::json::TaskJsonReport::from_summaries(&summaries);
         self::json::print(&report)?;
     } else {
         unwrap_or_print_compile_failure(
-            tool::stress_plan_with_options(stress_options),
+            tool::task_expect_with_options(task_options),
             options.json,
         )?;
     }
@@ -794,8 +724,8 @@ struct EvidenceCommandOptions {
     work_dir: PathBuf,
     output_limit_bytes: usize,
     skip_gen: bool,
-    skip_stress_plan: bool,
-    reuse_existing_stress_plan: Option<PathBuf>,
+    skip_task: bool,
+    reuse_existing_task: Option<PathBuf>,
     wait_for_generation_lock: Option<u64>,
     json: bool,
     markdown: bool,
@@ -807,8 +737,8 @@ fn handle_evidence(options: EvidenceCommandOptions) -> anyhow::Result<()> {
         work_dir: options.work_dir,
         output_limit_bytes: options.output_limit_bytes,
         skip_gen: options.skip_gen,
-        skip_stress_plan: options.skip_stress_plan,
-        reuse_existing_stress_plan: options.reuse_existing_stress_plan,
+        skip_task: options.skip_task,
+        reuse_existing_task: options.reuse_existing_task,
         generation_lock_timeout: generation_lock_timeout(options.wait_for_generation_lock),
     });
     let has_errors = report.has_errors();
@@ -936,16 +866,6 @@ fn normalize_run_positionals(
     }
 }
 
-fn stress_plan_filter(positive_only: bool, negative_only: bool) -> tool::StressPlanFilter {
-    if positive_only {
-        tool::StressPlanFilter::PositiveOnly
-    } else if negative_only {
-        tool::StressPlanFilter::NegativeOnly
-    } else {
-        tool::StressPlanFilter::All
-    }
-}
-
 fn generation_lock_timeout(seconds: Option<u64>) -> Option<Duration> {
     seconds.map(Duration::from_secs)
 }
@@ -1009,8 +929,8 @@ fn display_evidence_report(mut report: tool::EvidenceReport) -> tool::EvidenceRe
             .collect();
     }
 
-    if let Some(stress_reports) = report.stress_plan.report.as_mut() {
-        for summary in stress_reports {
+    if let Some(task_reports) = report.task.report.as_mut() {
+        for summary in task_reports {
             shorten_stress_summary_paths(summary, &original_work_dir);
         }
     }
@@ -1026,14 +946,6 @@ fn display_stress_summaries(
         shorten_stress_summary_paths(summary, work_dir);
     }
     summaries
-}
-
-fn display_stress_summary(
-    mut summary: tool::StressSummary,
-    work_dir: &Path,
-) -> tool::StressSummary {
-    shorten_stress_summary_paths(&mut summary, work_dir);
-    summary
 }
 
 fn display_judge_report(
@@ -1682,26 +1594,6 @@ mod tests {
         assert_eq!(
             generation_lock_timeout(Some(3)),
             Some(Duration::from_secs(3))
-        );
-    }
-
-    #[test]
-    fn stress_plan_filter_prefers_positive_when_both_are_set() {
-        assert_eq!(
-            stress_plan_filter(false, false),
-            tool::StressPlanFilter::All
-        );
-        assert_eq!(
-            stress_plan_filter(true, false),
-            tool::StressPlanFilter::PositiveOnly
-        );
-        assert_eq!(
-            stress_plan_filter(false, true),
-            tool::StressPlanFilter::NegativeOnly
-        );
-        assert_eq!(
-            stress_plan_filter(true, true),
-            tool::StressPlanFilter::PositiveOnly
         );
     }
 

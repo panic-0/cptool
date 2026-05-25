@@ -12,7 +12,7 @@ mod run;
 mod schema;
 mod stress;
 mod stress_args;
-mod stress_plan;
+mod task_expect;
 
 pub(crate) use crate::support::{temp_suffix, unix_epoch_nanos};
 pub use add::{
@@ -56,8 +56,8 @@ pub use stress::{
     stress_with_summary,
 };
 pub use stress_args::range_args;
-pub use stress_plan::{
-    StressPlanFilter, StressPlanOptions, stress_plan_collect_with_options, stress_plan_with_options,
+pub use task_expect::{
+    TaskExpectOptions, task_expect_collect_with_options, task_expect_with_options,
 };
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use super::data::{
 };
 use super::schema::DEFAULT_OUTPUT_LIMIT_BYTES;
 use super::stress::StressSummary;
-use super::stress_plan::{StressPlanOptions, stress_plan_collect_with_options};
+use super::task_expect::{TaskExpectOptions, task_expect_collect_with_options};
 use anyhow::Context;
 use serde::Deserialize;
 use serde::Serialize;
@@ -17,8 +17,8 @@ pub struct EvidenceOptions {
     pub work_dir: PathBuf,
     pub output_limit_bytes: usize,
     pub skip_gen: bool,
-    pub skip_stress_plan: bool,
-    pub reuse_existing_stress_plan: Option<PathBuf>,
+    pub skip_task: bool,
+    pub reuse_existing_task: Option<PathBuf>,
     pub generation_lock_timeout: Option<Duration>,
 }
 
@@ -28,8 +28,8 @@ impl EvidenceOptions {
             work_dir,
             output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
             skip_gen: false,
-            skip_stress_plan: false,
-            reuse_existing_stress_plan: None,
+            skip_task: false,
+            reuse_existing_task: None,
             generation_lock_timeout: None,
         }
     }
@@ -42,7 +42,7 @@ pub struct EvidenceReport {
     pub check: EvidenceSection<EvidenceCheckReport>,
     #[serde(rename = "gen")]
     pub r#gen: EvidenceSection<GenerateReport>,
-    pub stress_plan: EvidenceSection<Vec<StressSummary>>,
+    pub task: EvidenceSection<Vec<StressSummary>>,
 }
 
 impl EvidenceReport {
@@ -54,7 +54,7 @@ impl EvidenceReport {
                 .as_ref()
                 .is_some_and(EvidenceCheckReport::has_errors)
             || self.r#gen.is_error()
-            || self.stress_plan.is_error()
+            || self.task.is_error()
     }
 
     pub fn render_text(&self) -> String {
@@ -64,7 +64,7 @@ impl EvidenceReport {
         out.push_str(&format!("- work_dir: `{}`\n", self.work_dir.display()));
         out.push_str(&format!("- check: {}\n", self.check.summary()));
         out.push_str(&format!("- gen: {}\n", self.r#gen.summary()));
-        out.push_str(&format!("- stress_plan: {}\n", self.stress_plan.summary()));
+        out.push_str(&format!("- task: {}\n", self.task.summary()));
         out
     }
 
@@ -114,26 +114,26 @@ impl EvidenceReport {
             _ => out.push_str("- not recorded\n"),
         }
 
-        let plans = self
-            .stress_plan
+        let task_checks = self
+            .task
             .report
             .as_ref()
-            .filter(|_| self.stress_plan.status == EvidenceStatus::Ok)
+            .filter(|_| self.task.status == EvidenceStatus::Ok)
             .map(Vec::as_slice)
             .unwrap_or(&[]);
-        let positive = plans
+        let positive = task_checks
             .iter()
-            .filter(|plan| plan.expected_failure.is_none())
+            .filter(|check| check.expected_failure.is_none())
             .collect::<Vec<_>>();
-        let negative = plans
+        let negative = task_checks
             .iter()
-            .filter(|plan| plan.expected_failure.is_some())
+            .filter(|check| check.expected_failure.is_some())
             .collect::<Vec<_>>();
 
-        out.push_str("\n### Positive Stress Plans\n");
-        render_stress_plans(&mut out, &positive, false);
-        out.push_str("\n### Negative Stress Plans\n");
-        render_stress_plans(&mut out, &negative, true);
+        out.push_str("\n### Positive Task Checks\n");
+        render_task_checks(&mut out, &positive, false);
+        out.push_str("\n### Negative Task Checks\n");
+        render_task_checks(&mut out, &negative, true);
         out
     }
 }
@@ -241,7 +241,7 @@ impl EvidenceSection<Vec<StressSummary>> {
         match (&self.status, &self.report, &self.error) {
             (EvidenceStatus::Ok, Some(report), _) => {
                 let cases = report.iter().map(|summary| summary.cases).sum::<usize>();
-                format!("ok plans={} cases={}", report.len(), cases)
+                format!("ok checks={} cases={}", report.len(), cases)
             }
             (EvidenceStatus::Error, _, Some(error)) => format!("error {error}"),
             (EvidenceStatus::Skipped, _, Some(reason)) => format!("skipped {reason}"),
@@ -255,8 +255,8 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
         work_dir,
         output_limit_bytes,
         skip_gen,
-        skip_stress_plan,
-        reuse_existing_stress_plan,
+        skip_task,
+        reuse_existing_task,
         generation_lock_timeout,
     } = options;
     let r#gen = if skip_gen {
@@ -272,12 +272,12 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
             },
         ),
     ));
-    let stress_plan = if skip_stress_plan {
+    let task = if skip_task {
         EvidenceSection::skipped("requested_by_user")
-    } else if let Some(path) = reuse_existing_stress_plan {
-        collect_reused_stress_plan(&path)
+    } else if let Some(path) = reuse_existing_task {
+        collect_reused_task(&path)
     } else {
-        collect_stress_plan(&work_dir, output_limit_bytes, generation_lock_timeout)
+        collect_task(&work_dir, output_limit_bytes, generation_lock_timeout)
     };
 
     EvidenceReport {
@@ -285,32 +285,32 @@ pub fn collect_evidence(options: EvidenceOptions) -> EvidenceReport {
         work_dir,
         check,
         r#gen,
-        stress_plan,
+        task,
     }
 }
 
 #[derive(Deserialize)]
-struct StressPlanJsonReport {
-    plans: Vec<StressSummary>,
+struct TaskJsonReport {
+    tasks: Vec<StressSummary>,
 }
 
-fn collect_reused_stress_plan(path: &Path) -> EvidenceSection<Vec<StressSummary>> {
-    match read_reused_stress_plan(path) {
+fn collect_reused_task(path: &Path) -> EvidenceSection<Vec<StressSummary>> {
+    match read_reused_task(path) {
         Ok(report) => EvidenceSection::ok(report),
         Err(err) => EvidenceSection::error(err.to_string()),
     }
 }
 
-fn read_reused_stress_plan(path: &Path) -> anyhow::Result<Vec<StressSummary>> {
+fn read_reused_task(path: &Path) -> anyhow::Result<Vec<StressSummary>> {
     let text = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read stress-plan JSON `{}`", path.display()))?;
-    let report: StressPlanJsonReport = serde_json::from_str(&text).with_context(|| {
+        .with_context(|| format!("failed to read task JSON `{}`", path.display()))?;
+    let report: TaskJsonReport = serde_json::from_str(&text).with_context(|| {
         format!(
-            "failed to parse stress-plan JSON `{}`; expected output from `cptool test plan --summary-only --json`",
+            "failed to parse task JSON `{}`; expected output from `cptool test task --summary-only --json`",
             path.display()
         )
     })?;
-    Ok(report.plans)
+    Ok(report.tasks)
 }
 
 fn collect_gen(
@@ -331,18 +331,17 @@ fn collect_gen(
     }
 }
 
-fn collect_stress_plan(
+fn collect_task(
     work_dir: &Path,
     output_limit_bytes: usize,
     generation_lock_timeout: Option<Duration>,
 ) -> EvidenceSection<Vec<StressSummary>> {
-    match stress_plan_collect_with_options(StressPlanOptions {
+    match task_expect_collect_with_options(TaskExpectOptions {
         work_dir,
         name: None,
         failure_dir: None,
         output_limit_bytes,
         summary_only: true,
-        filter: super::stress_plan::StressPlanFilter::All,
         generation_lock_timeout,
     }) {
         Ok(report) => EvidenceSection::ok(report),
@@ -365,25 +364,25 @@ fn generate_warning_summary(warnings: &[GenerateWarning]) -> String {
         .join(",")
 }
 
-fn render_stress_plans(out: &mut String, plans: &[&StressSummary], negative: bool) {
-    if plans.is_empty() {
+fn render_task_checks(out: &mut String, checks: &[&StressSummary], negative: bool) {
+    if checks.is_empty() {
         out.push_str("- not recorded\n");
         return;
     }
-    for plan in plans {
-        let name = plan.plan_name.as_deref().unwrap_or("<unnamed>");
+    for check in checks {
+        let name = check.plan_name.as_deref().unwrap_or("<unnamed>");
         out.push_str(&format!(
             "- `{name}`: cases={} unique_input_hashes={} warnings={}",
-            plan.cases,
-            plan.unique_input_hashes,
-            stress_warning_summary(plan)
+            check.cases,
+            check.unique_input_hashes,
+            stress_warning_summary(check)
         ));
-        if let (Some(checker), Some(answer_program)) = (&plan.checker, &plan.answer_program) {
+        if let (Some(checker), Some(answer_program)) = (&check.checker, &check.answer_program) {
             out.push_str(&format!(
                 " checker={checker} answer_program={answer_program}"
             ));
         }
-        if negative && let Some(failure) = &plan.expected_failure {
+        if negative && let Some(failure) = &check.expected_failure {
             out.push_str(&format!(
                 " failed_cases={} passed_cases={} failure_ratio={:.3} report={}",
                 failure.failed_cases,

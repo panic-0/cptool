@@ -108,21 +108,65 @@ impl<'a> From<&'a tool::JudgeReport> for JudgeJsonSummary<'a> {
 }
 
 #[derive(Serialize)]
-pub(super) struct StressPlanJsonReport<'a> {
-    plans: Vec<StressJsonSummary<'a>>,
+pub(super) struct TaskJsonReport<'a> {
+    tasks: Vec<TaskJsonSummary<'a>>,
 }
 
-impl<'a> StressPlanJsonReport<'a> {
+impl<'a> TaskJsonReport<'a> {
     pub(super) fn from_summaries(summaries: &'a [tool::StressSummary]) -> Self {
         Self {
-            plans: summaries.iter().map(StressJsonSummary::from).collect(),
+            tasks: summaries.iter().map(TaskJsonSummary::from).collect(),
         }
     }
 }
 
 #[derive(Serialize)]
-pub(super) struct StressJsonSummary<'a> {
-    plan_name: Option<&'a str>,
+pub(super) struct BatchJsonReport<'a> {
+    checks: Vec<BatchJsonSummary<'a>>,
+}
+
+impl<'a> BatchJsonReport<'a> {
+    pub(super) fn from_summaries(summaries: &'a [tool::StressSummary]) -> Self {
+        Self {
+            checks: summaries.iter().map(BatchJsonSummary::from).collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub(super) struct TaskJsonSummary<'a> {
+    task_name: Option<&'a str>,
+    #[serde(flatten)]
+    summary: StressJsonFields<'a>,
+}
+
+impl<'a> From<&'a tool::StressSummary> for TaskJsonSummary<'a> {
+    fn from(summary: &'a tool::StressSummary) -> Self {
+        Self {
+            task_name: summary.plan_name.as_deref(),
+            summary: StressJsonFields::from(summary),
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub(super) struct BatchJsonSummary<'a> {
+    check_name: Option<&'a str>,
+    #[serde(flatten)]
+    summary: StressJsonFields<'a>,
+}
+
+impl<'a> From<&'a tool::StressSummary> for BatchJsonSummary<'a> {
+    fn from(summary: &'a tool::StressSummary) -> Self {
+        Self {
+            check_name: summary.plan_name.as_deref(),
+            summary: StressJsonFields::from(summary),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct StressJsonFields<'a> {
     checker: Option<&'a str>,
     answer_program: Option<&'a str>,
     cases: usize,
@@ -135,10 +179,9 @@ pub(super) struct StressJsonSummary<'a> {
     warnings: Vec<tool::StressWarning>,
 }
 
-impl<'a> From<&'a tool::StressSummary> for StressJsonSummary<'a> {
+impl<'a> From<&'a tool::StressSummary> for StressJsonFields<'a> {
     fn from(summary: &'a tool::StressSummary) -> Self {
         Self {
-            plan_name: summary.plan_name.as_deref(),
             checker: summary.checker.as_deref(),
             answer_program: summary.answer_program.as_deref(),
             cases: summary.cases,
