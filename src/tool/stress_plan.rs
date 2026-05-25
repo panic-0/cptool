@@ -202,6 +202,12 @@ fn task_cases_by_generator(
                 .push(case.args.clone());
         }
     }
+    for case in &task.cases {
+        cases
+            .entry(case.generator_name.clone())
+            .or_default()
+            .push(case.args.clone());
+    }
     Ok(cases)
 }
 

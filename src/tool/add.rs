@@ -159,6 +159,7 @@ pub fn add_task(options: AddTaskOptions) -> Result<()> {
         score: options.score,
         task_type: options.score.map(|_| options.task_type),
         bundles: options.bundles,
+        cases: Vec::new(),
         dependencies: options.dependencies,
         pass_programs: options.expect_pass,
         fail_programs: options.expect_fail,
@@ -474,6 +475,10 @@ fn render_programs(out: &mut String, problem: &Problem) {
     names.sort();
     for name in names {
         let program = &programs[name];
+        if let Some(path) = shorthand_program_path(problem, program) {
+            out.push_str(&format!("  {}: {}\n", key_or_string(name), q_path(path)));
+            continue;
+        }
         out.push_str(&format!("  {}:\n", key_or_string(name)));
         match &program.info {
             ProgramInfo::Cpp(cpp) => {
@@ -522,14 +527,42 @@ fn render_programs(out: &mut String, problem: &Problem) {
     }
 }
 
+fn shorthand_program_path<'a>(problem: &Problem, program: &'a Program) -> Option<&'a Path> {
+    if program.time_limit_secs != problem.time_limit_secs
+        || program.memory_limit_mb != problem.memory_limit_mb
+    {
+        return None;
+    }
+    match &program.info {
+        ProgramInfo::Cpp(cpp) if cpp.compile_args == problem.cpp_compile_args => {
+            Some(cpp.path.as_path())
+        }
+        ProgramInfo::Python(command) if command.extra_args.is_empty() => {
+            Some(command.path.as_path())
+        }
+        ProgramInfo::Command(_) | ProgramInfo::Cpp(_) | ProgramInfo::Python(_) => None,
+    }
+}
+
 fn render_test(out: &mut String, problem: &Problem) {
     let test = &problem.test;
     out.push_str("test:\n  bundles:\n");
     let mut bundle_names = test.bundles.keys().collect::<Vec<_>>();
     bundle_names.sort();
     for name in bundle_names {
-        out.push_str(&format!("    {}:\n      cases:\n", key_or_string(name)));
-        for case in &test.bundles[name].cases {
+        out.push_str(&format!("    {}:\n", key_or_string(name)));
+        let cases = &test.bundles[name].cases;
+        let all_default_generator = cases
+            .iter()
+            .all(|case| problem.generator_name.as_deref() == Some(case.generator_name.as_str()));
+        if !cases.is_empty() && all_default_generator {
+            for case in cases {
+                out.push_str(&format!("      - {}\n", inline_list(&case.args)));
+            }
+            continue;
+        }
+        out.push_str("      cases:\n");
+        for case in cases {
             if problem.generator_name.as_deref() == Some(case.generator_name.as_str()) {
                 out.push_str(&format!("      - {}\n", inline_list(&case.args)));
             } else {
@@ -550,7 +583,23 @@ fn render_test(out: &mut String, problem: &Problem) {
         if let Some(task_type) = task.task_type {
             out.push_str(&format!("    type: {}\n", task_type_name(task_type)));
         }
-        out.push_str(&format!("    bundles: {}\n", inline_list(&task.bundles)));
+        if !task.bundles.is_empty() {
+            out.push_str(&format!("    bundles: {}\n", inline_list(&task.bundles)));
+        }
+        if !task.cases.is_empty() {
+            out.push_str("    cases:\n");
+            for case in &task.cases {
+                if problem.generator_name.as_deref() == Some(case.generator_name.as_str()) {
+                    out.push_str(&format!("    - {}\n", inline_list(&case.args)));
+                } else {
+                    out.push_str(&format!(
+                        "    - generator: {}\n",
+                        key_or_string(&case.generator_name)
+                    ));
+                    out.push_str(&format!("      args: {}\n", inline_list(&case.args)));
+                }
+            }
+        }
         if !task.dependencies.is_empty() {
             out.push_str(&format!(
                 "    dependencies: {}\n",

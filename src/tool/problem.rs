@@ -1,7 +1,6 @@
 use super::data::{GenerateOptions, generate_data_with_options};
 use super::schema::{
-    CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem, StressPlanExpectation, TestBundle, TestCase,
-    TestTask,
+    CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem, StressPlanExpectation, TestCase, TestTask,
 };
 use super::stress_args::legacy_stress_args_by_case;
 use anyhow::{Context, Result};
@@ -32,12 +31,6 @@ fn migrate_legacy_stress_plans(problem: &mut Problem) -> bool {
     }
     let plans = std::mem::take(&mut problem.stress.plans);
     for plan in plans {
-        let mut bundle_name = format!("stress_{}", slugify_name(&plan.name));
-        let mut suffix = 2usize;
-        while problem.test.bundles.contains_key(&bundle_name) {
-            bundle_name = format!("stress_{}_{}", slugify_name(&plan.name), suffix);
-            suffix += 1;
-        }
         let cases = legacy_stress_args_by_case(&plan.args, plan.cases)
             .into_iter()
             .map(|args| TestCase {
@@ -45,10 +38,6 @@ fn migrate_legacy_stress_plans(problem: &mut Problem) -> bool {
                 args,
             })
             .collect();
-        problem
-            .test
-            .bundles
-            .insert(bundle_name.clone(), TestBundle { cases });
         let mut pass_programs = Vec::new();
         let mut fail_programs = Vec::new();
         if let Some(target) = plan.against.get(1) {
@@ -61,25 +50,14 @@ fn migrate_legacy_stress_plans(problem: &mut Problem) -> bool {
             name: plan.name,
             score: None,
             task_type: None,
-            bundles: vec![bundle_name],
+            bundles: Vec::new(),
+            cases,
             dependencies: Vec::new(),
             pass_programs,
             fail_programs,
         });
     }
     true
-}
-
-fn slugify_name(name: &str) -> String {
-    let mut out = String::new();
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            out.push(ch);
-        } else if !out.ends_with('_') {
-            out.push('_');
-        }
-    }
-    out.trim_matches('_').to_string()
 }
 
 pub(crate) fn parse_case_selector(value: &str) -> Result<CaseSelector> {
@@ -230,6 +208,18 @@ fn validate_problem(problem: &Problem) -> Result<()> {
         if let Some(score) = task.score {
             validate_non_negative_finite(score, &format!("task `{}` score", task.name))?;
         }
+        if task.score.is_some() && !task.cases.is_empty() {
+            anyhow::bail!(
+                "task `{}` has `score` and cannot declare inline `cases`; use `bundles` for official data",
+                task.name
+            );
+        }
+        if !task.bundles.is_empty() && !task.cases.is_empty() {
+            anyhow::bail!(
+                "task `{}` cannot declare both `bundles` and inline `cases`",
+                task.name
+            );
+        }
         for bundle_name in &task.bundles {
             if !problem.test.bundles.contains_key(bundle_name) {
                 anyhow::bail!(
@@ -237,6 +227,16 @@ fn validate_problem(problem: &Problem) -> Result<()> {
                     task.name
                 );
             }
+        }
+        for (case_index, case) in task.cases.iter().enumerate() {
+            ensure_generator_exists(
+                problem,
+                &case.generator_name,
+                &format!(
+                    "generator for task `{}` inline case {case_index}",
+                    task.name
+                ),
+            )?;
         }
         for dependency in &task.dependencies {
             if !task_names.contains(dependency.as_str()) {
@@ -375,8 +375,7 @@ mod tests {
             .iter()
             .find(|task| task.name == "legacy")
             .unwrap();
-        let bundle = &problem.test.bundles[&task.bundles[0]];
-        let args = bundle
+        let args = task
             .cases
             .iter()
             .map(|case| case.args.clone())
@@ -389,6 +388,7 @@ mod tests {
                 vec!["3".to_string(), "2".to_string()],
             ]
         );
+        assert!(task.bundles.is_empty());
         assert_eq!(task.pass_programs, vec!["brute"]);
         assert!(problem.stress.plans.is_empty());
     }
@@ -421,6 +421,7 @@ mod tests {
                     score: Some(100.0),
                     task_type: Some(TestTaskType::Min),
                     bundles: vec!["sample".to_string()],
+                    cases: Vec::new(),
                     dependencies: Vec::new(),
                     pass_programs: Vec::new(),
                     fail_programs: Vec::new(),

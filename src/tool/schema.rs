@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub(crate) const DEFAULT_TIME_LIMIT_SECS: f64 = 1.0;
@@ -247,7 +247,7 @@ pub struct Program {
     pub memory_limit_mb: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TestCase {
     #[serde(rename = "generator")]
     pub generator_name: String,
@@ -275,7 +275,10 @@ pub struct TestTask {
     #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_type: Option<TestTaskType>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bundles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cases: Vec<TestCase>,
     #[serde(default)]
     pub dependencies: Vec<String>,
     #[serde(default, rename = "pass", skip_serializing_if = "Vec::is_empty")]
@@ -301,6 +304,53 @@ pub struct Test {
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum RawTestBundle {
+    Cases(Vec<RawTestCase>),
+    Full {
+        #[serde(default)]
+        generator: Option<String>,
+        cases: Vec<RawTestCase>,
+    },
+}
+
+impl RawTestBundle {
+    fn into_parts(self) -> (Option<String>, Vec<RawTestCase>) {
+        match self {
+            RawTestBundle::Cases(cases) => (None, cases),
+            RawTestBundle::Full { generator, cases } => (generator, cases),
+        }
+    }
+}
+
+enum RawProgram {
+    Full(RawFullProgram),
+    Path(PathBuf),
+}
+
+impl<'de> Deserialize<'de> for RawProgram {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        match value {
+            Value::String(path) => Ok(RawProgram::Path(PathBuf::from(path))),
+            value => RawFullProgram::deserialize(value)
+                .map(RawProgram::Full)
+                .map_err(de::Error::custom),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RawFullProgram {
+    info: RawProgramInfo,
+    time_limit_secs: Option<f64>,
+    memory_limit_mb: Option<f64>,
+}
+
+#[derive(Deserialize)]
 struct RawTest {
     #[serde(default)]
     generator: Option<String>,
@@ -308,13 +358,6 @@ struct RawTest {
     task_type: Option<TestTaskType>,
     bundles: HashMap<String, RawTestBundle>,
     tasks: Vec<RawTestTask>,
-}
-
-#[derive(Deserialize)]
-struct RawTestBundle {
-    #[serde(default)]
-    generator: Option<String>,
-    cases: Vec<RawTestCase>,
 }
 
 #[derive(Deserialize)]
@@ -336,7 +379,10 @@ struct RawTestTask {
     score: Option<f64>,
     #[serde(default, rename = "type")]
     task_type: Option<TestTaskType>,
-    bundles: Vec<String>,
+    #[serde(default)]
+    bundles: Option<Vec<String>>,
+    #[serde(default)]
+    cases: Option<Vec<RawTestCase>>,
     #[serde(default)]
     dependencies: Vec<String>,
     #[serde(default, rename = "pass")]
@@ -364,16 +410,19 @@ where
         .bundles
         .into_iter()
         .map(|(bundle_name, bundle)| {
-            let bundle_generator = bundle
-                .generator
+            let (bundle_generator, raw_cases) = bundle.into_parts();
+            let bundle_generator = bundle_generator
                 .or_else(|| test_generator.clone())
                 .or_else(|| problem_default_generator.map(str::to_string));
-            let cases = bundle
-                .cases
+            let cases = raw_cases
                 .into_iter()
                 .enumerate()
                 .map(|(case_index, case)| {
-                    normalize_test_case(case, bundle_generator.as_deref(), &bundle_name, case_index)
+                    normalize_test_case(
+                        case,
+                        bundle_generator.as_deref(),
+                        &format!("test.bundles.{bundle_name}.cases[{case_index}]"),
+                    )
                 })
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
@@ -386,7 +435,15 @@ where
         .tasks
         .into_iter()
         .enumerate()
-        .map(|(task_index, task)| normalize_test_task(task, global_task_type, task_index))
+        .map(|(task_index, task)| {
+            normalize_test_task(
+                task,
+                global_task_type,
+                task_index,
+                test_generator.as_deref(),
+                problem_default_generator,
+            )
+        })
         .collect::<Result<Vec<_>, E>>()?;
 
     Ok(Test { bundles, tasks })
@@ -396,10 +453,41 @@ fn normalize_test_task<E>(
     task: RawTestTask,
     default_task_type: Option<TestTaskType>,
     task_index: usize,
+    test_generator: Option<&str>,
+    problem_default_generator: Option<&str>,
 ) -> Result<TestTask, E>
 where
     E: de::Error,
 {
+    let has_bundles_field = task.bundles.is_some();
+    let has_cases_field = task.cases.is_some();
+    if has_bundles_field && has_cases_field {
+        return Err(E::custom(format!(
+            "test.tasks[{task_index}] cannot declare both `bundles` and inline `cases`"
+        )));
+    }
+    if task.score.is_some() && has_cases_field {
+        return Err(E::custom(format!(
+            "test.tasks[{task_index}] has `score` and cannot declare inline `cases`; use `bundles` for official data"
+        )));
+    }
+    let bundles = task.bundles.unwrap_or_default();
+    let raw_cases = task.cases.unwrap_or_default();
+    let task_generator = test_generator.or(problem_default_generator);
+    let cases = raw_cases
+        .into_iter()
+        .enumerate()
+        .map(|(case_index, case)| {
+            normalize_test_case(
+                case,
+                task_generator,
+                &format!("test.tasks[{task_index}].cases[{case_index}]"),
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
     let task_type = if task.score.is_some() {
         Some(task.task_type.or(default_task_type).ok_or_else(|| {
             E::custom(format!(
@@ -413,7 +501,8 @@ where
         name: task.name,
         score: task.score,
         task_type,
-        bundles: task.bundles,
+        bundles,
+        cases,
         dependencies: task.dependencies,
         pass_programs: task.pass_programs,
         fail_programs: task.fail_programs,
@@ -423,8 +512,7 @@ where
 fn normalize_test_case<E>(
     case: RawTestCase,
     default_generator: Option<&str>,
-    bundle_name: &str,
-    case_index: usize,
+    case_location: &str,
 ) -> Result<Vec<TestCase>, E>
 where
     E: de::Error,
@@ -433,10 +521,10 @@ where
         RawTestCase::Args(args) => {
             let Some(generator_name) = default_generator else {
                 return Err(E::custom(format!(
-                    "test.bundles.{bundle_name}.cases[{case_index}] uses args-only shorthand but no generator is declared for the case, bundle, or test"
+                    "{case_location} uses args-only shorthand but no generator is declared for the case, bundle, or test"
                 )));
             };
-            let args = raw_args_to_strings(args, bundle_name, case_index)?;
+            let args = raw_args_to_strings(args, case_location)?;
             Ok(args
                 .into_iter()
                 .map(|args| TestCase {
@@ -453,10 +541,10 @@ where
                 .or_else(|| default_generator.map(str::to_string))
                 .ok_or_else(|| {
                     E::custom(format!(
-                        "test.bundles.{bundle_name}.cases[{case_index}] is missing `generator` and no default generator is declared for the bundle or test"
+                        "{case_location} is missing `generator` and no default generator is declared for the bundle or test"
                     ))
                 })?;
-            let args = raw_args_to_strings(args, bundle_name, case_index)?;
+            let args = raw_args_to_strings(args, case_location)?;
             Ok(args
                 .into_iter()
                 .map(|args| TestCase {
@@ -468,11 +556,7 @@ where
     }
 }
 
-fn raw_args_to_strings<E>(
-    args: Vec<Value>,
-    bundle_name: &str,
-    case_index: usize,
-) -> Result<Vec<Vec<String>>, E>
+fn raw_args_to_strings<E>(args: Vec<Value>, case_location: &str) -> Result<Vec<Vec<String>>, E>
 where
     E: de::Error,
 {
@@ -482,7 +566,7 @@ where
         .map(|(arg_index, value)| {
             raw_arg_to_strings(value).ok_or_else(|| {
                 E::custom(format!(
-                    "test.bundles.{bundle_name}.cases[{case_index}].args[{arg_index}] must be a string, number, boolean, or null"
+                    "{case_location}.args[{arg_index}] must be a string, number, boolean, or null"
                 ))
             })
         })
@@ -532,6 +616,12 @@ fn expand_range_string(value: &str) -> Option<Vec<String>> {
 pub struct Stress {
     #[serde(default)]
     pub plans: Vec<StressPlan>,
+}
+
+impl Stress {
+    pub fn is_empty(&self) -> bool {
+        self.plans.is_empty()
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -632,7 +722,7 @@ pub struct Problem {
     pub output: OutputConfig,
     #[serde(rename = "generator")]
     pub generator_name: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Stress::is_empty")]
     pub stress: Stress,
     pub programs: HashMap<String, Program>,
     pub test: Test,
@@ -683,13 +773,6 @@ struct RawProblem {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct RawProgram {
-    info: RawProgramInfo,
-    time_limit_secs: Option<f64>,
-    memory_limit_mb: Option<f64>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
 enum RawProgramInfo {
     #[serde(rename = "command")]
     Command(CommandProgram),
@@ -705,6 +788,34 @@ struct RawCppProgram {
     compile_args: Option<Vec<String>>,
 }
 
+fn infer_program_info_from_path<E>(
+    path: &Path,
+    name: &str,
+    cpp_compile_args: &[String],
+) -> Result<ProgramInfo, E>
+where
+    E: de::Error,
+{
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase);
+    match extension.as_deref() {
+        Some("cpp" | "cc" | "cxx") => Ok(ProgramInfo::Cpp(CppProgram {
+            path: path.to_path_buf(),
+            compile_args: cpp_compile_args.to_vec(),
+        })),
+        Some("py") => Ok(ProgramInfo::Python(CommandProgram {
+            path: path.to_path_buf(),
+            extra_args: Vec::new(),
+        })),
+        _ => Err(E::custom(format!(
+            "program `{name}` uses path shorthand but cptool cannot infer the program type from `{}`; use full `info: !cpp`, `info: !python`, or `info: !command` syntax",
+            path.display()
+        ))),
+    }
+}
+
 impl<'de> Deserialize<'de> for Problem {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -717,26 +828,40 @@ impl<'de> Deserialize<'de> for Problem {
             .programs
             .into_iter()
             .map(|(name, program)| {
-                let info = match program.info {
-                    RawProgramInfo::Command(command) => ProgramInfo::Command(command),
-                    RawProgramInfo::Python(command) => ProgramInfo::Python(command),
-                    RawProgramInfo::Cpp(cpp) => ProgramInfo::Cpp(CppProgram {
-                        path: cpp.path,
-                        compile_args: cpp
-                            .compile_args
-                            .unwrap_or_else(|| raw.cpp_compile_args.clone()),
-                    }),
+                let (info, time_limit_secs, memory_limit_mb) = match program {
+                    RawProgram::Full(program) => {
+                        let info = match program.info {
+                            RawProgramInfo::Command(command) => ProgramInfo::Command(command),
+                            RawProgramInfo::Python(command) => ProgramInfo::Python(command),
+                            RawProgramInfo::Cpp(cpp) => ProgramInfo::Cpp(CppProgram {
+                                path: cpp.path,
+                                compile_args: cpp
+                                    .compile_args
+                                    .unwrap_or_else(|| raw.cpp_compile_args.clone()),
+                            }),
+                        };
+                        (info, program.time_limit_secs, program.memory_limit_mb)
+                    }
+                    RawProgram::Path(path) => (
+                        infer_program_info_from_path::<D::Error>(
+                            &path,
+                            &name,
+                            &raw.cpp_compile_args,
+                        )?,
+                        None,
+                        None,
+                    ),
                 };
-                (
+                Ok((
                     name,
                     Program {
                         info,
-                        time_limit_secs: program.time_limit_secs.unwrap_or(raw.time_limit_secs),
-                        memory_limit_mb: program.memory_limit_mb.unwrap_or(raw.memory_limit_mb),
+                        time_limit_secs: time_limit_secs.unwrap_or(raw.time_limit_secs),
+                        memory_limit_mb: memory_limit_mb.unwrap_or(raw.memory_limit_mb),
                     },
-                )
+                ))
             })
-            .collect();
+            .collect::<Result<HashMap<_, _>, D::Error>>()?;
         Ok(Problem {
             name: raw.name,
             time_limit_secs: raw.time_limit_secs,
@@ -867,6 +992,74 @@ test:
     }
 
     #[test]
+    fn program_path_shorthand_infers_cpp_and_python() {
+        let problem: Problem = serde_yml::from_str(
+            r#"
+name: shorthand programs
+time_limit_secs: 3.0
+memory_limit_mb: 512.0
+cpp_compile_args: [-O2, -std=c++20]
+programs:
+  gen: ./src/gen.cpp
+  std: ./src/std.cc
+  helper: ./src/helper.cxx
+  py: ./src/solve.py
+solution: std
+generator: gen
+test:
+  type: min
+  bundles:
+    sample:
+    - []
+  tasks:
+  - name: sample
+    score: 100.0
+    bundles: [sample]
+"#,
+        )
+        .unwrap();
+
+        for name in ["gen", "std", "helper"] {
+            let ProgramInfo::Cpp(cpp) = &problem.programs[name].info else {
+                panic!("expected C++ program {name}");
+            };
+            assert_eq!(cpp.compile_args, ["-O2", "-std=c++20"]);
+        }
+        let ProgramInfo::Python(command) = &problem.programs["py"].info else {
+            panic!("expected Python program");
+        };
+        assert_eq!(command.path, PathBuf::from("./src/solve.py"));
+        assert_eq!(problem.programs["py"].time_limit_secs, 3.0);
+        assert_eq!(problem.programs["py"].memory_limit_mb, 512.0);
+    }
+
+    #[test]
+    fn program_path_shorthand_rejects_unknown_extension() {
+        let err = serde_yml::from_str::<Problem>(
+            r#"
+name: bad shorthand program
+programs:
+  std: ./src/std.exe
+solution: std
+generator: std
+test:
+  type: min
+  bundles:
+    sample:
+    - []
+  tasks:
+  - name: sample
+    score: 100.0
+    bundles: [sample]
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("cannot infer the program type"), "{err}");
+    }
+
+    #[test]
     fn failure_report_includes_optional_diagnostic_only_on_failure_path() {
         let result = RunResult {
             label: "std".to_string(),
@@ -903,9 +1096,8 @@ generator: gen
 type: min
 bundles:
   global:
-    cases:
-    - [1, 2]
-    - args: [3, 4]
+  - [1, 2]
+  - args: [3, 4]
   local:
     generator: local_gen
     cases:
@@ -934,6 +1126,86 @@ tasks:
             "special_gen"
         );
         assert_eq!(test.tasks[0].task_type, Some(TestTaskType::Min));
+    }
+
+    #[test]
+    fn verify_task_accepts_inline_cases() {
+        let test: Test = serde_yml::from_str(
+            r#"
+generator: gen
+type: min
+bundles:
+  sample:
+  - [1]
+tasks:
+- name: sample
+  score: 100.0
+  bundles: [sample]
+- name: wrong-proof
+  cases:
+  - [2, "{3:4}"]
+  - generator: other_gen
+    args: [5]
+  fail: [wrong]
+"#,
+        )
+        .unwrap();
+
+        let task = &test.tasks[1];
+        assert!(task.bundles.is_empty());
+        assert_eq!(task.cases.len(), 3);
+        assert_eq!(task.cases[0].generator_name, "gen");
+        assert_eq!(task.cases[0].args, ["2", "3"]);
+        assert_eq!(task.cases[1].args, ["2", "4"]);
+        assert_eq!(task.cases[2].generator_name, "other_gen");
+    }
+
+    #[test]
+    fn official_task_rejects_inline_cases() {
+        let err = serde_yml::from_str::<Test>(
+            r#"
+generator: gen
+type: min
+bundles:
+  sample:
+  - [1]
+tasks:
+- name: official
+  score: 100.0
+  cases:
+  - [1]
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("cannot declare inline `cases`"), "{err}");
+    }
+
+    #[test]
+    fn task_rejects_bundles_and_inline_cases_together() {
+        let err = serde_yml::from_str::<Test>(
+            r#"
+generator: gen
+type: min
+bundles:
+  sample:
+  - [1]
+tasks:
+- name: mixed
+  bundles: [sample]
+  cases:
+  - [2]
+  pass: [brute]
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            err.contains("cannot declare both `bundles` and inline `cases`"),
+            "{err}"
+        );
     }
 
     #[test]

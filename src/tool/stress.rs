@@ -1,3 +1,4 @@
+use super::data::read_file_generator_input;
 use super::judge::run_configured_checker_on_bytes;
 use super::problem::{FILE_GENERATOR_NAME, load_problem, normalize_work_dir, resolve_path};
 use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
@@ -310,9 +311,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     let work_dir = normalize_work_dir(work_dir)?;
     let problem = load_problem(&work_dir)?;
     let generator = if generator == FILE_GENERATOR_NAME {
-        anyhow::bail!(
-            "stress generators cannot use `{FILE_GENERATOR_NAME}`; use a real generator program"
-        )
+        StressGenerator::File
     } else if generator.starts_with(':') {
         anyhow::bail!("generator `{generator}` is an unknown built-in generator");
     } else {
@@ -467,6 +466,7 @@ struct StressCaseOutcome {
 
 enum StressGenerator {
     Program(ProgramSpec),
+    File,
 }
 
 struct StressFailure {
@@ -576,6 +576,9 @@ fn run_stress_case(
                 );
             }
             gen_result.stdout_bytes
+        }
+        StressGenerator::File => {
+            read_file_generator_input(work_dir, args, &format!("stress case {index}"))?.bytes
         }
     };
     let input_hash = Sha256::digest(&input).to_vec();

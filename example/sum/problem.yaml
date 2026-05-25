@@ -3,26 +3,16 @@ time_limit_secs: 1.0
 memory_limit_mb: 512.0
 cpp_compile_args: [-O2, -std=c++20]
 programs:
-  gen:
-    info: !cpp
-      path: ./src/gen.cpp
-  std:
-    info: !cpp
-      path: ./src/std.cpp
-  brute:
-    info: !cpp
-      path: ./src/brute.cpp
-  wrong:
-    info: !cpp
-      path: ./src/wrong.cpp
+  gen: ./src/gen.cpp
+  std: ./src/std.cpp
+  brute: ./src/brute.cpp
+  wrong: ./src/wrong.cpp
   val:
     info: !cpp
       path: ./src/val.cpp
       # testlib validators are compile-heavy; O0 keeps smoke/CI cold builds fast.
       compile_args: [-O0, -std=c++20]
-  chk:
-    info: !cpp
-      path: ./src/chk.cpp
+  chk: ./src/chk.cpp
 solution: std
 validator: val
 checker: chk
@@ -45,29 +35,19 @@ test:
       - generator: :file
         args: [fixtures/input/one_mod.in]
     s1:
-      cases:
       # args-only 简写，参数为 max_n, max_k, max_a, min_k。
       - [20, 20, 1000, 1]
       # args-only mapping，同样使用顶层 generator。
       - args: [100, 100, 1000000, 1]
       - [1000, 1000, 1000000000, 1]
     s2:
-      cases:
       - [5000, 100000, 1000000000, 1]
       - [20000, 1000, 1000000000, 1]
       - [50000, 100000, 1000000000, 1]
     s3:
-      cases:
       # 接近约束上限的数据。
       - [100000, 1, 1000000000, 1]
       - [100000, 100000, 1000000000, 1]
-    brute_small:
-      cases:
-      # verify-only bundle：不会落盘进正式数据。
-      - [20, 30, 1000, 1, "{1:5}"]
-    wrong_first_power:
-      cases:
-      - [10, 8, 1000000000, 2, "{1:3}"]
   tasks:
   - name: sample
     score: 0.0
@@ -88,8 +68,11 @@ test:
     bundles: [s3]
     dependencies: [sample, s1, s2]
   - name: std-vs-brute-small
-    bundles: [brute_small]
+    # verify-only inline cases：不会落盘进正式数据。
+    cases:
+    - [20, 30, 1000, 1, "{1:5}"]
     pass: [brute]
   - name: catches-first-power-only
-    bundles: [wrong_first_power]
+    cases:
+    - [10, 8, 1000000000, 2, "{1:3}"]
     fail: [wrong]

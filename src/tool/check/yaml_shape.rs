@@ -74,28 +74,19 @@ pub(super) fn check_unknown_yaml_fields(report: &mut CheckReport, work_dir: &Pat
         if let Some(bundles) = mapping_get(test, "bundles").and_then(value_mapping) {
             for (bundle_name, bundle_value) in string_entries(bundles) {
                 let bundle_location = format!("test.bundles.{bundle_name}");
-                let Some(bundle) = value_mapping(bundle_value) else {
-                    continue;
-                };
-                warn_unknown_keys(
-                    report,
-                    &path,
-                    bundle,
-                    &bundle_location,
-                    &["generator", "cases"],
-                );
-                if let Some(cases) = mapping_get(bundle, "cases").and_then(value_sequence) {
-                    for (case_index, case_value) in cases.iter().enumerate() {
-                        if let Some(case) = value_mapping(case_value) {
-                            warn_unknown_keys(
-                                report,
-                                &path,
-                                case,
-                                &format!("{bundle_location}.cases[{case_index}]"),
-                                &["generator", "args"],
-                            );
-                        }
+                if let Some(bundle) = value_mapping(bundle_value) {
+                    warn_unknown_keys(
+                        report,
+                        &path,
+                        bundle,
+                        &bundle_location,
+                        &["generator", "cases"],
+                    );
+                    if let Some(cases) = mapping_get(bundle, "cases").and_then(value_sequence) {
+                        warn_case_unknown_keys(report, &path, cases, &bundle_location);
                     }
+                } else if let Some(cases) = value_sequence(bundle_value) {
+                    warn_case_unknown_keys(report, &path, cases, &bundle_location);
                 }
             }
         }
@@ -112,11 +103,20 @@ pub(super) fn check_unknown_yaml_fields(report: &mut CheckReport, work_dir: &Pat
                             "score",
                             "type",
                             "bundles",
+                            "cases",
                             "dependencies",
                             "pass",
                             "fail",
                         ],
                     );
+                    if let Some(cases) = mapping_get(task, "cases").and_then(value_sequence) {
+                        warn_case_unknown_keys(
+                            report,
+                            &path,
+                            cases,
+                            &format!("test.tasks[{task_index}]"),
+                        );
+                    }
                 }
             }
         }
@@ -135,6 +135,20 @@ pub(super) fn check_unknown_yaml_fields(report: &mut CheckReport, work_dir: &Pat
                     );
                 }
             }
+        }
+    }
+}
+
+fn warn_case_unknown_keys(report: &mut CheckReport, path: &Path, cases: &[Value], location: &str) {
+    for (case_index, case_value) in cases.iter().enumerate() {
+        if let Some(case) = value_mapping(case_value) {
+            warn_unknown_keys(
+                report,
+                path,
+                case,
+                &format!("{location}.cases[{case_index}]"),
+                &["generator", "args"],
+            );
         }
     }
 }

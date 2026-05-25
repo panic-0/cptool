@@ -151,12 +151,12 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
     let mut task_index_by_name = HashMap::new();
     for (index, task) in problem.test.tasks.iter().enumerate() {
         task_index_by_name.insert(task.name.as_str(), index);
-        if task.bundles.is_empty() {
+        if task.bundles.is_empty() && task.cases.is_empty() {
             report.error_at(
                 codes::TASK_HAS_NO_BUNDLES,
-                format!("task `{}` has no bundles", task.name),
+                format!("task `{}` has no bundles or inline cases", task.name),
                 Some(yaml_path.clone()),
-                format!("test.tasks[{index}].bundles"),
+                format!("test.tasks[{index}]"),
             );
         }
         used_bundles.extend(task.bundles.iter().cloned());
@@ -244,6 +244,11 @@ fn check_program_expect_coverage(report: &mut CheckReport, yaml_path: &Path, pro
     }
     for bundle in problem.test.bundles.values() {
         for case in &bundle.cases {
+            role_programs.insert(case.generator_name.as_str());
+        }
+    }
+    for task in &problem.test.tasks {
+        for case in &task.cases {
             role_programs.insert(case.generator_name.as_str());
         }
     }
@@ -986,6 +991,7 @@ mod tests {
             score: Some(0.0),
             task_type: Some(TestTaskType::Min),
             bundles: vec!["main".to_string()],
+            cases: Vec::new(),
             dependencies: vec!["main".to_string()],
             pass_programs: Vec::new(),
             fail_programs: Vec::new(),
@@ -1241,6 +1247,7 @@ mod tests {
                     score: Some(100.0),
                     task_type: Some(TestTaskType::Min),
                     bundles: vec![bundle_names[0].to_string()],
+                    cases: Vec::new(),
                     dependencies: Vec::new(),
                     pass_programs: Vec::new(),
                     fail_programs: Vec::new(),

@@ -98,7 +98,7 @@ fn stress_plan_expect_fail_records_checker_rejection_artifact() {
     expect: fail
 "#,
     );
-    std::fs::write(yaml_path, yaml).unwrap();
+    std::fs::write(&yaml_path, yaml).unwrap();
 
     let output = run_cptool(
         [
@@ -173,7 +173,7 @@ raise SystemExit(3)
     expect: fail
 "#,
     );
-    std::fs::write(yaml_path, yaml).unwrap();
+    std::fs::write(&yaml_path, yaml).unwrap();
 
     let output = run_cptool_allow_failure(
         [
@@ -624,34 +624,33 @@ fn stress_plan_expands_range_args() {
 }
 
 #[test]
-fn stress_plan_rejects_file_generator() {
+fn stress_plan_accepts_inline_file_generator_cases() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-file-generator");
+    let temp = TempWorkspace::new("cptool-stress-plan-inline-file-generator");
     run_cptool(
-        ["pkg", "init", "stress_plan_file_generator", "--root"],
+        ["pkg", "init", "stress_plan_inline_file_generator", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_file_generator");
+    let problem_dir = temp.path().join("stress_plan_inline_file_generator");
     configure_python_problem(&problem_dir);
+    std::fs::write(
+        problem_dir.join("fixtures").join("input").join("1.in"),
+        "3 4\n",
+    )
+    .unwrap();
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
-    yaml.push_str(
-        r#"stress:
-  plans:
-  - name: file-corners
-    generator: :file
-    args: ["fixtures/input/1.in"]
-    against: [std, brute]
-    cases: 2
-    expect: pass
-"#,
+    yaml = yaml.replacen(
+        "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n",
+        "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n  - name: file-corners\n    cases:\n    - generator: :file\n      args: [\"fixtures/input/1.in\"]\n    pass: [brute]\n",
+        1,
     );
-    std::fs::write(yaml_path, yaml).unwrap();
+    std::fs::write(&yaml_path, yaml).unwrap();
 
-    let output = run_cptool_allow_failure(
+    let output = run_cptool(
         [
             "test",
             "plan",
@@ -664,9 +663,66 @@ fn stress_plan_rejects_file_generator() {
         ],
         None,
     );
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("cannot use `:file`"), "{stderr}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(r#""plan_name":"file-corners:pass:brute""#),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn legacy_stress_plan_migrates_to_inline_cases_without_generating_data() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-legacy-stress-plan-inline-migration");
+    run_cptool(
+        [
+            "pkg",
+            "init",
+            "legacy_stress_plan_inline_migration",
+            "--root",
+        ],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("legacy_stress_plan_inline_migration");
+    configure_python_problem(&problem_dir);
+    let yaml_path = problem_dir.join("problem.yaml");
+    let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    yaml.push_str(
+        r#"stress:
+  plans:
+  - name: migrated-proof
+    generator: gen
+    args: ["{case}", "4"]
+    against: [std, brute]
+    cases: 2
+    expect: pass
+"#,
+    );
+    std::fs::write(&yaml_path, yaml).unwrap();
+
+    let output = run_cptool(
+        [
+            "test",
+            "plan",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "migrated-proof",
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("plan `migrated-proof:pass:brute` case 1 ok"));
+    assert!(stdout.contains("plan `migrated-proof:pass:brute` case 2 ok"));
+
+    let migrated = std::fs::read_to_string(yaml_path).unwrap();
+    assert!(migrated.contains("name: migrated-proof"));
+    assert!(migrated.contains("cases:"));
+    assert!(!migrated.contains("stress:\n"));
+    assert!(!migrated.contains("stress_migrated"));
 }
 
 #[test]

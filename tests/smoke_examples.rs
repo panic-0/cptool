@@ -152,7 +152,7 @@ fn add_checker_builtin_copies_source_and_check_accepts_package() {
     assert!(checker_source.contains("#include \"testlib.h\""));
     let problem_yaml = std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap();
     assert!(problem_yaml.contains("checker: chk\n"));
-    assert!(problem_yaml.contains("path: \"./src/chk.cpp\""));
+    assert!(problem_yaml.contains("chk: \"./src/chk.cpp\""));
 
     run_cptool(["case", "gen", "-w"], Some(&problem_dir));
     let check = run_cptool(["pkg", "check", "--json", "-w"], Some(&problem_dir));
