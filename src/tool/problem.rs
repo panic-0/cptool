@@ -3,7 +3,7 @@ use super::schema::{
     CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem, StressPlanExpectation, TestBundle, TestCase,
     TestTask,
 };
-use super::stress_args::direct_stress_args_by_case;
+use super::stress_args::legacy_stress_args_by_case;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -38,7 +38,7 @@ fn migrate_legacy_stress_plans(problem: &mut Problem) -> bool {
             bundle_name = format!("stress_{}_{}", slugify_name(&plan.name), suffix);
             suffix += 1;
         }
-        let cases = direct_stress_args_by_case(&plan.args, plan.cases)
+        let cases = legacy_stress_args_by_case(&plan.args, plan.cases)
             .into_iter()
             .map(|args| TestCase {
                 generator_name: plan.generator.clone(),
@@ -352,6 +352,45 @@ mod tests {
         let err = validate_problem(&problem).unwrap_err().to_string();
 
         assert!(err.contains("references missing bundle `missing`"));
+    }
+
+    #[test]
+    fn migrate_legacy_stress_plans_expands_case_placeholders_once() {
+        let mut problem = valid_problem();
+        problem.programs.insert("brute".to_string(), cpp_program());
+        problem.stress.plans.push(super::super::schema::StressPlan {
+            name: "legacy".to_string(),
+            generator: "gen".to_string(),
+            args: vec!["{case}".to_string(), "{case0}".to_string()],
+            against: vec!["std".to_string(), "brute".to_string()],
+            cases: 3,
+            expect: super::super::schema::StressPlanExpectation::Pass,
+        });
+
+        assert!(migrate_legacy_stress_plans(&mut problem));
+
+        let task = problem
+            .test
+            .tasks
+            .iter()
+            .find(|task| task.name == "legacy")
+            .unwrap();
+        let bundle = &problem.test.bundles[&task.bundles[0]];
+        let args = bundle
+            .cases
+            .iter()
+            .map(|case| case.args.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            args,
+            vec![
+                vec!["1".to_string(), "0".to_string()],
+                vec!["2".to_string(), "1".to_string()],
+                vec!["3".to_string(), "2".to_string()],
+            ]
+        );
+        assert_eq!(task.pass_programs, vec!["brute"]);
+        assert!(problem.stress.plans.is_empty());
     }
 
     fn valid_problem() -> Problem {

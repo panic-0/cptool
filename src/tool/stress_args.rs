@@ -4,6 +4,17 @@ pub(crate) fn direct_stress_args_by_case(args: &[String], cases: usize) -> Vec<V
     (0..cases).map(|_| args.to_vec()).collect()
 }
 
+pub(crate) fn legacy_stress_args_by_case(args: &[String], cases: usize) -> Vec<Vec<String>> {
+    (0..cases)
+        .map(|case0| {
+            let case = case0 + 1;
+            args.iter()
+                .map(|arg| legacy_expand_arg(arg, case, case0))
+                .collect()
+        })
+        .collect()
+}
+
 pub fn range_args(args: &[String]) -> anyhow::Result<Vec<Vec<String>>> {
     let choices = args
         .iter()
@@ -70,6 +81,11 @@ fn expand_args_by_case(args: &[String], cases: usize) -> Vec<Vec<String>> {
 fn expand_arg(arg: &str, case: usize, case0: usize) -> String {
     let _ = (case, case0);
     arg.to_string()
+}
+
+fn legacy_expand_arg(arg: &str, case: usize, case0: usize) -> String {
+    arg.replace("{case0}", &case0.to_string())
+        .replace("{case}", &case.to_string())
 }
 
 #[cfg(test)]
