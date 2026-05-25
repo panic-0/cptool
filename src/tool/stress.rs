@@ -140,7 +140,12 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct StressSummary {
-    #[serde(default, alias = "task_name", alias = "check_name")]
+    #[serde(
+        rename = "task_name",
+        default,
+        alias = "plan_name",
+        alias = "check_name"
+    )]
     pub plan_name: Option<String>,
     #[serde(default)]
     pub checker: Option<String>,

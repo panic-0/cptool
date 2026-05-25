@@ -40,7 +40,7 @@ fn evidence_json_aggregates_check_gen_and_task() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|task| task["plan_name"] == "tiny:pass:brute" && task["cases"] == 2)
+            .any(|task| task["task_name"] == "tiny:pass:brute" && task["cases"] == 2)
     );
 }
 
@@ -265,7 +265,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
         .as_array()
         .unwrap()
         .iter()
-        .find(|plan| plan["plan_name"] == "bad-is-detected:fail:bad")
+        .find(|plan| plan["task_name"] == "bad-is-detected:fail:bad")
         .unwrap();
     assert_eq!(reused_plan["expected_failure"]["failed_cases"], 3);
     assert_eq!(count_failure_reports(&problem_dir), failure_reports_before);
