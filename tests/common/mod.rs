@@ -312,7 +312,7 @@ sys.stdout.buffer.write(f"{value} 10\n".encode("ascii"))
     .unwrap();
 }
 
-pub fn append_stress_plan(problem_dir: &Path) {
+pub fn append_legacy_stress_plan(problem_dir: &Path) {
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
     yaml.push_str(
@@ -339,7 +339,7 @@ pub fn append_expect_task_with_range_args(problem_dir: &Path) {
     std::fs::write(yaml_path, yaml).unwrap();
 }
 
-pub fn append_expect_fail_stress_plan(problem_dir: &Path) {
+pub fn append_legacy_expect_fail_stress_plan(problem_dir: &Path) {
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
     yaml = yaml.replacen(
@@ -361,7 +361,7 @@ pub fn append_expect_fail_stress_plan(problem_dir: &Path) {
     std::fs::write(yaml_path, yaml).unwrap();
 }
 
-pub fn append_mixed_stress_plans(problem_dir: &Path) {
+pub fn append_legacy_mixed_stress_plans(problem_dir: &Path) {
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
     yaml = yaml.replacen(

@@ -3,19 +3,19 @@ use common::*;
 use serde_json::Value;
 
 #[test]
-fn stress_plan_runs_named_plan() {
+fn task_expect_runs_named_task() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan");
+    let temp = TempWorkspace::new("cptool-task-expect");
     run_cptool(
-        ["pkg", "init", "stress_plan_problem", "--root"],
+        ["pkg", "init", "task_expect_problem", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_problem");
+    let problem_dir = temp.path().join("task_expect_problem");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
 
     let output = run_cptool(
         [
@@ -73,7 +73,7 @@ fn stress_uses_configured_checker_instead_of_text_comparison() {
 }
 
 #[test]
-fn stress_plan_expect_fail_records_checker_rejection_artifact() {
+fn task_expect_fail_records_checker_rejection_artifact() {
     if !python_available() {
         return;
     }
@@ -140,7 +140,7 @@ fn stress_plan_expect_fail_records_checker_rejection_artifact() {
 }
 
 #[test]
-fn stress_plan_expect_fail_rejects_checker_infrastructure_failure() {
+fn task_expect_fail_rejects_checker_infrastructure_failure() {
     if !python_available() {
         return;
     }
@@ -202,19 +202,19 @@ raise SystemExit(3)
 }
 
 #[test]
-fn stress_plan_json_waits_for_generation_lock_and_stays_parseable() {
+fn task_expect_json_waits_for_generation_lock_and_stays_parseable() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-json-wait-lock");
+    let temp = TempWorkspace::new("cptool-task-expect-json-wait-lock");
     run_cptool(
-        ["pkg", "init", "stress_plan_json_wait_lock", "--root"],
+        ["pkg", "init", "task_expect_json_wait_lock", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_json_wait_lock");
+    let problem_dir = temp.path().join("task_expect_json_wait_lock");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
@@ -241,19 +241,19 @@ fn stress_plan_json_waits_for_generation_lock_and_stays_parseable() {
     assert!(stderr.contains("waiting for data generation lock:"));
 }
 #[test]
-fn stress_plan_summary_only_suppresses_case_progress() {
+fn task_expect_summary_only_suppresses_case_progress() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-summary");
+    let temp = TempWorkspace::new("cptool-task-expect-summary");
     run_cptool(
-        ["pkg", "init", "stress_plan_summary", "--root"],
+        ["pkg", "init", "task_expect_summary", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_summary");
+    let problem_dir = temp.path().join("task_expect_summary");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
 
     let output = run_cptool(
         [
@@ -283,19 +283,19 @@ fn stress_plan_summary_only_suppresses_case_progress() {
     assert!(output.stderr.is_empty());
 }
 #[test]
-fn stress_plan_summary_only_json_prints_plan_summaries() {
+fn task_expect_summary_only_json_prints_task_summaries() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-json");
+    let temp = TempWorkspace::new("cptool-task-expect-json");
     run_cptool(
-        ["pkg", "init", "stress_plan_json", "--root"],
+        ["pkg", "init", "task_expect_json", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_json");
+    let problem_dir = temp.path().join("task_expect_json");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
 
     let output = run_cptool(
         [
@@ -326,12 +326,12 @@ fn test_task_runs_positive_and_negative_checks_together() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-filters");
+    let temp = TempWorkspace::new("cptool-task-expect-filters");
     run_cptool(
-        ["pkg", "init", "stress_plan_filters", "--root"],
+        ["pkg", "init", "task_expect_filters", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_filters");
+    let problem_dir = temp.path().join("task_expect_filters");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("bad.py"),
@@ -342,7 +342,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 "#,
     )
     .unwrap();
-    append_mixed_stress_plans(&problem_dir);
+    append_legacy_mixed_stress_plans(&problem_dir);
 
     let output = run_cptool(
         [
@@ -520,19 +520,19 @@ fn stress_expands_range_and_reports_unique_inputs() {
     assert!(stdout.contains("batch expect passed: 3 cases"));
 }
 #[test]
-fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
+fn task_expect_summary_only_reports_empty_stdout_warning_count() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-empty-summary");
+    let temp = TempWorkspace::new("cptool-task-expect-empty-summary");
     run_cptool(
-        ["pkg", "init", "stress_plan_empty_summary", "--root"],
+        ["pkg", "init", "task_expect_empty_summary", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_empty_summary");
+    let problem_dir = temp.path().join("task_expect_empty_summary");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("solve.py"),
         "import sys\nsys.stdin.buffer.read()\n",
@@ -567,17 +567,17 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
     assert!(!stderr.contains("warning: repeated_input"));
 }
 #[test]
-fn stress_plan_expands_range_args() {
+fn task_expect_expands_range_args() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-range");
+    let temp = TempWorkspace::new("cptool-task-expect-range");
     run_cptool(
-        ["pkg", "init", "stress_plan_range", "--root"],
+        ["pkg", "init", "task_expect_range", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_range");
+    let problem_dir = temp.path().join("task_expect_range");
     configure_python_problem(&problem_dir);
     overwrite_generator_for_range_args(&problem_dir);
     append_expect_task_with_range_args(&problem_dir);
@@ -601,17 +601,17 @@ fn stress_plan_expands_range_args() {
 }
 
 #[test]
-fn stress_plan_accepts_inline_file_generator_cases() {
+fn task_expect_accepts_inline_file_generator_cases() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-inline-file-generator");
+    let temp = TempWorkspace::new("cptool-task-expect-inline-file-generator");
     run_cptool(
-        ["pkg", "init", "stress_plan_inline_file_generator", "--root"],
+        ["pkg", "init", "task_expect_inline_file_generator", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_inline_file_generator");
+    let problem_dir = temp.path().join("task_expect_inline_file_generator");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("fixtures").join("input").join("1.in"),
@@ -703,17 +703,17 @@ fn legacy_stress_plan_migrates_to_inline_cases_without_generating_data() {
 }
 
 #[test]
-fn stress_plan_expect_fail_treats_wrong_answer_as_success() {
+fn task_expect_fail_treats_wrong_answer_as_success() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-expect-fail");
+    let temp = TempWorkspace::new("cptool-task-expect-fail");
     run_cptool(
-        ["pkg", "init", "stress_plan_expect_fail", "--root"],
+        ["pkg", "init", "task_expect_fail", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_expect_fail");
+    let problem_dir = temp.path().join("task_expect_fail");
     configure_python_problem(&problem_dir);
     std::fs::write(
         problem_dir.join("src").join("bad.py"),
@@ -724,7 +724,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 "#,
     )
     .unwrap();
-    append_expect_fail_stress_plan(&problem_dir);
+    append_legacy_expect_fail_stress_plan(&problem_dir);
 
     let output = run_cptool(
         [

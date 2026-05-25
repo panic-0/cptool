@@ -15,7 +15,7 @@ fn evidence_json_aggregates_check_gen_and_task() {
     );
     let problem_dir = temp.path().join("evidence_json_problem");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
 
     let output = run_cptool(
         [
@@ -66,7 +66,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 "#,
     )
     .unwrap();
-    append_mixed_stress_plans(&problem_dir);
+    append_legacy_mixed_stress_plans(&problem_dir);
 
     let output = run_cptool(
         [
@@ -105,7 +105,7 @@ fn evidence_json_out_writes_utf8_sidecar_and_preserves_stdout() {
     );
     let problem_dir = temp.path().join("evidence_json_out");
     configure_unicode_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
     let out_path = problem_dir
         .join("reports")
         .join("nested")
@@ -147,7 +147,7 @@ fn evidence_markdown_out_writes_same_quality_section_as_stdout() {
     );
     let problem_dir = temp.path().join("evidence_markdown_out");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
     let out_path = problem_dir.join("report-evidence.md");
 
     let output = run_cptool(
@@ -185,7 +185,7 @@ fn evidence_text_out_does_not_replace_existing_directory_on_failure() {
     );
     let problem_dir = temp.path().join("evidence_out_failure");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
     let out_path = problem_dir.join("existing-target");
     std::fs::create_dir_all(&out_path).unwrap();
 
@@ -229,7 +229,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 "#,
     )
     .unwrap();
-    append_expect_fail_stress_plan(&problem_dir);
+    append_legacy_expect_fail_stress_plan(&problem_dir);
 
     let task = run_cptool(
         [
@@ -290,7 +290,7 @@ fn evidence_json_waits_for_generation_lock_and_stays_parseable() {
     );
     let problem_dir = temp.path().join("evidence_json_wait_lock");
     configure_python_problem(&problem_dir);
-    append_stress_plan(&problem_dir);
+    append_legacy_stress_plan(&problem_dir);
     let handle = release_generation_lock_after(&problem_dir, GENERATION_LOCK_RELEASE_DELAY);
 
     let output = run_cptool(
