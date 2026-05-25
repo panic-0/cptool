@@ -15,8 +15,7 @@ const DEFAULT_VALIDATOR_CPP: &str = r#"#include "testlib.h"
 
 int main(int argc, char *argv[]) {
     registerValidation(argc, argv);
-    inf.readEof();
-    return 0;
+    quitf(_fail, "TODO: implement validator for this problem");
 }
 "#;
 const DEFAULT_CHECKER_CPP: &str = concat!(

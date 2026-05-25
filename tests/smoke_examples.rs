@@ -199,7 +199,7 @@ stress:
 }
 
 #[test]
-fn init_scaffold_includes_working_testlib_validator() {
+fn init_scaffold_validator_is_explicit_placeholder() {
     let temp = TempWorkspace::new("cptool-init-testlib-validator");
     run_cptool(
         ["pkg", "init", "testlib_validator", "--root"],
@@ -207,7 +207,10 @@ fn init_scaffold_includes_working_testlib_validator() {
     );
     let problem_dir = temp.path().join("testlib_validator");
 
-    assert!(problem_dir.join("src").join("val.cpp").exists());
+    let validator_source =
+        std::fs::read_to_string(problem_dir.join("src").join("val.cpp")).unwrap();
+    assert!(validator_source.contains("registerValidation(argc, argv);"));
+    assert!(validator_source.contains("TODO: implement validator for this problem"));
     assert!(problem_dir.join("src").join("testlib.h").exists());
     std::fs::write(
         problem_dir.join("src").join("gen.cpp"),
@@ -220,18 +223,19 @@ fn init_scaffold_includes_working_testlib_validator() {
     )
     .unwrap();
 
-    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
-    let check = run_cptool(["pkg", "check", "--json", "-w"], Some(&problem_dir));
-    let value: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
+    let failed = run_cptool_slice_allow_failure(&["case", "gen", "-w"], Some(&problem_dir));
+    let stderr = String::from_utf8_lossy(&failed.stderr);
+    assert!(!failed.status.success());
+    assert!(stderr.contains("validator failed for sample[0]"));
+    assert!(stderr.contains("TODO: implement validator for this problem"));
 
-    assert_eq!(value["status"], "pass");
-    assert!(
-        !value["issues"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|issue| issue["code"] == "validator_missing")
-    );
+    std::fs::write(
+        problem_dir.join("src").join("val.cpp"),
+        "#include \"testlib.h\"\nint main(int argc, char *argv[]) { registerValidation(argc, argv); inf.readEof(); }\n",
+    )
+    .unwrap();
+
+    run_cptool(["case", "gen", "-w"], Some(&problem_dir));
 }
 
 #[test]
@@ -247,6 +251,11 @@ fn add_checker_builtin_copies_source_and_check_accepts_package() {
     std::fs::write(
         problem_dir.join("src").join("std.cpp"),
         "#include <iostream>\nint main(){std::cout << \"OK\\n\";}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("val.cpp"),
+        "#include \"testlib.h\"\nint main(int argc, char *argv[]) { registerValidation(argc, argv); inf.readEof(); }\n",
     )
     .unwrap();
 

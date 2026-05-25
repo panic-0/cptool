@@ -767,20 +767,21 @@ mod tests {
     }
 
     #[test]
-    fn init_package_default_reports_empty_answer_instead_of_generation_failure() {
+    fn init_package_default_reports_validator_placeholder_generation_failure() {
         let root = temp_test_dir("cptool-check-init");
         let problem_dir = init_package(&root, "Check Me").unwrap();
 
         let report = check_problem_package_with_options(&problem_dir, CheckOptions::default());
 
         assert!(report.has_errors());
+        assert_issue(&report, "sample_generation_failed", CheckSeverity::Error);
         assert!(
-            !report
+            report
                 .issues
                 .iter()
-                .any(|issue| issue.code == "sample_generation_failed")
+                .any(|issue| issue.code == "sample_generation_failed"
+                    && issue.message.contains("TODO: implement validator"))
         );
-        assert_issue(&report, "empty_answer", CheckSeverity::Error);
 
         std::fs::remove_dir_all(root).unwrap();
     }
