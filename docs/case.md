@@ -36,4 +36,4 @@
 
 不指定 program 时，`case run` 默认运行配置中的 `solution`。输入可以来自 bundle selector、`--stdin-path` 或 `--stdin-text`。输出较大时，用 `--summary-only` 或 `--hide-stdout` 更适合排查。
 
-`case run`、`case gen`、`test batch` 和 `test task` 默认给每个程序 32 MiB stdout/stderr 捕获上限。支持的命令可以用 `--output-limit-bytes` 覆盖。
+`case run`、`case gen`、`test batch` 和 `test expect` 默认给每个程序 32 MiB stdout/stderr 捕获上限。支持的命令可以用 `--output-limit-bytes` 覆盖。

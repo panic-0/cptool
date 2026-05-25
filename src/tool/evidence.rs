@@ -306,7 +306,7 @@ fn read_reused_task(path: &Path) -> anyhow::Result<Vec<StressSummary>> {
         .with_context(|| format!("failed to read task JSON `{}`", path.display()))?;
     let report: TaskJsonReport = serde_json::from_str(&text).with_context(|| {
         format!(
-            "failed to parse task JSON `{}`; expected output from `cptool test task --summary-only --json`",
+            "failed to parse task JSON `{}`; expected output from `cptool test expect --summary-only --json`",
             path.display()
         )
     })?;

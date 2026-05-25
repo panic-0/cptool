@@ -306,11 +306,10 @@ pub(super) enum TestCommands {
         args: Vec<String>,
     },
     #[command(
-        name = "task",
-        about = "Run task expect checks declared in problem.yaml",
-        long_about = "Run test.tasks pass/fail checks declared in problem.yaml."
+        about = "Run expect checks declared in problem.yaml tasks",
+        long_about = "Run test.tasks pass/fail expect checks declared in problem.yaml."
     )]
-    Task {
+    Expect {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
         #[arg(long, help = "Run only the named task; omit to run all expect tasks")]
@@ -328,10 +327,10 @@ pub(super) enum TestCommands {
         wait_for_generation_lock: Option<u64>,
         #[arg(
             long,
-            help = "Print one compact summary line per task check instead of per-case progress"
+            help = "Print one compact summary line per expect check instead of per-case progress"
         )]
         summary_only: bool,
-        #[arg(long, help = "Print task check summaries as JSON")]
+        #[arg(long, help = "Print expect check summaries as JSON")]
         json: bool,
     },
 }
@@ -484,7 +483,7 @@ pub(super) enum ReportCommands {
             long,
             value_name = "PATH",
             conflicts_with = "skip_task",
-            help = "Reuse JSON from `test task --summary-only --json` instead of rerunning task checks"
+            help = "Reuse JSON from `test expect --summary-only --json` instead of rerunning task checks"
         )]
         reuse_existing_task: Option<PathBuf>,
         #[arg(
@@ -567,7 +566,7 @@ pub(super) enum AddCommands {
         #[arg(long, help = "Replace an existing bundle")]
         replace: bool,
     },
-    #[command(about = "Register a test task")]
+    #[command(about = "Register a task")]
     Task {
         #[arg(help = "Task name to add under test.tasks")]
         name: String,

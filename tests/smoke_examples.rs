@@ -435,15 +435,15 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(evidence_stdout.contains("--wait-for-generation-lock"));
     assert!(evidence_stdout.contains("--out"));
 
-    let task = run_cptool(["test", "task", "--help"], None);
-    let task_stdout = String::from_utf8_lossy(&task.stdout);
-    assert!(task_stdout.contains("--name"));
-    assert!(task_stdout.contains("Run only the named task"));
-    assert!(task_stdout.contains("--summary-only"));
-    assert!(!task_stdout.contains("--positive-only"));
-    assert!(!task_stdout.contains("--negative-only"));
-    assert!(task_stdout.contains("--json"));
-    assert!(task_stdout.contains("--wait-for-generation-lock"));
+    let expect = run_cptool(["test", "expect", "--help"], None);
+    let expect_stdout = String::from_utf8_lossy(&expect.stdout);
+    assert!(expect_stdout.contains("--name"));
+    assert!(expect_stdout.contains("Run only the named task"));
+    assert!(expect_stdout.contains("--summary-only"));
+    assert!(!expect_stdout.contains("--positive-only"));
+    assert!(!expect_stdout.contains("--negative-only"));
+    assert!(expect_stdout.contains("--json"));
+    assert!(expect_stdout.contains("--wait-for-generation-lock"));
 
     let batch = run_cptool(["test", "batch", "--help"], None);
     let batch_stdout = String::from_utf8_lossy(&batch.stdout);
@@ -454,8 +454,9 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(!batch_stdout.contains("--against"));
 
     for args in [
-        &["test", "task", "--positive-only"][..],
-        &["test", "task", "--negative-only"][..],
+        &["test", "expect", "--positive-only"][..],
+        &["test", "expect", "--negative-only"][..],
+        &["test", "task", "--help"][..],
         &["test", "plan", "--help"][..],
         &["test", "stress", "--help"][..],
     ] {
@@ -469,7 +470,7 @@ fn wait_for_generation_lock_rejects_zero_seconds() {
         &["case", "gen", "--wait-for-generation-lock", "0"][..],
         &["case", "run", "--wait-for-generation-lock", "0"][..],
         &["pkg", "check", "--wait-for-generation-lock", "0"][..],
-        &["test", "task", "--wait-for-generation-lock", "0"][..],
+        &["test", "expect", "--wait-for-generation-lock", "0"][..],
         &["report", "evidence", "--wait-for-generation-lock", "0"][..],
     ] {
         let output = run_cptool_slice_allow_failure(args, None);

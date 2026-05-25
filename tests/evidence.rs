@@ -234,7 +234,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     let task = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",

@@ -16,8 +16,8 @@
 - cptool 版本
 - `pkg check`
 - `case gen --summary-only`
-- `test task --summary-only`
+- `test expect --summary-only`
 
 如果题包有意不能运行某一部分，使用 `--skip-gen` 或 `--skip-task`。使用 `--out <path>` 可以把与 stdout 相同的报告内容写入 sidecar 文件。
 
-恢复或审计重跑时，可以传 `--reuse-existing-task <PATH>`，复用之前由 `test task --summary-only --json` 生成的 JSON。
+恢复或审计重跑时，可以传 `--reuse-existing-task <PATH>`，复用之前由 `test expect --summary-only --json` 生成的 JSON。

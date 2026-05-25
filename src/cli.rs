@@ -172,7 +172,7 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             json,
             args,
         })?,
-        TestCommands::Task {
+        TestCommands::Expect {
             work_dir,
             name,
             output_limit_bytes,

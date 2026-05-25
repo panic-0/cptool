@@ -20,7 +20,7 @@ fn task_expect_runs_named_task() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -103,7 +103,7 @@ fn task_expect_fail_records_checker_rejection_artifact() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -178,7 +178,7 @@ raise SystemExit(3)
     let output = run_cptool_allow_failure(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -220,7 +220,7 @@ fn task_expect_json_waits_for_generation_lock_and_stays_parseable() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -258,7 +258,7 @@ fn task_expect_summary_only_suppresses_case_progress() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -300,7 +300,7 @@ fn task_expect_summary_only_json_prints_task_summaries() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -347,7 +347,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--summary-only",
@@ -542,7 +542,7 @@ fn task_expect_summary_only_reports_empty_stdout_warning_count() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -585,7 +585,7 @@ fn task_expect_expands_range_args() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -630,7 +630,7 @@ fn task_expect_accepts_inline_file_generator_cases() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -683,7 +683,7 @@ fn legacy_stress_plan_migrates_to_inline_cases_without_generating_data() {
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -729,7 +729,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     let output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
@@ -758,7 +758,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     let json_output = run_cptool(
         [
             "test",
-            "task",
+            "expect",
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",

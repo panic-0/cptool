@@ -33,15 +33,15 @@
 
 `--` 后的参数支持完整字符串 range：`"{L:R}"`。多个 range 做笛卡尔积展开；不含 range 的参数只生成一个临时 case。
 
-## Task Expect
+## Expect 检查
 
 ```bash
-./cptool test task -w ./example/a_plus_b --name small
-./cptool test task -w ./example/a_plus_b --summary-only
-./cptool test task -w ./example/a_plus_b --summary-only --json
-./cptool test task -w ./example/a_plus_b --wait-for-generation-lock 10
+./cptool test expect -w ./example/a_plus_b --name small
+./cptool test expect -w ./example/a_plus_b --summary-only
+./cptool test expect -w ./example/a_plus_b --summary-only --json
+./cptool test expect -w ./example/a_plus_b --wait-for-generation-lock 10
 ```
 
-`test task` 运行 `problem.yaml` 中 `test.tasks[].pass` 和 `test.tasks[].fail`。有 `score` 的 task 仍然是正式数据；无 `score` 的 task 是 verify-only，不落盘、不导出。verify-only task 可以直接写 `cases`，这些临时 case 只服务于 `test task`。
+`test expect` 运行 `problem.yaml` 中 `test.tasks[].pass` 和 `test.tasks[].fail`。有 `score` 的 task 仍然是正式数据；无 `score` 的 task 是 verify-only，不落盘、不导出。verify-only task 可以直接写 `cases`，这些临时 case 只服务于 `test expect`。
 
 `fail` 在至少观察到一个 WA/RE/TLE/OLE/UKE 时成功，并报告 `failed_cases`、`passed_cases` 和 `failure_ratio`。旧 `stress.plans` 会在读取时迁移到 task pass/fail。
