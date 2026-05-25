@@ -8,6 +8,7 @@ use super::schema::{CaseSelector, Problem};
 use super::unix_epoch_nanos;
 use anyhow::{Context, Result};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -83,6 +84,7 @@ struct GeneratedFile {
 struct GeneratedCase {
     files: Vec<GeneratedFile>,
     selector: CaseSelector,
+    input_hash: Vec<u8>,
     input_bytes: usize,
     answer_bytes: usize,
     validator_calls: usize,
@@ -127,10 +129,18 @@ impl GenerateReport {
 pub struct GenerateWarning {
     pub kind: GenerateWarningKind,
     pub bundle: String,
-    pub case_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case_index: Option<usize>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub program: String,
     pub stdout_bytes: usize,
     pub stderr_bytes: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_input_hashes: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub random_coverage: Option<bool>,
 }
 
 impl GenerateWarning {
@@ -138,11 +148,25 @@ impl GenerateWarning {
         match self.kind {
             GenerateWarningKind::GeneratorOutputSuspicious => format!(
                 "warning: generator_output_suspicious case={}[{}] generator={} stdout_bytes={} stderr_bytes={}",
-                self.bundle, self.case_index, self.program, self.stdout_bytes, self.stderr_bytes
+                self.bundle,
+                self.case_index.unwrap_or(0),
+                self.program,
+                self.stdout_bytes,
+                self.stderr_bytes
             ),
             GenerateWarningKind::EmptyAnswer => format!(
                 "warning: empty_answer case={}[{}] solution={} stdout_bytes={} stderr_bytes={}",
-                self.bundle, self.case_index, self.program, self.stdout_bytes, self.stderr_bytes
+                self.bundle,
+                self.case_index.unwrap_or(0),
+                self.program,
+                self.stdout_bytes,
+                self.stderr_bytes
+            ),
+            GenerateWarningKind::RepeatedInput => format!(
+                "warning: repeated_input bundle={} cases={} unique_input_hashes={} random_coverage=false hint=all_inputs_identical_within_bundle",
+                self.bundle,
+                self.case_count.unwrap_or(0),
+                self.unique_input_hashes.unwrap_or(1)
             ),
         }
     }
@@ -153,6 +177,7 @@ impl GenerateWarning {
 pub enum GenerateWarningKind {
     GeneratorOutputSuspicious,
     EmptyAnswer,
+    RepeatedInput,
 }
 
 impl GenerateWarningKind {
@@ -160,6 +185,7 @@ impl GenerateWarningKind {
         match self {
             GenerateWarningKind::GeneratorOutputSuspicious => "generator_output_suspicious",
             GenerateWarningKind::EmptyAnswer => "empty_answer",
+            GenerateWarningKind::RepeatedInput => "repeated_input",
         }
     }
 }
@@ -233,7 +259,7 @@ fn generate_data_report_impl(
     let generated = (|| {
         let mut cases = Vec::new();
         for selector in &selected_cases {
-            cases.push(generate_one_case(&context, selector, emit_warnings)?);
+            cases.push(generate_one_case(&context, selector)?);
         }
         let files = cases
             .iter()
@@ -241,12 +267,18 @@ fn generate_data_report_impl(
             .cloned()
             .collect::<Vec<_>>();
         let paths = commit_generated_files(&output_dir, staging_dir.path(), &files)?;
-        Ok(build_generate_report(
+        let report = build_generate_report(
             cases,
             paths,
             start.elapsed().as_millis(),
             context.validator.is_some(),
-        ))
+        );
+        if emit_warnings {
+            for warning in &report.warnings {
+                eprintln!("{}", warning.render());
+            }
+        }
+        Ok(report)
     })();
     match generated {
         Ok(report) => {
@@ -378,7 +410,6 @@ fn build_program_specs(work_dir: &Path, problem: &Problem) -> Result<HashMap<Str
 fn generate_one_case(
     context: &GenerateContext<'_>,
     selector: &CaseSelector,
-    emit_warnings: bool,
 ) -> Result<GeneratedCase> {
     let bundle = context
         .problem
@@ -410,10 +441,13 @@ fn generate_one_case(
         warnings.push(GenerateWarning {
             kind: GenerateWarningKind::GeneratorOutputSuspicious,
             bundle: selector.bundle.clone(),
-            case_index: selector.index,
+            case_index: Some(selector.index),
             program: generated.label.clone(),
             stdout_bytes: 0,
             stderr_bytes: generated.stderr_bytes,
+            case_count: None,
+            unique_input_hashes: None,
+            random_coverage: None,
         });
     }
     std::fs::write(&input_path, &generated.bytes).with_context(|| {
@@ -476,10 +510,13 @@ fn generate_one_case(
         warnings.push(GenerateWarning {
             kind: GenerateWarningKind::EmptyAnswer,
             bundle: selector.bundle.clone(),
-            case_index: selector.index,
+            case_index: Some(selector.index),
             program: context.solution.label.clone(),
             stdout_bytes: 0,
             stderr_bytes: answer.stderr_bytes.len(),
+            case_count: None,
+            unique_input_hashes: None,
+            random_coverage: None,
         });
     }
     std::fs::write(&answer_path, &answer.stdout_bytes).with_context(|| {
@@ -490,11 +527,6 @@ fn generate_one_case(
             answer_path.display()
         )
     })?;
-    if emit_warnings {
-        for warning in &warnings {
-            eprintln!("{}", warning.render());
-        }
-    }
     Ok(GeneratedCase {
         files: vec![
             GeneratedFile {
@@ -507,6 +539,7 @@ fn generate_one_case(
             },
         ],
         selector: selector.clone(),
+        input_hash: Sha256::digest(&generated.bytes).to_vec(),
         input_bytes: generated.bytes.len(),
         answer_bytes: answer.stdout_bytes.len(),
         validator_calls,
@@ -634,14 +667,35 @@ fn build_generate_report(
     let mut answer_bytes = 0;
     let mut validator_calls = 0;
     let mut warnings = Vec::new();
+    let mut bundle_input_hashes = BTreeMap::<String, Vec<Vec<u8>>>::new();
     let case_count = cases.len();
 
     for case in cases {
-        bundles.insert(case.selector.bundle);
+        bundle_input_hashes
+            .entry(case.selector.bundle.clone())
+            .or_default()
+            .push(case.input_hash);
+        bundles.insert(case.selector.bundle.clone());
         input_bytes += case.input_bytes;
         answer_bytes += case.answer_bytes;
         validator_calls += case.validator_calls;
         warnings.extend(case.warnings);
+    }
+    for (bundle, hashes) in bundle_input_hashes {
+        let unique = hashes.iter().collect::<HashSet<_>>().len();
+        if hashes.len() > 1 && unique == 1 {
+            warnings.push(GenerateWarning {
+                kind: GenerateWarningKind::RepeatedInput,
+                bundle,
+                case_index: None,
+                program: String::new(),
+                stdout_bytes: 0,
+                stderr_bytes: 0,
+                case_count: Some(hashes.len()),
+                unique_input_hashes: Some(unique),
+                random_coverage: Some(false),
+            });
+        }
     }
 
     GenerateReport {

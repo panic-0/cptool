@@ -359,6 +359,7 @@ fn generate_warning_summary(warnings: &[GenerateWarning]) -> String {
         .map(|warning| match warning.kind {
             GenerateWarningKind::GeneratorOutputSuspicious => "generator_output_suspicious",
             GenerateWarningKind::EmptyAnswer => "empty_answer",
+            GenerateWarningKind::RepeatedInput => "repeated_input",
         })
         .collect::<Vec<_>>()
         .join(",")

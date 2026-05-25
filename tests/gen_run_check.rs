@@ -795,6 +795,71 @@ fn gen_warns_on_empty_answer_for_non_empty_input_unless_allowed() {
 
     assert!(!allowed_stderr.contains("warning: empty_answer"));
 }
+
+#[test]
+fn gen_warns_when_bundle_inputs_are_all_identical() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-repeated-input-bundle");
+    run_cptool(
+        ["pkg", "init", "repeated_input_bundle", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("repeated_input_bundle");
+    configure_python_problem(&problem_dir);
+    let yaml_path = problem_dir.join("problem.yaml");
+    let yaml = std::fs::read_to_string(&yaml_path).unwrap();
+    std::fs::write(
+        &yaml_path,
+        yaml.replacen(
+            "      - [\"3\", \"4\"]\n",
+            "      - [\"3\", \"4\"]\n      - [\"3\", \"4\"]\n",
+            1,
+        ),
+    )
+    .unwrap();
+
+    let output = run_cptool(["case", "gen", "-w"], Some(&problem_dir));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("warning: repeated_input"), "{stderr}");
+    assert!(stderr.contains("bundle=sample"), "{stderr}");
+    assert!(stderr.contains("cases=2"), "{stderr}");
+    assert!(stderr.contains("unique_input_hashes=1"), "{stderr}");
+
+    let summary = run_cptool(
+        [
+            "case",
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+        ],
+        None,
+    );
+    let summary_stdout = String::from_utf8_lossy(&summary.stdout);
+    assert!(summary_stdout.contains("warnings=repeated_input:1"));
+
+    let json = run_cptool(
+        [
+            "case",
+            "gen",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(value["warnings"][0]["kind"], "repeated_input");
+    assert_eq!(value["warnings"][0]["bundle"], "sample");
+    assert_eq!(value["warnings"][0]["case_count"], 2);
+    assert_eq!(value["warnings"][0]["unique_input_hashes"], 1);
+    assert_eq!(value["warnings"][0]["random_coverage"], false);
+}
+
 #[test]
 fn gen_summary_only_prints_compact_success_totals() {
     if !python_available() {
