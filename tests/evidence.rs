@@ -273,7 +273,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
         !problem_dir
             .join(".cptool")
             .join("failures")
-            .join("stress-002.txt")
+            .join("expect-002.txt")
             .exists()
     );
 }

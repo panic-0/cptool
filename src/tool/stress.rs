@@ -754,7 +754,7 @@ fn save_stress_failure_artifacts(
     let report_path = stem.with_extension("txt");
     input_file
         .write_all(&failure.input)
-        .with_context(|| format!("failed to write stress input {}", input_path.display()))?;
+        .with_context(|| format!("failed to write expect input {}", input_path.display()))?;
     let artifacts = write_stress_outputs(&stem, &failure.results)?;
     let checker = if let Some(checker) = &failure.checker {
         Some(write_checker_output(&stem, checker)?)
@@ -769,7 +769,7 @@ fn save_stress_failure_artifacts(
         checker.as_ref(),
     );
     std::fs::write(&report_path, report.as_bytes())
-        .with_context(|| format!("failed to write stress report {}", report_path.display()))?;
+        .with_context(|| format!("failed to write expect report {}", report_path.display()))?;
     Ok(SavedStressFailureArtifacts {
         stem,
         input_path,
@@ -784,7 +784,7 @@ fn create_failure_input(
     _check_name: Option<&str>,
 ) -> Result<(PathBuf, std::fs::File)> {
     for id in 1.. {
-        let stem = failure_dir.join(format!("stress-{id:03}"));
+        let stem = failure_dir.join(format!("expect-{id:03}"));
         let input_path = stem.with_extension("in");
         match std::fs::OpenOptions::new()
             .write(true)
@@ -795,7 +795,7 @@ fn create_failure_input(
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(err) => {
                 return Err(err).with_context(|| {
-                    format!("failed to create stress input {}", input_path.display())
+                    format!("failed to create expect input {}", input_path.display())
                 });
             }
         }
@@ -812,10 +812,10 @@ fn write_stress_outputs(stem: &Path, results: &[RunResult]) -> Result<Vec<Stress
             let stdout_path = artifact_stem.with_extension("out");
             let stderr_path = artifact_stem.with_extension("err");
             std::fs::write(&stdout_path, &result.stdout_bytes).with_context(|| {
-                format!("failed to write stress stdout {}", stdout_path.display())
+                format!("failed to write expect stdout {}", stdout_path.display())
             })?;
             std::fs::write(&stderr_path, &result.stderr_bytes).with_context(|| {
-                format!("failed to write stress stderr {}", stderr_path.display())
+                format!("failed to write expect stderr {}", stderr_path.display())
             })?;
             Ok(StressOutputArtifact {
                 label: result.label.clone(),
@@ -955,12 +955,12 @@ mod tests {
 
     #[test]
     fn failure_input_stem_uses_short_stable_name() {
-        let root = temp_test_dir("cptool-stress-plan-failure");
+        let root = temp_test_dir("cptool-expect-failure");
         std::fs::create_dir_all(&root).unwrap();
 
         let (stem, _file) = create_failure_input(&root, Some("small cases")).unwrap();
 
-        assert_eq!(stem.file_name().unwrap(), "stress-001");
+        assert_eq!(stem.file_name().unwrap(), "expect-001");
         std::fs::remove_dir_all(root).unwrap();
     }
 
