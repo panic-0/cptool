@@ -3,7 +3,6 @@ use super::judge::run_configured_checker_on_bytes;
 use super::problem::{FILE_GENERATOR_NAME, load_problem, normalize_work_dir, resolve_path};
 use super::program::{ProgramSpec, resolve_named_or_source, run_spec};
 use super::schema::{CompileReport, RunResult};
-use super::stress_args::direct_stress_args_by_case;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -11,58 +10,6 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-
-pub fn stress_with_summary(
-    work_dir: &Path,
-    generator: &str,
-    against: &[String],
-    cases: usize,
-    args: &[String],
-    failure_dir: Option<&Path>,
-    output_limit_bytes: usize,
-) -> Result<StressSummary> {
-    stress_with_options(StressOptions {
-        work_dir,
-        generator,
-        against,
-        cases,
-        args,
-        failure_dir,
-        output_limit_bytes,
-        print_progress: true,
-        print_warnings: true,
-    })
-}
-
-pub struct StressOptions<'a> {
-    pub work_dir: &'a Path,
-    pub generator: &'a str,
-    pub against: &'a [String],
-    pub cases: usize,
-    pub args: &'a [String],
-    pub failure_dir: Option<&'a Path>,
-    pub output_limit_bytes: usize,
-    pub print_progress: bool,
-    pub print_warnings: bool,
-}
-
-pub fn stress_with_options(options: StressOptions<'_>) -> Result<StressSummary> {
-    let args_by_case = direct_stress_args_by_case(options.args, options.cases);
-    run_stress(StressRunOptions {
-        work_dir: options.work_dir,
-        generator: options.generator,
-        against: options.against,
-        args_by_case,
-        failure_dir: options.failure_dir,
-        output_limit_bytes: options.output_limit_bytes,
-        plan_name: None,
-        progress_label: "check",
-        print_progress: options.print_progress,
-        print_warnings: options.print_warnings,
-        expect_failure: false,
-        allow_expected_failure_absent: false,
-    })
-}
 
 pub struct StressExpectOptions<'a> {
     pub work_dir: &'a Path,

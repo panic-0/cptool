@@ -52,8 +52,7 @@ pub use schema::{
 };
 pub use stress::{
     ExpectedCheckerOutput, ExpectedStressFailure, ExpectedStressOutput, StressExpectOptions,
-    StressOptions, StressSummary, StressWarning, stress_expect_with_options, stress_with_options,
-    stress_with_summary,
+    StressSummary, StressWarning, stress_expect_with_options,
 };
 pub use stress_args::range_args;
 pub use task_expect::{

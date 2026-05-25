@@ -1,7 +1,3 @@
-pub(crate) fn direct_stress_args_by_case(args: &[String], cases: usize) -> Vec<Vec<String>> {
-    (0..cases).map(|_| args.to_vec()).collect()
-}
-
 pub(crate) fn legacy_stress_args_by_case(args: &[String], cases: usize) -> Vec<Vec<String>> {
     (0..cases)
         .map(|case0| {
@@ -64,33 +60,4 @@ fn parse_range_arg(arg: &str) -> anyhow::Result<Option<Vec<String>>> {
 fn legacy_expand_arg(arg: &str, case: usize, case0: usize) -> String {
     arg.replace("{case0}", &case0.to_string())
         .replace("{case}", &case.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn direct_stress_args_repeat_literal_args() {
-        let args = direct_stress_args_by_case(
-            &["--seed=literal".to_string(), "--mode=fixed".to_string()],
-            3,
-        );
-
-        assert_eq!(args.len(), 3);
-        assert_eq!(args[0][0], "--seed=literal");
-        assert_eq!(args[0][1], "--mode=fixed");
-        assert_eq!(args[1][0], "--seed=literal");
-        assert_eq!(args[1][1], "--mode=fixed");
-    }
-
-    #[test]
-    fn fixed_direct_stress_args_remain_literal_for_each_case() {
-        let args = vec!["10".to_string(), "case".to_string()];
-
-        assert_eq!(
-            direct_stress_args_by_case(&args, 2),
-            vec![args.clone(), args]
-        );
-    }
 }
