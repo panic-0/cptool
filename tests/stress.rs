@@ -41,7 +41,7 @@ fn stress_uses_configured_checker_instead_of_text_comparison() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-checker");
+    let temp = TempWorkspace::new("cptool-batch-checker");
     run_cptool(
         ["pkg", "init", "stress_checker", "--root"],
         Some(temp.path()),
@@ -78,7 +78,7 @@ fn task_expect_fail_records_checker_rejection_artifact() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-checker-fail");
+    let temp = TempWorkspace::new("cptool-batch-checker-fail");
     run_cptool(
         ["pkg", "init", "stress_checker_fail", "--root"],
         Some(temp.path()),
@@ -145,7 +145,7 @@ fn task_expect_fail_rejects_checker_infrastructure_failure() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-checker-crash");
+    let temp = TempWorkspace::new("cptool-batch-checker-crash");
     run_cptool(
         ["pkg", "init", "stress_checker_crash", "--root"],
         Some(temp.path()),
@@ -374,7 +374,7 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-empty-output");
+    let temp = TempWorkspace::new("cptool-batch-empty-output");
     run_cptool(
         ["pkg", "init", "stress_empty_output", "--root"],
         Some(temp.path()),
@@ -415,7 +415,7 @@ fn stress_reports_unique_input_hashes_for_range_args() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-fixed-args");
+    let temp = TempWorkspace::new("cptool-batch-fixed-args");
     run_cptool(
         ["pkg", "init", "stress_fixed_args", "--root"],
         Some(temp.path()),
@@ -451,7 +451,7 @@ fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-json");
+    let temp = TempWorkspace::new("cptool-batch-json");
     run_cptool(["pkg", "init", "stress_json", "--root"], Some(temp.path()));
     let problem_dir = temp.path().join("stress_json");
     configure_python_problem(&problem_dir);
@@ -488,7 +488,7 @@ fn stress_expands_range_and_reports_unique_inputs() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-case-placeholder");
+    let temp = TempWorkspace::new("cptool-batch-range");
     run_cptool(
         ["pkg", "init", "stress_case_placeholder", "--root"],
         Some(temp.path()),
