@@ -82,6 +82,123 @@ fn cli_runs_init_generate_run_batch_and_export_flow() {
 }
 
 #[test]
+fn pkg_explain_reports_roles_data_expect_and_multiple_generators() {
+    let temp = TempWorkspace::new("cptool-pkg-explain");
+    let problem_dir = temp.path().join("explain_problem");
+    std::fs::create_dir_all(&problem_dir).unwrap();
+    std::fs::write(
+        problem_dir.join("problem.yaml"),
+        r#"name: explain_problem
+programs:
+  gen: ./src/gen.cpp
+  gen_special: ./src/gen_special.cpp
+  std: ./src/std.cpp
+  brute: ./src/brute.cpp
+  wrong_greedy: ./src/wrong_greedy.cpp
+  val: ./src/val.cpp
+  chk: ./src/chk.cpp
+solution: std
+validator: val
+checker: chk
+generator: gen
+test:
+  type: min
+  bundles:
+    sample:
+    - [sample, 1]
+    mixed:
+      cases:
+      - [small, 1]
+      - {generator: gen_special, args: [dense, 100]}
+      - {generator: ":file", args: [fixtures/input/sample1.in]}
+  tasks:
+  - name: official
+    score: 100.0
+    bundles: [sample, mixed]
+    pass: [brute]
+  - name: wrong-proof
+    cases:
+    - [small, "{1:2}"]
+    - {generator: gen_special, args: [edge, "{1:3}"]}
+    fail: [wrong_greedy]
+"#,
+    )
+    .unwrap();
+
+    let text = run_cptool(["pkg", "explain", "-w"], Some(&problem_dir));
+    let stdout = String::from_utf8_lossy(&text.stdout);
+    assert!(stdout.contains("roles"));
+    assert!(stdout.contains("solution: std -> src/std.cpp (cpp)"));
+    assert!(stdout.contains("generator: gen -> src/gen.cpp (cpp)"));
+    assert!(stdout.contains("bundle mixed cases=3 generators=[:file,gen,gen_special]"));
+    assert!(stdout.contains("task wrong-proof verify-only"));
+    assert!(stdout.contains("fixtures/input/sample1.in used_by=[mixed[2]]"));
+
+    let json = run_cptool(["pkg", "explain", "--json", "-w"], Some(&problem_dir));
+    let value: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(value["roles"]["solution"]["name"], "std");
+    assert_eq!(value["roles"]["generator"]["name"], "gen");
+    assert_eq!(value["official_data"]["tasks"][0]["name"], "official");
+    assert_eq!(
+        value["official_data"]["bundles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|bundle| bundle["name"] == "mixed")
+            .unwrap()["generators"],
+        serde_json::json!([":file", "gen", "gen_special"])
+    );
+    assert_eq!(value["expect_checks"][1]["inline_cases"], 5);
+    assert_eq!(
+        value["handwritten_inputs"][0]["path"],
+        "fixtures/input/sample1.in"
+    );
+}
+
+#[test]
+fn pkg_explain_does_not_write_legacy_stress_migration() {
+    let temp = TempWorkspace::new("cptool-pkg-explain-read-only");
+    let problem_dir = temp.path().join("legacy_explain");
+    std::fs::create_dir_all(&problem_dir).unwrap();
+    let original = r#"name: legacy_explain
+programs:
+  gen: ./src/gen.cpp
+  std: ./src/std.cpp
+  brute: ./src/brute.cpp
+solution: std
+validator_omitted_reason: "legacy explain smoke"
+generator: gen
+test:
+  bundles:
+    sample:
+    - [sample]
+  tasks:
+  - name: sample
+    score: 100.0
+    type: min
+    bundles: [sample]
+stress:
+  plans:
+  - name: old-proof
+    generator: gen
+    args: ["{case}"]
+    against: [std, brute]
+    cases: 2
+    expect: fail
+"#;
+    std::fs::write(problem_dir.join("problem.yaml"), original).unwrap();
+
+    let json = run_cptool(["pkg", "explain", "--json", "-w"], Some(&problem_dir));
+    let value: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+
+    assert_eq!(value["expect_checks"][0]["name"], "old-proof");
+    assert_eq!(
+        std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap(),
+        original
+    );
+}
+
+#[test]
 fn init_scaffold_includes_working_testlib_validator() {
     let temp = TempWorkspace::new("cptool-init-testlib-validator");
     run_cptool(
@@ -392,6 +509,11 @@ fn cli_help_describes_new_workflow_commands() {
     assert!(check_stdout.contains("Check common package structure"));
     assert!(check_stdout.contains("--json"));
     assert!(check_stdout.contains("--wait-for-generation-lock"));
+
+    let explain = run_cptool(["pkg", "explain", "--help"], None);
+    let explain_stdout = String::from_utf8_lossy(&explain.stdout);
+    assert!(explain_stdout.contains("Explain problem.yaml roles"));
+    assert!(explain_stdout.contains("--json"));
 
     let test = run_cptool(["test", "--help"], None);
     let test_stdout = String::from_utf8_lossy(&test.stdout);

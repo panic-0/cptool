@@ -4,6 +4,7 @@ mod check;
 mod clean;
 mod data;
 mod evidence;
+mod explain;
 mod fixture;
 mod judge;
 mod package;
@@ -32,6 +33,7 @@ pub use data::{
 pub use evidence::{
     EvidenceCheckReport, EvidenceOptions, EvidenceReport, EvidenceSection, collect_evidence,
 };
+pub use explain::{ExplainOptions, ExplainProgramRef, ExplainReport, explain_package};
 pub use fixture::{
     AddCheckerFixtureOptions, AddFixtureReport, AddInputFixtureOptions, AddValidatorFixtureOptions,
     CheckerFixture, FixtureCheckReport, FixtureIssue, FixtureListReport, InputFixture,

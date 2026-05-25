@@ -76,6 +76,13 @@ pub(super) enum PkgCommands {
         #[arg(long, help = "Print the check report as JSON")]
         json: bool,
     },
+    #[command(about = "Explain problem.yaml roles, programs, data, and expect checks")]
+    Explain {
+        #[arg(short, long, default_value = ".", help = "Problem package directory")]
+        work_dir: PathBuf,
+        #[arg(long, help = "Print the explanation as JSON")]
+        json: bool,
+    },
     #[command(about = "Clean generated data and local cptool cache")]
     Clean {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]

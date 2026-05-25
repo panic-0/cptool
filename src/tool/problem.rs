@@ -10,12 +10,20 @@ use std::time::Duration;
 
 pub(crate) const FILE_GENERATOR_NAME: &str = ":file";
 pub fn load_problem(work_dir: &Path) -> Result<Problem> {
+    load_problem_with_options(work_dir, true)
+}
+
+pub(crate) fn load_problem_read_only(work_dir: &Path) -> Result<Problem> {
+    load_problem_with_options(work_dir, false)
+}
+
+fn load_problem_with_options(work_dir: &Path, write_migration: bool) -> Result<Problem> {
     let path = work_dir.join("problem.yaml");
     let yaml = std::fs::read_to_string(&path)
         .with_context(|| format!("failed to read {}", path.display()))?;
     let mut problem: Problem = serde_yml::from_str(&yaml)
         .with_context(|| format!("failed to parse {}", path.display()))?;
-    if migrate_legacy_stress_plans(&mut problem) {
+    if migrate_legacy_stress_plans(&mut problem) && write_migration {
         let yaml = serde_yml::to_string(&problem)
             .with_context(|| format!("failed to render migrated {}", path.display()))?;
         std::fs::write(&path, yaml)

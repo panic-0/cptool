@@ -36,6 +36,7 @@ fn handle_pkg(command: PkgCommands) -> anyhow::Result<()> {
             wait_for_generation_lock,
             json,
         } => handle_check(work_dir, wait_for_generation_lock, json)?,
+        PkgCommands::Explain { work_dir, json } => handle_explain(work_dir, json)?,
         PkgCommands::Clean {
             work_dir,
             data,
@@ -716,6 +717,16 @@ fn handle_check(
     }
     if report.has_errors() {
         std::process::exit(2);
+    }
+    Ok(())
+}
+
+fn handle_explain(work_dir: PathBuf, json: bool) -> anyhow::Result<()> {
+    let report = tool::explain_package(tool::ExplainOptions { work_dir })?;
+    if json {
+        self::json::print(&report)?;
+    } else {
+        print!("{}", report.render_text());
     }
     Ok(())
 }

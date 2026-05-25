@@ -2,6 +2,15 @@
 
 `problem.yaml` 描述程序、generator、数据组、task pass/fail、validator 和 checker。
 
+阅读已有题包时，先运行：
+
+```bash
+cptool pkg explain -w <problem_dir>
+cptool pkg explain -w <problem_dir> --json
+```
+
+它会按 roles、programs、official data、expect checks 和 handwritten inputs 分层展示已解析配置；多 generator 的 bundle 或 task 会列出实际使用到的全部 generator。
+
 ## 示例
 
 ```yaml
