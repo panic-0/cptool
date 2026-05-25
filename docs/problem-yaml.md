@@ -30,12 +30,11 @@ test:
       - [20]
     main:
       - [10]
-      - args: [10000000]
+      - [10000000]
       - [1000000000]
     corner:
       cases:
-      - generator: :file
-        args: [fixtures/input/small.in]
+      - {generator: ":file", args: [fixtures/input/small.in]}
   tasks:
   - name: sample
     score: 1.0
@@ -71,11 +70,10 @@ C++ 编译会自动把源码所在目录加入 include path，因此源码旁边
 
 ## Generator 和用例
 
-顶层 `generator` 被 bundle case 继承。普通 bundle 可以省略 `cases`，直接写 case 列表。使用默认 generator 的测试 case 应优先写 args-only 简写（`- [...]`）或 args-only mapping（`args: [...]`）。只有 bundle 需要自己的默认 generator，或某个 case 需要不同 generator 时，才写完整形式：
+顶层 `generator` 被 bundle case 继承。普通 bundle 可以省略 `cases`，直接写 case 列表。使用默认 generator 的测试 case 应写一行 args-only 简写（`- [...]`）。只有 bundle 需要自己的默认 generator，或某个 case 需要不同 generator 时，才写一行 inline mapping：
 
 ```yaml
-- generator: other_gen
-  args: [100]
+- {generator: other_gen, args: [100]}
 ```
 
 bundle 级 `generator` 会覆盖顶层 generator，case 级 `generator` 会覆盖前两者。完整字符串参数 `"{L:R}"` 会展开为整数闭区间；多个 range 参数会做笛卡尔积展开。

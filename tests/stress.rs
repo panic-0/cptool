@@ -622,7 +622,7 @@ fn task_expect_accepts_inline_file_generator_cases() {
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
     yaml = yaml.replacen(
         "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n",
-        "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n  - name: file-corners\n    cases:\n    - generator: :file\n      args: [\"fixtures/input/1.in\"]\n    pass: [brute]\n",
+        "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n  - name: file-corners\n    cases:\n    - {generator: \":file\", args: [\"fixtures/input/1.in\"]}\n    pass: [brute]\n",
         1,
     );
     std::fs::write(&yaml_path, yaml).unwrap();

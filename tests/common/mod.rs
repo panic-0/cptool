@@ -197,12 +197,11 @@ programs:
     memory_limit_mb: 128.0
 solution: std
 validator_omitted_reason: "unicode path smoke test"
+generator: gen
 test:
   bundles:
     sample:
-      cases:
-      - generator: gen
-        args: ["你好", "世界"]
+      - ["你好", "世界"]
   tasks:
   - name: sample
     score: 100.0
@@ -255,18 +254,14 @@ programs:
     memory_limit_mb: 128.0
 solution: std
 validator_omitted_reason: "coverage fixture"
+generator: gen
 test:
   bundles:
     sample:
-      cases:
-      - generator: gen
-        args: ["1"]
+      - ["1"]
     main:
-      cases:
-      - generator: gen
-        args: ["20"]
-      - generator: gen
-        args: ["300"]
+      - ["20"]
+      - ["300"]
   tasks:
   - name: sample
     score: 10.0

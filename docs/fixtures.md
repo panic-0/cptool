@@ -31,8 +31,7 @@ test:
   bundles:
     corner:
       cases:
-      - generator: :file
-        args: [fixtures/input/small.in]
+      - {generator: ":file", args: [fixtures/input/small.in]}
 ```
 
 `:file` 可用于正式 bundle case，也可用于 verify-only task 的内联 `cases`；它不会作为普通 generator 程序注册。

@@ -25,20 +25,17 @@ test:
     sample:
       cases:
       # 手写样例放在 fixtures/input，再通过 :file 进入正式数据。
-      - generator: :file
-        args: [fixtures/input/sample.in]
+      - {generator: ":file", args: [fixtures/input/sample.in]}
     corner:
       cases:
       # 覆盖模数边界和 a_i 在模意义下等于 1 的特殊分母。
-      - generator: :file
-        args: [fixtures/input/edge_mod.in]
-      - generator: :file
-        args: [fixtures/input/one_mod.in]
+      - {generator: ":file", args: [fixtures/input/edge_mod.in]}
+      - {generator: ":file", args: [fixtures/input/one_mod.in]}
     s1:
       # args-only 简写，参数为 max_n, max_k, max_a, min_k。
       - [20, 20, 1000, 1]
-      # args-only mapping，同样使用顶层 generator。
-      - args: [100, 100, 1000000, 1]
+      # args-only case 同样使用顶层 generator。
+      - [100, 100, 1000000, 1]
       - [1000, 1000, 1000000000, 1]
     s2:
       - [5000, 100000, 1000000000, 1]

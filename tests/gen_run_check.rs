@@ -419,8 +419,7 @@ test:
   bundles:
     corner:
       cases:
-      - generator: :file
-        args: [fixtures/input/small.in]
+      - {generator: ":file", args: [fixtures/input/small.in]}
   tasks:
   - name: corner
     score: 100.0

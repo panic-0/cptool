@@ -556,21 +556,19 @@ fn render_test(out: &mut String, problem: &Problem) {
             .all(|case| problem.generator_name.as_deref() == Some(case.generator_name.as_str()));
         if !cases.is_empty() && all_default_generator {
             for case in cases {
-                out.push_str(&format!("      - {}\n", inline_list(&case.args)));
+                out.push_str(&format!(
+                    "      - {}\n",
+                    inline_case(problem.generator_name.as_deref(), case)
+                ));
             }
             continue;
         }
         out.push_str("      cases:\n");
         for case in cases {
-            if problem.generator_name.as_deref() == Some(case.generator_name.as_str()) {
-                out.push_str(&format!("      - {}\n", inline_list(&case.args)));
-            } else {
-                out.push_str(&format!(
-                    "      - generator: {}\n",
-                    key_or_string(&case.generator_name)
-                ));
-                out.push_str(&format!("        args: {}\n", inline_list(&case.args)));
-            }
+            out.push_str(&format!(
+                "      - {}\n",
+                inline_case(problem.generator_name.as_deref(), case)
+            ));
         }
     }
     out.push_str("  tasks:\n");
@@ -588,15 +586,10 @@ fn render_test(out: &mut String, problem: &Problem) {
         if !task.cases.is_empty() {
             out.push_str("    cases:\n");
             for case in &task.cases {
-                if problem.generator_name.as_deref() == Some(case.generator_name.as_str()) {
-                    out.push_str(&format!("    - {}\n", inline_list(&case.args)));
-                } else {
-                    out.push_str(&format!(
-                        "    - generator: {}\n",
-                        key_or_string(&case.generator_name)
-                    ));
-                    out.push_str(&format!("      args: {}\n", inline_list(&case.args)));
-                }
+                out.push_str(&format!(
+                    "    - {}\n",
+                    inline_case(problem.generator_name.as_deref(), case)
+                ));
             }
         }
         if !task.dependencies.is_empty() {
@@ -650,6 +643,18 @@ fn inline_list(values: &[String]) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     )
+}
+
+fn inline_case(default_generator: Option<&str>, case: &TestCase) -> String {
+    if default_generator == Some(case.generator_name.as_str()) {
+        inline_list(&case.args)
+    } else {
+        format!(
+            "{{generator: {}, args: {}}}",
+            key_or_string(&case.generator_name),
+            inline_list(&case.args)
+        )
+    }
 }
 
 fn format_f64(value: f64) -> String {
@@ -847,6 +852,66 @@ mod tests {
                 .iter()
                 .any(|task| task.name == "extra_task" && task.task_type == Some(TestTaskType::Sum))
         );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn write_problem_renders_all_cases_on_one_line() {
+        let root = temp_test_dir("cptool-one-line-cases");
+        let problem_dir = init_package(&root, "One Line Cases").unwrap();
+        add_program(AddProgramOptions {
+            work_dir: problem_dir.clone(),
+            name: "gen_special".to_string(),
+            kind: Some(AddProgramKind::Cpp),
+            path: Some(PathBuf::from("./src/gen.cpp")),
+            time_limit_secs: None,
+            memory_limit_mb: None,
+            compile_args: Vec::new(),
+            replace: false,
+        })
+        .unwrap();
+
+        let mut problem = read_problem(&problem_dir).unwrap();
+        problem.test.bundles.insert(
+            "mixed".to_string(),
+            TestBundle {
+                cases: vec![
+                    TestCase {
+                        generator_name: "gen".to_string(),
+                        args: vec!["small".to_string(), "1".to_string()],
+                    },
+                    TestCase {
+                        generator_name: "gen_special".to_string(),
+                        args: vec!["dense".to_string(), "100".to_string()],
+                    },
+                ],
+            },
+        );
+        problem.test.tasks.push(TestTask {
+            name: "file-proof".to_string(),
+            score: None,
+            task_type: None,
+            bundles: Vec::new(),
+            cases: vec![TestCase {
+                generator_name: ":file".to_string(),
+                args: vec!["fixtures/input/sample1.in".to_string()],
+            }],
+            dependencies: Vec::new(),
+            pass_programs: vec!["brute".to_string()],
+            fail_programs: Vec::new(),
+        });
+        write_problem(&problem_dir, &problem).unwrap();
+
+        let yaml = std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap();
+        assert!(yaml.contains("      - [\"small\", \"1\"]\n"));
+        assert!(yaml.contains("      - {generator: gen_special, args: [\"dense\", \"100\"]}\n"));
+        assert!(
+            yaml.contains("    - {generator: \":file\", args: [\"fixtures/input/sample1.in\"]}\n")
+        );
+        assert!(!yaml.contains("      - generator: gen_special\n"));
+        assert!(!yaml.contains("    - generator: \":file\"\n"));
+        load_problem(&problem_dir).unwrap();
 
         std::fs::remove_dir_all(root).unwrap();
     }
