@@ -19,7 +19,7 @@
 - `src/tool/data.rs`：正式数据生成、暂存和提交流程。
 - `src/tool/fixture.rs`：手写 input、validator、checker fixture 的添加、检查和列表。
 - `src/tool/run.rs`：程序运行以及可选输出/报告写入。
-- `src/tool/stress.rs`、`src/tool/task_expect.rs`、`src/tool/stress_args.rs`：临时 batch 和配置化 task expect。
+- `src/tool/stress.rs`、`src/tool/task_expect.rs`、`src/tool/batch_args.rs`：临时 batch 和配置化 task expect。
 - `src/tool/check/`：题包检查、YAML 形状检查、题面和样例审计。
 - `src/tool/report/`：证据聚合和渲染。
 - `example/`：smoke 测试使用的可执行示例题包。

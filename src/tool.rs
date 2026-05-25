@@ -1,4 +1,5 @@
 mod add;
+mod batch_args;
 mod check;
 mod clean;
 mod data;
@@ -11,7 +12,6 @@ mod program;
 mod run;
 mod schema;
 mod stress;
-mod stress_args;
 mod task_expect;
 
 pub(crate) use crate::support::{temp_suffix, unix_epoch_nanos};
@@ -19,6 +19,7 @@ pub use add::{
     AddBundleOptions, AddCheckerOptions, AddProgramKind, AddProgramOptions, AddTaskOptions,
     AddValidatorOptions, add_bundle, add_checker, add_program, add_task, add_validator,
 };
+pub use batch_args::range_args;
 pub use check::{
     CheckIssue, CheckIssueDetail, CheckOptions, CheckReport, CheckSeverity,
     check_problem_package_with_options,
@@ -54,7 +55,6 @@ pub use stress::{
     ExpectedCheckerOutput, ExpectedStressFailure, ExpectedStressOutput, StressExpectOptions,
     StressSummary, StressWarning, stress_expect_with_options,
 };
-pub use stress_args::range_args;
 pub use task_expect::{
     TaskExpectOptions, task_expect_collect_with_options, task_expect_with_options,
 };

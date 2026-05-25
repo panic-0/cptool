@@ -1,8 +1,8 @@
+use super::batch_args::legacy_stress_args_by_case;
 use super::data::{GenerateOptions, generate_data_with_options};
 use super::schema::{
     CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem, StressPlanExpectation, TestCase, TestTask,
 };
-use super::stress_args::legacy_stress_args_by_case;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
