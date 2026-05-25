@@ -56,7 +56,7 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
             args_by_case: args_by_case.clone(),
             failure_dir,
             output_limit_bytes,
-            plan_name: Some(&format!("batch:pass:{program}")),
+            check_name: Some(&format!("batch:pass:{program}")),
             progress_label: "check",
             print_progress,
             print_warnings,
@@ -73,7 +73,7 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
             args_by_case: args_by_case.clone(),
             failure_dir,
             output_limit_bytes,
-            plan_name: Some(&format!("batch:fail:{program}")),
+            check_name: Some(&format!("batch:fail:{program}")),
             progress_label: "check",
             print_progress,
             print_warnings,
@@ -93,7 +93,7 @@ pub struct StressSummary {
         alias = "plan_name",
         alias = "check_name"
     )]
-    pub plan_name: Option<String>,
+    pub check_name: Option<String>,
     #[serde(default)]
     pub checker: Option<String>,
     #[serde(default)]
@@ -128,7 +128,7 @@ impl StressSummary {
     }
 
     pub fn summary_line(&self) -> String {
-        let name = self.plan_name.as_deref().unwrap_or("stress");
+        let name = self.check_name.as_deref().unwrap_or("stress");
         if let Some(failure) = &self.expected_failure {
             let checker = checker_summary(&self.checker, &self.answer_program);
             return format!(
@@ -239,7 +239,7 @@ pub(crate) struct StressRunOptions<'a> {
     pub(crate) args_by_case: Vec<Vec<String>>,
     pub(crate) failure_dir: Option<&'a Path>,
     pub(crate) output_limit_bytes: usize,
-    pub(crate) plan_name: Option<&'a str>,
+    pub(crate) check_name: Option<&'a str>,
     pub(crate) progress_label: &'a str,
     pub(crate) print_progress: bool,
     pub(crate) print_warnings: bool,
@@ -255,7 +255,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         args_by_case,
         failure_dir,
         output_limit_bytes,
-        plan_name,
+        check_name,
         progress_label,
         print_progress,
         print_warnings,
@@ -305,7 +305,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         input_hashes.insert(outcome.input_hash.clone());
         if let Some(failure) = outcome.failure {
             if expect_failure && !failure.satisfies_expect_fail {
-                save_stress_failure(&failure_dir, plan_name, failure)?;
+                save_stress_failure(&failure_dir, check_name, failure)?;
                 unreachable!("save_stress_failure always returns an error");
             }
             if expect_failure {
@@ -314,7 +314,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
                 failed_cases += 1;
                 if expected_failure.is_none() {
                     let artifacts =
-                        save_stress_failure_artifacts(&failure_dir, plan_name, &failure)?;
+                        save_stress_failure_artifacts(&failure_dir, check_name, &failure)?;
                     expected_failure = Some(ExpectedStressFailure {
                         case_index,
                         reason,
@@ -333,9 +333,9 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
                     });
                 }
                 if print_progress {
-                    if let Some(plan_name) = plan_name {
+                    if let Some(check_name) = check_name {
                         println!(
-                            "{progress_label} `{plan_name}` case {case_index} expected failure observed"
+                            "{progress_label} `{check_name}` case {case_index} expected failure observed"
                         );
                     } else {
                         println!("case {case_index} expected failure observed");
@@ -343,7 +343,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
                 }
                 continue;
             }
-            save_stress_failure(&failure_dir, plan_name, failure)?;
+            save_stress_failure(&failure_dir, check_name, failure)?;
             unreachable!("save_stress_failure always returns an error");
         }
         if outcome.empty_stdout {
@@ -361,15 +361,15 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             }
         }
         if print_progress {
-            if let Some(plan_name) = plan_name {
-                println!("{progress_label} `{plan_name}` case {index} ok");
+            if let Some(check_name) = check_name {
+                println!("{progress_label} `{check_name}` case {index} ok");
             } else {
                 println!("case {index} ok");
             }
         }
     }
     let mut summary = StressSummary {
-        plan_name: plan_name.map(str::to_string),
+        check_name: check_name.map(str::to_string),
         checker: checker_name,
         answer_program,
         cases,
@@ -385,7 +385,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             if allow_expected_failure_absent {
                 return Ok(summary);
             }
-            let check = plan_name
+            let check = check_name
                 .map(|name| format!(" `{name}`"))
                 .unwrap_or_default();
             anyhow::bail!(
@@ -726,11 +726,11 @@ fn checker_run_is_rejection(result: &RunResult) -> bool {
 
 fn save_stress_failure(
     failure_dir: &Path,
-    plan_name: Option<&str>,
+    check_name: Option<&str>,
     failure: StressFailure,
 ) -> Result<()> {
-    let artifacts = save_stress_failure_artifacts(failure_dir, plan_name, &failure)?;
-    let check = plan_name
+    let artifacts = save_stress_failure_artifacts(failure_dir, check_name, &failure)?;
+    let check = check_name
         .map(|name| format!(" `{name}`"))
         .unwrap_or_default();
     anyhow::bail!(
@@ -744,12 +744,12 @@ fn save_stress_failure(
 
 fn save_stress_failure_artifacts(
     failure_dir: &Path,
-    plan_name: Option<&str>,
+    check_name: Option<&str>,
     failure: &StressFailure,
 ) -> Result<SavedStressFailureArtifacts> {
     std::fs::create_dir_all(failure_dir)
         .with_context(|| format!("failed to create failure dir {}", failure_dir.display()))?;
-    let (stem, mut input_file) = create_failure_input(failure_dir, plan_name)?;
+    let (stem, mut input_file) = create_failure_input(failure_dir, check_name)?;
     let input_path = stem.with_extension("in");
     let report_path = stem.with_extension("txt");
     input_file
@@ -762,7 +762,7 @@ fn save_stress_failure_artifacts(
         None
     };
     let report = render_stress_failure(
-        plan_name,
+        check_name,
         failure.case_index,
         &failure.reason,
         &artifacts,
@@ -781,7 +781,7 @@ fn save_stress_failure_artifacts(
 
 fn create_failure_input(
     failure_dir: &Path,
-    _plan_name: Option<&str>,
+    _check_name: Option<&str>,
 ) -> Result<(PathBuf, std::fs::File)> {
     for id in 1.. {
         let stem = failure_dir.join(format!("stress-{id:03}"));
@@ -901,14 +901,14 @@ pub(crate) fn normalize_output(text: &str) -> String {
 }
 
 fn render_stress_failure(
-    plan_name: Option<&str>,
+    check_name: Option<&str>,
     case_index: usize,
     reason: &str,
     artifacts: &[StressOutputArtifact],
     checker: Option<&StressCheckerArtifact>,
 ) -> String {
-    let mut report = match plan_name {
-        Some(plan_name) => format!("expect check `{plan_name}` failed on case {case_index}\n\n"),
+    let mut report = match check_name {
+        Some(check_name) => format!("expect check `{check_name}` failed on case {case_index}\n\n"),
         None => format!("batch check failed on case {case_index}\n\n"),
     };
     report.push_str(&format!("reason: {reason}\n\n"));
@@ -965,7 +965,7 @@ mod tests {
     }
 
     #[test]
-    fn failure_report_mentions_plan_name() {
+    fn failure_report_mentions_check_name() {
         let report = render_stress_failure(
             Some("random"),
             2,
@@ -981,7 +981,7 @@ mod tests {
     #[test]
     fn stress_summary_line_includes_plan_cases_against_and_elapsed() {
         let summary = StressSummary {
-            plan_name: Some("small".to_string()),
+            check_name: Some("small".to_string()),
             checker: None,
             answer_program: None,
             cases: 300,
@@ -1002,7 +1002,7 @@ mod tests {
     #[test]
     fn stress_summary_line_reports_all_empty_output_warning_count() {
         let summary = StressSummary {
-            plan_name: Some("small".to_string()),
+            check_name: Some("small".to_string()),
             checker: None,
             answer_program: None,
             cases: 3,
@@ -1023,7 +1023,7 @@ mod tests {
     #[test]
     fn stress_summary_line_reports_repeated_input_warning() {
         let summary = StressSummary {
-            plan_name: Some("small".to_string()),
+            check_name: Some("small".to_string()),
             checker: None,
             answer_program: None,
             cases: 2,
@@ -1044,7 +1044,7 @@ mod tests {
     #[test]
     fn stress_summary_line_does_not_report_repeated_input_for_single_case() {
         let summary = StressSummary {
-            plan_name: Some("small".to_string()),
+            check_name: Some("small".to_string()),
             checker: None,
             answer_program: None,
             cases: 1,

@@ -143,7 +143,7 @@ pub(super) struct TaskJsonSummary<'a> {
 impl<'a> From<&'a tool::StressSummary> for TaskJsonSummary<'a> {
     fn from(summary: &'a tool::StressSummary) -> Self {
         Self {
-            task_name: summary.plan_name.as_deref(),
+            task_name: summary.check_name.as_deref(),
             summary: StressJsonFields::from(summary),
         }
     }
@@ -159,7 +159,7 @@ pub(super) struct BatchJsonSummary<'a> {
 impl<'a> From<&'a tool::StressSummary> for BatchJsonSummary<'a> {
     fn from(summary: &'a tool::StressSummary) -> Self {
         Self {
-            check_name: summary.plan_name.as_deref(),
+            check_name: summary.check_name.as_deref(),
             summary: StressJsonFields::from(summary),
         }
     }

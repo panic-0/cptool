@@ -370,7 +370,7 @@ fn render_task_checks(out: &mut String, checks: &[&StressSummary], negative: boo
         return;
     }
     for check in checks {
-        let name = check.plan_name.as_deref().unwrap_or("<unnamed>");
+        let name = check.check_name.as_deref().unwrap_or("<unnamed>");
         out.push_str(&format!(
             "- `{name}`: cases={} unique_input_hashes={} warnings={}",
             check.cases,
