@@ -228,7 +228,7 @@ fn explain_problem(work_dir: &Path, problem: &Problem) -> ExplainReport {
         .filter_map(|name| {
             problem.test.bundles.get(name).map(|bundle| ExplainBundle {
                 name: name.clone(),
-                cases: bundle.cases.len(),
+                cases: bundle.expansion_count(),
                 generators: case_generators(&bundle.cases),
             })
         })
@@ -262,7 +262,7 @@ fn explain_problem(work_dir: &Path, problem: &Problem) -> ExplainReport {
             score: task.score,
             task_type: task.task_type.map(task_type_name),
             bundles: task.bundles.clone(),
-            inline_cases: task.cases.len(),
+            inline_cases: task.cases.iter().map(TestCase::expansion_count).sum(),
             pass: task.pass_programs.clone(),
             fail: task.fail_programs.clone(),
             generators: task_generators(problem, &task.bundles, &task.cases),
@@ -398,9 +398,9 @@ fn handwritten_inputs(problem: &Problem) -> Vec<ExplainHandwrittenInput> {
     for (bundle_name, bundle) in &problem.test.bundles {
         for (index, case) in bundle.cases.iter().enumerate() {
             if case.generator_name == FILE_GENERATOR_NAME
-                && let Some(path) = case.args.first()
+                && let Some(path) = case.single_value_arg()
             {
-                used.entry(path.clone())
+                used.entry(path.to_string())
                     .or_default()
                     .push(format!("{bundle_name}[{index}]"));
             }
@@ -409,9 +409,9 @@ fn handwritten_inputs(problem: &Problem) -> Vec<ExplainHandwrittenInput> {
     for task in &problem.test.tasks {
         for (index, case) in task.cases.iter().enumerate() {
             if case.generator_name == FILE_GENERATOR_NAME
-                && let Some(path) = case.args.first()
+                && let Some(path) = case.single_value_arg()
             {
-                used.entry(path.clone())
+                used.entry(path.to_string())
                     .or_default()
                     .push(format!("task:{}[{index}]", task.name));
             }

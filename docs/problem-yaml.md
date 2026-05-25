@@ -56,7 +56,7 @@ test:
     fail: [wrong]
   - name: proof-only
     cases:
-    - [10, "{1:100}"]
+    - [10, 1..100]
     fail: [wrong]
 ```
 
@@ -85,7 +85,7 @@ C++ 编译会自动把源码所在目录加入 include path，因此源码旁边
 - {generator: other_gen, args: [100]}
 ```
 
-bundle 级 `generator` 会覆盖顶层 generator，case 级 `generator` 会覆盖前两者。完整字符串参数 `"{L:R}"` 会展开为整数闭区间；多个 range 参数会做笛卡尔积展开。
+bundle 级 `generator` 会覆盖顶层 generator，case 级 `generator` 会覆盖前两者。参数 `L..R` 会展开为整数闭区间；多个 range 参数会做笛卡尔积展开。旧 `"{L:R}"` range 仍可读取，重写 YAML 时会输出为 `L..R`。
 
 保留 generator 名 `:file` 用于把手写输入 fixture 复制到正式数据。它只接受一个位于 `fixtures/input/` 下的 `.in` 路径。
 

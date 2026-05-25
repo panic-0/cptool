@@ -36,13 +36,8 @@ pub fn range_args(args: &[String]) -> anyhow::Result<Vec<Vec<String>>> {
 }
 
 fn parse_range_arg(arg: &str) -> anyhow::Result<Option<Vec<String>>> {
-    let Some(inner) = arg
-        .strip_prefix('{')
-        .and_then(|value| value.strip_suffix('}'))
+    let Some((start, end)) = parse_dot_range_arg(arg).or_else(|| parse_legacy_range_arg(arg))
     else {
-        return Ok(None);
-    };
-    let Some((start, end)) = inner.split_once(':') else {
         return Ok(None);
     };
     let start = start
@@ -55,6 +50,23 @@ fn parse_range_arg(arg: &str) -> anyhow::Result<Option<Vec<String>>> {
         anyhow::bail!("range generator arg `{arg}` has start greater than end");
     }
     Ok(Some((start..=end).map(|value| value.to_string()).collect()))
+}
+
+fn parse_dot_range_arg(arg: &str) -> Option<(&str, &str)> {
+    let (start, end) = arg.split_once("..")?;
+    if start.is_empty() || end.is_empty() || end.contains("..") {
+        return None;
+    }
+    Some((start, end))
+}
+
+fn parse_legacy_range_arg(arg: &str) -> Option<(&str, &str)> {
+    let inner = arg.strip_prefix('{')?.strip_suffix('}')?;
+    let (start, end) = inner.split_once(':')?;
+    if end.contains(':') {
+        return None;
+    }
+    Some((start, end))
 }
 
 fn legacy_expand_arg(arg: &str, case: usize, case0: usize) -> String {

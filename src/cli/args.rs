@@ -284,7 +284,7 @@ pub(super) enum TestCommands {
     },
     #[command(
         about = "Batch check programs on temporary generated inputs",
-        long_about = "Batch check programs on temporary generated inputs. Generator args after -- support full-string {L:R} integer ranges."
+        long_about = "Batch check programs on temporary generated inputs. Generator args after -- support L..R integer ranges."
     )]
     Batch {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
@@ -308,7 +308,7 @@ pub(super) enum TestCommands {
         json: bool,
         #[arg(
             last = true,
-            help = "Arguments passed to the generator after --; new mode supports {L:R} ranges"
+            help = "Arguments passed to the generator after --; supports L..R ranges"
         )]
         args: Vec<String>,
     },

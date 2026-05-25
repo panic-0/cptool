@@ -159,14 +159,14 @@ fn task_cases_by_generator(
             cases
                 .entry(case.generator_name.clone())
                 .or_default()
-                .push(case.args.clone());
+                .extend(case.expanded_args());
         }
     }
     for case in &task.cases {
         cases
             .entry(case.generator_name.clone())
             .or_default()
-            .push(case.args.clone());
+            .extend(case.expanded_args());
     }
     Ok(cases)
 }

@@ -400,10 +400,12 @@ fn collect_used_input_fixtures(work_dir: &Path) -> Result<BTreeSet<PathBuf>> {
     let mut used = BTreeSet::new();
     for bundle in problem.test.bundles.values() {
         for case in &bundle.cases {
-            if case.generator_name == FILE_GENERATOR_NAME && case.args.len() == 1 {
+            if case.generator_name == FILE_GENERATOR_NAME
+                && let Some(path) = case.single_value_arg()
+            {
                 used.insert(normalize_relative_path(
                     work_dir,
-                    &resolve_path(work_dir, Path::new(&case.args[0])),
+                    &resolve_path(work_dir, Path::new(path)),
                 ));
             }
         }

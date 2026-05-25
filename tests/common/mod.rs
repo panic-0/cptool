@@ -328,7 +328,7 @@ pub fn append_expect_task_with_range_args(problem_dir: &Path) {
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
     yaml = yaml.replacen(
         "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n",
-        "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n  - name: range-proof\n    cases:\n    - generator: gen\n      args: [\"{1:2}\"]\n    pass: [brute]\n",
+        "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n  - name: range-proof\n    cases:\n    - generator: gen\n      args: [1..2]\n    pass: [brute]\n",
         1,
     );
     std::fs::write(yaml_path, yaml).unwrap();

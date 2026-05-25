@@ -1,6 +1,6 @@
 use super::schema::{
-    CommandProgram, CppProgram, OutputConfig, Problem, Program, ProgramInfo, TestBundle, TestCase,
-    TestTask, TestTaskType,
+    CaseArg, CommandProgram, CppProgram, OutputConfig, Problem, Program, ProgramInfo, TestBundle,
+    TestCase, TestTask, TestTaskType, parse_case_arg,
 };
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
@@ -119,11 +119,17 @@ pub fn add_bundle(options: AddBundleOptions) -> Result<()> {
     let cases = options
         .cases
         .into_iter()
-        .map(|args| TestCase {
-            generator_name: generator.clone(),
-            args,
+        .map(|args| {
+            let args = args
+                .into_iter()
+                .map(|arg| parse_case_arg(&arg).map_err(anyhow::Error::msg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok(TestCase {
+                generator_name: generator.clone(),
+                args,
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     problem
         .test
         .bundles
@@ -645,14 +651,25 @@ fn inline_list(values: &[String]) -> String {
     )
 }
 
+fn inline_case_args(values: &[CaseArg]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(CaseArg::render_yaml)
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
 fn inline_case(default_generator: Option<&str>, case: &TestCase) -> String {
     if default_generator == Some(case.generator_name.as_str()) {
-        inline_list(&case.args)
+        inline_case_args(&case.args)
     } else {
         format!(
             "{{generator: {}, args: {}}}",
             key_or_string(&case.generator_name),
-            inline_list(&case.args)
+            inline_case_args(&case.args)
         )
     }
 }
@@ -879,11 +896,11 @@ mod tests {
                 cases: vec![
                     TestCase {
                         generator_name: "gen".to_string(),
-                        args: vec!["small".to_string(), "1".to_string()],
+                        args: vec![CaseArg::value("small"), CaseArg::Range { start: 1, end: 3 }],
                     },
                     TestCase {
                         generator_name: "gen_special".to_string(),
-                        args: vec!["dense".to_string(), "100".to_string()],
+                        args: vec![CaseArg::value("dense"), CaseArg::value("100")],
                     },
                 ],
             },
@@ -895,7 +912,7 @@ mod tests {
             bundles: Vec::new(),
             cases: vec![TestCase {
                 generator_name: ":file".to_string(),
-                args: vec!["fixtures/input/sample1.in".to_string()],
+                args: vec![CaseArg::value("fixtures/input/sample1.in")],
             }],
             dependencies: Vec::new(),
             pass_programs: vec!["brute".to_string()],
@@ -904,7 +921,7 @@ mod tests {
         write_problem(&problem_dir, &problem).unwrap();
 
         let yaml = std::fs::read_to_string(problem_dir.join("problem.yaml")).unwrap();
-        assert!(yaml.contains("      - [\"small\", \"1\"]\n"));
+        assert!(yaml.contains("      - [\"small\", 1..3]\n"));
         assert!(yaml.contains("      - {generator: gen_special, args: [\"dense\", \"100\"]}\n"));
         assert!(
             yaml.contains("    - {generator: \":file\", args: [\"fixtures/input/sample1.in\"]}\n")

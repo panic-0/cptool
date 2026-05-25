@@ -51,7 +51,7 @@ fn cli_runs_init_generate_run_batch_and_export_flow() {
             "--pass",
             "brute",
             "--",
-            "{5:7}",
+            "5..7",
             "8",
         ],
         None,
@@ -118,8 +118,8 @@ test:
     pass: [brute]
   - name: wrong-proof
     cases:
-    - [small, "{1:2}"]
-    - {generator: gen_special, args: [edge, "{1:3}"]}
+    - [small, 1..2]
+    - {generator: gen_special, args: [edge, 1..3]}
     fail: [wrong_greedy]
 "#,
     )
@@ -580,7 +580,7 @@ fn cli_help_describes_new_workflow_commands() {
     let batch_stdout = String::from_utf8_lossy(&batch.stdout);
     assert!(batch_stdout.contains("--pass"));
     assert!(batch_stdout.contains("--fail"));
-    assert!(batch_stdout.contains("{L:R}"));
+    assert!(batch_stdout.contains("L..R"));
     assert!(batch_stdout.contains("--json"));
     assert!(!batch_stdout.contains("--against"));
 

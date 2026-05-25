@@ -1,5 +1,5 @@
 use crate::support::count_lines;
-use serde::{Deserialize, Deserializer, Serialize, de};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_yml::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -11,6 +11,8 @@ use std::time::Duration;
 pub(crate) const DEFAULT_TIME_LIMIT_SECS: f64 = 1.0;
 pub(crate) const DEFAULT_MEMORY_LIMIT_MB: f64 = 512.0;
 pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 33_554_432;
+pub(crate) const MAX_CASE_EXPANSION_PER_SPEC: usize = 100_000;
+
 #[derive(Clone, Debug)]
 pub(crate) struct CaseSelector {
     pub(crate) bundle: String,
@@ -247,16 +249,99 @@ pub struct Program {
     pub memory_limit_mb: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CaseArg {
+    Value(String),
+    Range { start: i64, end: i64 },
+}
+
+impl CaseArg {
+    pub fn value(value: impl Into<String>) -> Self {
+        Self::Value(value.into())
+    }
+
+    pub fn values(&self) -> Vec<String> {
+        match self {
+            CaseArg::Value(value) => vec![value.clone()],
+            CaseArg::Range { start, end } => {
+                (*start..=*end).map(|value| value.to_string()).collect()
+            }
+        }
+    }
+
+    pub fn expansion_count(&self) -> usize {
+        match self {
+            CaseArg::Value(_) => 1,
+            CaseArg::Range { start, end } => {
+                let count = i128::from(*end) - i128::from(*start) + 1;
+                usize::try_from(count).unwrap_or(usize::MAX)
+            }
+        }
+    }
+
+    pub fn render_yaml(&self) -> String {
+        match self {
+            CaseArg::Value(value) => {
+                serde_json::to_string(value).expect("serializing string cannot fail")
+            }
+            CaseArg::Range { start, end } => format!("{start}..{end}"),
+        }
+    }
+
+    pub fn as_value(&self) -> Option<&str> {
+        match self {
+            CaseArg::Value(value) => Some(value),
+            CaseArg::Range { .. } => None,
+        }
+    }
+}
+
+impl Serialize for CaseArg {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            CaseArg::Value(value) => serializer.serialize_str(value),
+            CaseArg::Range { start, end } => serializer.serialize_str(&format!("{start}..{end}")),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct TestCase {
     #[serde(rename = "generator")]
     pub generator_name: String,
-    pub args: Vec<String>,
+    pub args: Vec<CaseArg>,
+}
+
+impl TestCase {
+    pub fn expansion_count(&self) -> usize {
+        case_args_expansion_count(&self.args)
+    }
+
+    pub fn expanded_args(&self) -> Vec<Vec<String>> {
+        cartesian_case_args(&self.args)
+    }
+
+    pub fn single_value_arg(&self) -> Option<&str> {
+        if self.args.len() == 1 {
+            self.args[0].as_value()
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct TestBundle {
     pub cases: Vec<TestCase>,
+}
+
+impl TestBundle {
+    pub fn expansion_count(&self) -> usize {
+        self.cases.iter().map(TestCase::expansion_count).sum()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -267,7 +352,7 @@ pub enum TestTaskType {
     Min,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct TestTask {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -424,10 +509,7 @@ where
                         &format!("test.bundles.{bundle_name}.cases[{case_index}]"),
                     )
                 })
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>();
+                .collect::<Result<Vec<_>, _>>()?;
             Ok((bundle_name, TestBundle { cases }))
         })
         .collect::<Result<HashMap<_, _>, E>>()?;
@@ -484,10 +566,7 @@ where
                 &format!("test.tasks[{task_index}].cases[{case_index}]"),
             )
         })
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, _>>()?;
     let task_type = if task.score.is_some() {
         Some(task.task_type.or(default_task_type).ok_or_else(|| {
             E::custom(format!(
@@ -513,7 +592,7 @@ fn normalize_test_case<E>(
     case: RawTestCase,
     default_generator: Option<&str>,
     case_location: &str,
-) -> Result<Vec<TestCase>, E>
+) -> Result<TestCase, E>
 where
     E: de::Error,
 {
@@ -524,14 +603,11 @@ where
                     "{case_location} uses args-only shorthand but no generator is declared for the case, bundle, or test"
                 )));
             };
-            let args = raw_args_to_strings(args, case_location)?;
-            Ok(args
-                .into_iter()
-                .map(|args| TestCase {
-                    generator_name: generator_name.to_string(),
-                    args,
-                })
-                .collect())
+            let args = raw_args_to_case_args(args, case_location)?;
+            Ok(TestCase {
+                generator_name: generator_name.to_string(),
+                args,
+            })
         }
         RawTestCase::Full {
             generator_name,
@@ -544,53 +620,57 @@ where
                         "{case_location} is missing `generator` and no default generator is declared for the bundle or test"
                     ))
                 })?;
-            let args = raw_args_to_strings(args, case_location)?;
-            Ok(args
-                .into_iter()
-                .map(|args| TestCase {
-                    generator_name: generator_name.clone(),
-                    args,
-                })
-                .collect())
+            let args = raw_args_to_case_args(args, case_location)?;
+            Ok(TestCase {
+                generator_name,
+                args,
+            })
         }
     }
 }
 
-fn raw_args_to_strings<E>(args: Vec<Value>, case_location: &str) -> Result<Vec<Vec<String>>, E>
+fn raw_args_to_case_args<E>(args: Vec<Value>, case_location: &str) -> Result<Vec<CaseArg>, E>
 where
     E: de::Error,
 {
-    let choices = args
+    let args = args
         .into_iter()
         .enumerate()
-        .map(|(arg_index, value)| {
-            raw_arg_to_strings(value).ok_or_else(|| {
-                E::custom(format!(
-                    "{case_location}.args[{arg_index}] must be a string, number, boolean, or null"
-                ))
-            })
-        })
+        .map(|(arg_index, value)| raw_arg_to_case_arg(value, case_location, arg_index))
         .collect::<Result<Vec<_>, E>>()?;
-    Ok(cartesian_args(&choices))
+    let count = case_args_expansion_count(&args);
+    if count > MAX_CASE_EXPANSION_PER_SPEC {
+        return Err(E::custom(format!(
+            "{case_location} expands to {count} cases; maximum is {MAX_CASE_EXPANSION_PER_SPEC}"
+        )));
+    }
+    Ok(args)
 }
 
-fn raw_arg_to_strings(value: Value) -> Option<Vec<String>> {
+fn raw_arg_to_case_arg<E>(value: Value, case_location: &str, arg_index: usize) -> Result<CaseArg, E>
+where
+    E: de::Error,
+{
     match value {
-        Value::Null => Some(vec!["null".to_string()]),
-        Value::Bool(value) => Some(vec![value.to_string()]),
-        Value::Number(value) => Some(vec![value.to_string()]),
-        Value::String(value) => Some(expand_range_string(&value).unwrap_or_else(|| vec![value])),
-        Value::Tagged(tagged) => raw_arg_to_strings(tagged.value),
-        Value::Sequence(_) | Value::Mapping(_) => None,
+        Value::Null => Ok(CaseArg::value("null")),
+        Value::Bool(value) => Ok(CaseArg::value(value.to_string())),
+        Value::Number(value) => Ok(CaseArg::value(value.to_string())),
+        Value::String(value) => parse_case_arg(&value)
+            .map_err(|message| E::custom(format!("{case_location}.args[{arg_index}] {message}"))),
+        Value::Tagged(tagged) => raw_arg_to_case_arg(tagged.value, case_location, arg_index),
+        Value::Sequence(_) | Value::Mapping(_) => Err(E::custom(format!(
+            "{case_location}.args[{arg_index}] must be a string, number, boolean, or null"
+        ))),
     }
 }
 
-fn cartesian_args(choices: &[Vec<String>]) -> Vec<Vec<String>> {
+pub(crate) fn cartesian_case_args(args: &[CaseArg]) -> Vec<Vec<String>> {
     let mut expanded = vec![Vec::new()];
-    for values in choices {
+    for arg in args {
+        let values = arg.values();
         let mut next = Vec::with_capacity(expanded.len() * values.len());
         for prefix in &expanded {
-            for value in values {
+            for value in &values {
                 let mut args = prefix.clone();
                 args.push(value.clone());
                 next.push(args);
@@ -601,15 +681,45 @@ fn cartesian_args(choices: &[Vec<String>]) -> Vec<Vec<String>> {
     expanded
 }
 
-fn expand_range_string(value: &str) -> Option<Vec<String>> {
+pub(crate) fn case_args_expansion_count(args: &[CaseArg]) -> usize {
+    args.iter()
+        .map(CaseArg::expansion_count)
+        .try_fold(1usize, |total, count| total.checked_mul(count))
+        .unwrap_or(usize::MAX)
+}
+
+pub(crate) fn parse_case_arg(value: &str) -> Result<CaseArg, String> {
+    if let Some((start, end)) = parse_dot_range(value) {
+        return range_arg(start, end);
+    }
+    if let Some((start, end)) = parse_legacy_brace_range(value) {
+        return range_arg(start, end);
+    }
+    Ok(CaseArg::Value(value.to_string()))
+}
+
+fn range_arg(start: i64, end: i64) -> Result<CaseArg, String> {
+    if start > end {
+        return Err(format!("range `{start}..{end}` has start greater than end"));
+    }
+    Ok(CaseArg::Range { start, end })
+}
+
+fn parse_dot_range(value: &str) -> Option<(i64, i64)> {
+    let (start, end) = value.split_once("..")?;
+    if end.contains("..") || start.is_empty() || end.is_empty() {
+        return None;
+    }
+    Some((start.parse().ok()?, end.parse().ok()?))
+}
+
+fn parse_legacy_brace_range(value: &str) -> Option<(i64, i64)> {
     let inner = value.strip_prefix('{')?.strip_suffix('}')?;
     let (start, end) = inner.split_once(':')?;
-    let start = start.parse::<i64>().ok()?;
-    let end = end.parse::<i64>().ok()?;
-    if start > end {
-        return Some(Vec::new());
+    if end.contains(':') {
+        return None;
     }
-    Some((start..=end).map(|value| value.to_string()).collect())
+    Some((start.parse().ok()?, end.parse().ok()?))
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -1117,7 +1227,10 @@ tasks:
         .unwrap();
 
         assert_eq!(test.bundles["global"].cases[0].generator_name, "gen");
-        assert_eq!(test.bundles["global"].cases[0].args, ["1", "2"]);
+        assert_eq!(
+            test.bundles["global"].cases[0].expanded_args(),
+            vec![vec!["1".to_string(), "2".to_string()]]
+        );
         assert_eq!(test.bundles["global"].cases[1].generator_name, "gen");
         assert_eq!(test.bundles["local"].cases[0].generator_name, "local_gen");
         assert_eq!(test.bundles["local"].cases[1].generator_name, "local_gen");
@@ -1143,7 +1256,7 @@ tasks:
   bundles: [sample]
 - name: wrong-proof
   cases:
-  - [2, "{3:4}"]
+  - [2, 3..4]
   - generator: other_gen
     args: [5]
   fail: [wrong]
@@ -1153,11 +1266,16 @@ tasks:
 
         let task = &test.tasks[1];
         assert!(task.bundles.is_empty());
-        assert_eq!(task.cases.len(), 3);
+        assert_eq!(task.cases.len(), 2);
         assert_eq!(task.cases[0].generator_name, "gen");
-        assert_eq!(task.cases[0].args, ["2", "3"]);
-        assert_eq!(task.cases[1].args, ["2", "4"]);
-        assert_eq!(task.cases[2].generator_name, "other_gen");
+        assert_eq!(
+            task.cases[0].expanded_args(),
+            vec![
+                vec!["2".to_string(), "3".to_string()],
+                vec!["2".to_string(), "4".to_string()]
+            ]
+        );
+        assert_eq!(task.cases[1].generator_name, "other_gen");
     }
 
     #[test]

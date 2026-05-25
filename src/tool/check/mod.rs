@@ -315,7 +315,7 @@ fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem:
             continue;
         }
         let mut details = Vec::new();
-        for case_index in 0..bundle.cases.len() {
+        for case_index in 0..bundle.expansion_count() {
             for extension in ["in", "ans"] {
                 let path = data_dir.join(format!("{bundle_name}-{case_index}.{extension}"));
                 if !path.is_file() {
@@ -340,7 +340,7 @@ fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem:
             continue;
         }
         let file_count = details.len();
-        let case_count = bundle.cases.len();
+        let case_count = bundle.expansion_count();
         let message = if missing_kind == "not_generated" {
             format!(
                 "bundle `{bundle_name}` has {file_count} missing generated data files across {case_count} cases because no generated .in/.ans files are present"
@@ -410,7 +410,7 @@ fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &P
             );
             continue;
         }
-        if case_index >= bundle.cases.len() {
+        if case_index >= bundle.expansion_count() {
             report.action_warning(
                 codes::STALE_DATA_FILE,
                 format!("data file references missing case `{bundle_name}[{case_index}]`"),

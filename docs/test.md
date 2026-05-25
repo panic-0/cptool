@@ -25,13 +25,13 @@
 ## 临时 Batch
 
 ```bash
-./cptool test batch -w ./example/a_plus_b --generator gen --pass brute -- 10 "{1:100}"
-./cptool test batch -w ./example/a_plus_b --generator gen --fail wrong -- 10 "{1:100}"
+./cptool test batch -w ./example/a_plus_b --generator gen --pass brute -- 10 1..100
+./cptool test batch -w ./example/a_plus_b --generator gen --fail wrong -- 10 1..100
 ```
 
 `test batch` 生成临时输入并运行临时 expect。它不运行正式 bundle，也不把数据写入 `data/`。默认参考答案是 `solution`，也可以用 `--answer PROGRAM` 覆盖。
 
-`--` 后的参数支持完整字符串 range：`"{L:R}"`。多个 range 做笛卡尔积展开；不含 range 的参数只生成一个临时 case。
+`--` 后的参数支持 range：`L..R`。多个 range 做笛卡尔积展开；不含 range 的参数只生成一个临时 case。旧 `"{L:R}"` 仍兼容。
 
 同一组 batch/expect 失败产物使用稳定文件名前缀；重复运行同一组检查时，只保留该组最新一次运行观察到的第一个失败样例。
 

@@ -1,7 +1,8 @@
 use super::batch_args::legacy_stress_args_by_case;
 use super::data::{GenerateOptions, generate_data_with_options};
 use super::schema::{
-    CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem, StressPlanExpectation, TestCase, TestTask,
+    CaseArg, CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem, StressPlanExpectation, TestCase,
+    TestTask,
 };
 use anyhow::{Context, Result};
 use std::collections::HashSet;
@@ -43,7 +44,7 @@ fn migrate_legacy_stress_plans(problem: &mut Problem) -> bool {
             .into_iter()
             .map(|args| TestCase {
                 generator_name: plan.generator.clone(),
-                args,
+                args: args.into_iter().map(CaseArg::value).collect(),
             })
             .collect();
         let mut pass_programs = Vec::new();
@@ -386,7 +387,7 @@ mod tests {
         let args = task
             .cases
             .iter()
-            .map(|case| case.args.clone())
+            .flat_map(TestCase::expanded_args)
             .collect::<Vec<_>>();
         assert_eq!(
             args,

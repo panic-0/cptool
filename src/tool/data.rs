@@ -4,7 +4,7 @@ use super::problem::{
     resolve_path,
 };
 use super::program::{ProgramSpec, absolutize_program_info, run_spec};
-use super::schema::{CaseSelector, Problem};
+use super::schema::{CaseSelector, Problem, TestBundle};
 use super::unix_epoch_nanos;
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -89,6 +89,11 @@ struct GeneratedCase {
     answer_bytes: usize,
     validator_calls: usize,
     warnings: Vec<GenerateWarning>,
+}
+
+struct ExpandedCase {
+    generator_name: String,
+    args: Vec<String>,
 }
 
 pub(crate) struct GeneratorInput {
@@ -417,9 +422,7 @@ fn generate_one_case(
         .bundles
         .get(&selector.bundle)
         .with_context(|| format!("bundle `{}` not found", selector.bundle))?;
-    let case = bundle
-        .cases
-        .get(selector.index)
+    let case = expanded_bundle_case(bundle, selector.index)
         .with_context(|| format!("case `{}` not found", selector.index))?;
     let case_stem = case_file_stem(selector);
     let staging_stem = context.staging_dir.join(&case_stem);
@@ -743,7 +746,7 @@ fn select_cases(
             .bundles
             .get(bundle)
             .with_context(|| format!("bundle `{bundle}` not found"))?;
-        return Ok((0..bundle_cases.cases.len())
+        return Ok((0..bundle_cases.expansion_count())
             .map(|index| CaseSelector {
                 bundle: bundle.to_string(),
                 index,
@@ -757,7 +760,7 @@ fn select_cases(
         if !official.contains(bundle) {
             continue;
         }
-        for index in 0..bundle_cases.cases.len() {
+        for index in 0..bundle_cases.expansion_count() {
             selectors.push(CaseSelector {
                 bundle: bundle.clone(),
                 index,
@@ -783,11 +786,27 @@ fn ensure_case_exists(problem: &Problem, selector: &CaseSelector) -> Result<()> 
         .bundles
         .get(&selector.bundle)
         .with_context(|| format!("bundle `{}` not found", selector.bundle))?;
-    bundle
-        .cases
-        .get(selector.index)
-        .with_context(|| format!("case `{}` not found", selector.index))?;
+    if selector.index >= bundle.expansion_count() {
+        anyhow::bail!("case `{}` not found", selector.index);
+    }
     Ok(())
+}
+
+fn expanded_bundle_case(bundle: &TestBundle, expanded_index: usize) -> Option<ExpandedCase> {
+    let mut offset = 0usize;
+    for case in &bundle.cases {
+        let count = case.expansion_count();
+        if expanded_index < offset + count {
+            let local_index = expanded_index - offset;
+            let args = case.expanded_args().into_iter().nth(local_index)?;
+            return Some(ExpandedCase {
+                generator_name: case.generator_name.clone(),
+                args,
+            });
+        }
+        offset += count;
+    }
+    None
 }
 
 fn create_staging_dir(output_dir: &Path) -> Result<PathBuf> {
