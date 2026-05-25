@@ -107,7 +107,15 @@ pub(super) fn check_unknown_yaml_fields(report: &mut CheckReport, work_dir: &Pat
                         &path,
                         task,
                         &format!("test.tasks[{task_index}]"),
-                        &["name", "score", "type", "bundles", "dependencies"],
+                        &[
+                            "name",
+                            "score",
+                            "type",
+                            "bundles",
+                            "dependencies",
+                            "pass",
+                            "fail",
+                        ],
                     );
                 }
             }

@@ -51,9 +51,11 @@ pub use schema::{
     StressPlanExpectation, Test, TestBundle, TestCase, TestTask, TestTaskType,
 };
 pub use stress::{
-    ExpectedCheckerOutput, ExpectedStressFailure, ExpectedStressOutput, StressOptions,
-    StressSummary, StressWarning, stress_with_options, stress_with_summary,
+    ExpectedCheckerOutput, ExpectedStressFailure, ExpectedStressOutput, StressExpectOptions,
+    StressOptions, StressSummary, StressWarning, stress_expect_with_options, stress_with_options,
+    stress_with_summary,
 };
+pub use stress_args::range_args;
 pub use stress_plan::{
     StressPlanFilter, StressPlanOptions, stress_plan_collect_with_options, stress_plan_with_options,
 };

@@ -1,4 +1,4 @@
-use super::{CheckReport, Problem, StressPlanExpectation, codes};
+use super::{CheckReport, Problem, codes};
 use std::path::Path;
 
 const SERVICE_NOISE: &[&str] = &[
@@ -24,11 +24,11 @@ pub(super) fn check_report_stress_plan_classification(
     problem: &Problem,
 ) {
     let negative_plan_names = problem
-        .stress
-        .plans
+        .test
+        .tasks
         .iter()
-        .filter(|plan| plan.expect == StressPlanExpectation::Fail)
-        .map(|plan| plan.name.as_str())
+        .filter(|task| !task.fail_programs.is_empty())
+        .map(|task| task.name.as_str())
         .collect::<Vec<_>>();
     if negative_plan_names.is_empty() {
         return;

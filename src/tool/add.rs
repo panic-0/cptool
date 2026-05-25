@@ -44,10 +44,12 @@ pub struct AddBundleOptions {
 pub struct AddTaskOptions {
     pub work_dir: PathBuf,
     pub name: String,
-    pub score: f64,
+    pub score: Option<f64>,
     pub task_type: TestTaskType,
     pub bundles: Vec<String>,
     pub dependencies: Vec<String>,
+    pub expect_pass: Vec<String>,
+    pub expect_fail: Vec<String>,
     pub replace: bool,
 }
 
@@ -133,6 +135,9 @@ pub fn add_task(options: AddTaskOptions) -> Result<()> {
     if options.bundles.is_empty() {
         anyhow::bail!("add task requires at least one --bundle");
     }
+    if options.score.is_none() && options.expect_pass.is_empty() && options.expect_fail.is_empty() {
+        anyhow::bail!("verify-only task requires --pass or --fail");
+    }
     let work_dir = normalize_work_dir(&options.work_dir)?;
     let mut problem = read_problem(&work_dir)?;
     if let Some(index) = problem
@@ -152,9 +157,11 @@ pub fn add_task(options: AddTaskOptions) -> Result<()> {
     problem.test.tasks.push(TestTask {
         name: options.name,
         score: options.score,
-        task_type: options.task_type,
+        task_type: options.score.map(|_| options.task_type),
         bundles: options.bundles,
         dependencies: options.dependencies,
+        pass_programs: options.expect_pass,
+        fail_programs: options.expect_fail,
     });
     write_problem(&work_dir, &problem)
 }
@@ -537,14 +544,24 @@ fn render_test(out: &mut String, problem: &Problem) {
     out.push_str("  tasks:\n");
     for task in &test.tasks {
         out.push_str(&format!("  - name: {}\n", key_or_string(&task.name)));
-        out.push_str(&format!("    score: {}\n", format_f64(task.score)));
-        out.push_str(&format!("    type: {}\n", task_type_name(task.task_type)));
+        if let Some(score) = task.score {
+            out.push_str(&format!("    score: {}\n", format_f64(score)));
+        }
+        if let Some(task_type) = task.task_type {
+            out.push_str(&format!("    type: {}\n", task_type_name(task_type)));
+        }
         out.push_str(&format!("    bundles: {}\n", inline_list(&task.bundles)));
         if !task.dependencies.is_empty() {
             out.push_str(&format!(
                 "    dependencies: {}\n",
                 inline_list(&task.dependencies)
             ));
+        }
+        if !task.pass_programs.is_empty() {
+            out.push_str(&format!("    pass: {}\n", inline_list(&task.pass_programs)));
+        }
+        if !task.fail_programs.is_empty() {
+            out.push_str(&format!("    fail: {}\n", inline_list(&task.fail_programs)));
         }
     }
 }
@@ -794,10 +811,12 @@ mod tests {
         add_task(AddTaskOptions {
             work_dir: problem_dir.clone(),
             name: "extra_task".to_string(),
-            score: 50.0,
+            score: Some(50.0),
             task_type: TestTaskType::Sum,
             bundles: vec!["extra".to_string()],
             dependencies: vec!["sample".to_string()],
+            expect_pass: Vec::new(),
+            expect_fail: Vec::new(),
             replace: false,
         })
         .unwrap();
@@ -809,7 +828,7 @@ mod tests {
                 .test
                 .tasks
                 .iter()
-                .any(|task| task.name == "extra_task" && task.task_type == TestTaskType::Sum)
+                .any(|task| task.name == "extra_task" && task.task_type == Some(TestTaskType::Sum))
         );
 
         std::fs::remove_dir_all(root).unwrap();

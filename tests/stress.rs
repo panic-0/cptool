@@ -30,9 +30,9 @@ fn stress_plan_runs_named_plan() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    assert!(stdout.contains("plan `tiny` case 1 ok"));
-    assert!(stdout.contains("plan `tiny` case 2 ok"));
-    assert!(stdout.contains("stress plan `tiny` passed: 2 cases"));
+    assert!(stdout.contains("plan `tiny:pass:brute` case 1 ok"));
+    assert!(stdout.contains("plan `tiny:pass:brute` case 2 ok"));
+    assert!(stdout.contains("expect task `tiny` passed: 1 checks"));
 }
 
 #[test]
@@ -57,10 +57,8 @@ fn stress_uses_configured_checker_instead_of_text_comparison() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "std",
+            "--pass",
             "alt",
-            "--cases",
-            "1",
             "--json",
             "--",
             "7",
@@ -69,9 +67,9 @@ fn stress_uses_configured_checker_instead_of_text_comparison() {
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
 
-    assert_eq!(value["checker"], "chk");
-    assert_eq!(value["answer_program"], "std");
-    assert_eq!(value["expected_failure"], Value::Null);
+    assert_eq!(value["plans"][0]["checker"], "chk");
+    assert_eq!(value["plans"][0]["answer_program"], "std");
+    assert_eq!(value["plans"][0]["expected_failure"], Value::Null);
 }
 
 #[test]
@@ -114,10 +112,16 @@ fn stress_plan_expect_fail_records_checker_rejection_artifact() {
         None,
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let failure = &value["plans"][0]["expected_failure"];
+    let plan = value["plans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|plan| plan["plan_name"] == "checker-catches-bad:fail:bad")
+        .unwrap();
+    let failure = &plan["expected_failure"];
 
-    assert_eq!(value["plans"][0]["checker"], "chk");
-    assert_eq!(value["plans"][0]["answer_program"], "std");
+    assert_eq!(plan["checker"], "chk");
+    assert_eq!(plan["answer_program"], "std");
     assert!(
         failure["reason"]
             .as_str()
@@ -232,7 +236,7 @@ fn stress_plan_json_waits_for_generation_lock_and_stays_parseable() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     handle.join().unwrap();
-    assert_eq!(value["plans"][0]["plan_name"], "tiny");
+    assert_eq!(value["plans"][0]["plan_name"], "tiny:pass:brute");
     assert_eq!(value["plans"][0]["cases"], 2);
     assert!(stderr.contains("waiting for data generation lock:"));
 }
@@ -265,13 +269,17 @@ fn stress_plan_summary_only_suppresses_case_progress() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    assert!(stdout.contains("tiny: ok cases=2 unique_input_hashes=1 against=std,brute elapsed="));
+    assert!(
+        stdout.contains(
+            "tiny:pass:brute: ok cases=2 unique_input_hashes=1 against=std,brute elapsed="
+        )
+    );
     assert!(stdout.contains("unique_input_hashes=1"));
     assert!(stdout.contains("empty_stdout_cases=0"));
     assert!(stdout.contains("all_empty_stdout_cases=0"));
     assert!(stdout.contains("warnings=repeated_input:1"));
-    assert!(!stdout.contains("plan `tiny` case 1 ok"));
-    assert!(!stdout.contains("stress plan `tiny` passed"));
+    assert!(!stdout.contains("plan `tiny:pass:brute` case 1 ok"));
+    assert!(!stdout.contains("expect task `tiny` passed"));
     assert!(output.stderr.is_empty());
 }
 #[test]
@@ -305,7 +313,7 @@ fn stress_plan_summary_only_json_prints_plan_summaries() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let value: Value = serde_json::from_str(&stdout).unwrap();
 
-    assert_eq!(value["plans"][0]["plan_name"], "tiny");
+    assert_eq!(value["plans"][0]["plan_name"], "tiny:pass:brute");
     assert_eq!(value["plans"][0]["cases"], 2);
     assert_eq!(value["plans"][0]["unique_input_hashes"], 1);
     assert_eq!(value["plans"][0]["warnings"][0]["code"], "repeated_input");
@@ -349,9 +357,16 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
         None,
     );
     let positive_value: Value = serde_json::from_slice(&positive.stdout).unwrap();
-    assert_eq!(positive_value["plans"].as_array().unwrap().len(), 1);
-    assert_eq!(positive_value["plans"][0]["plan_name"], "tiny-pass");
-    assert!(positive_value["plans"][0]["expected_failure"].is_null());
+    assert_eq!(positive_value["plans"].as_array().unwrap().len(), 2);
+    assert!(
+        positive_value["plans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|plan| {
+                plan["plan_name"] == "tiny-pass:pass:brute" && plan["expected_failure"].is_null()
+            })
+    );
 
     let negative = run_cptool(
         [
@@ -367,7 +382,10 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     );
     let negative_value: Value = serde_json::from_slice(&negative.stdout).unwrap();
     assert_eq!(negative_value["plans"].as_array().unwrap().len(), 1);
-    assert_eq!(negative_value["plans"][0]["plan_name"], "bad-is-detected");
+    assert_eq!(
+        negative_value["plans"][0]["plan_name"],
+        "bad-is-detected:fail:bad"
+    );
     assert_eq!(
         negative_value["plans"][0]["expected_failure"]["failed_cases"],
         2
@@ -400,25 +418,22 @@ fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "std",
+            "--pass",
             "brute",
-            "--cases",
-            "2",
+            "--",
+            "{1:2}",
         ],
         None,
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert!(stdout.contains("stress passed: 2 cases"));
+    assert!(stdout.contains("stress expect passed: 2 cases"));
     assert!(stderr.contains("warning: all_empty_output case=1 against=std,brute input_bytes=4"));
     assert!(stderr.contains("warning: all_empty_output case=2 against=std,brute input_bytes=4"));
-    assert!(stderr.contains(
-        "warning: repeated_input cases=2 unique_input_hashes=1 random_coverage=false hint=generator_args_produced_identical_inputs"
-    ));
 }
 #[test]
-fn stress_reports_single_unique_input_hash_for_fixed_args() {
+fn stress_reports_unique_input_hashes_for_range_args() {
     if !python_available() {
         return;
     }
@@ -439,12 +454,10 @@ fn stress_reports_single_unique_input_hash_for_fixed_args() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "std",
+            "--pass",
             "brute",
-            "--cases",
-            "3",
             "--",
-            "5",
+            "{5:7}",
             "8",
         ],
         None,
@@ -452,11 +465,8 @@ fn stress_reports_single_unique_input_hash_for_fixed_args() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert!(stdout.contains("stress passed: 3 cases"));
-    assert!(stdout.contains("unique_input_hashes=1"));
-    assert!(stderr.contains(
-        "warning: repeated_input cases=3 unique_input_hashes=1 random_coverage=false hint=generator_args_produced_identical_inputs"
-    ));
+    assert!(stdout.contains("stress expect passed: 3 cases"));
+    assert!(stderr.is_empty());
 }
 #[test]
 fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
@@ -477,13 +487,11 @@ fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "std",
+            "--pass",
             "brute",
-            "--cases",
-            "3",
             "--json",
             "--",
-            "5",
+            "{5:7}",
             "8",
         ],
         None,
@@ -491,15 +499,14 @@ fn stress_json_reports_unique_inputs_and_warnings_without_progress() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let value: Value = serde_json::from_str(&stdout).unwrap();
 
-    assert_eq!(value["cases"], 3);
-    assert_eq!(value["unique_input_hashes"], 1);
-    assert_eq!(value["warnings"][0]["code"], "repeated_input");
-    assert_eq!(value["warnings"][0]["random_coverage"], false);
+    assert_eq!(value["plans"][0]["cases"], 3);
+    assert_eq!(value["plans"][0]["unique_input_hashes"], 3);
+    assert_eq!(value["plans"][0]["warnings"], Value::Array(Vec::new()));
     assert!(!stdout.contains("case 1 ok"));
     assert!(output.stderr.is_empty());
 }
 #[test]
-fn stress_expands_case_placeholder_and_reports_unique_inputs() {
+fn stress_expands_range_and_reports_unique_inputs() {
     if !python_available() {
         return;
     }
@@ -520,12 +527,10 @@ fn stress_expands_case_placeholder_and_reports_unique_inputs() {
             problem_dir.to_str().unwrap(),
             "--generator",
             "gen",
-            "std",
+            "--pass",
             "brute",
-            "--cases",
-            "3",
             "--",
-            "{case}",
+            "{1:3}",
             "10",
         ],
         None,
@@ -535,7 +540,7 @@ fn stress_expands_case_placeholder_and_reports_unique_inputs() {
     assert!(stdout.contains("case 1 ok"));
     assert!(stdout.contains("case 2 ok"));
     assert!(stdout.contains("case 3 ok"));
-    assert!(stdout.contains("unique_input_hashes=3"));
+    assert!(stdout.contains("stress expect passed: 3 cases"));
 }
 #[test]
 fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
@@ -572,7 +577,11 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert!(stdout.contains("tiny: ok cases=2 unique_input_hashes=1 against=std,brute elapsed="));
+    assert!(
+        stdout.contains(
+            "tiny:pass:brute: ok cases=2 unique_input_hashes=1 against=std,brute elapsed="
+        )
+    );
     assert!(stdout.contains("unique_input_hashes=1"));
     assert!(stdout.contains("empty_stdout_cases=2"));
     assert!(stdout.contains("all_empty_stdout_cases=2"));
@@ -581,20 +590,20 @@ fn stress_plan_summary_only_reports_empty_stdout_warning_count() {
     assert!(!stderr.contains("warning: repeated_input"));
 }
 #[test]
-fn stress_plan_expands_case_placeholders() {
+fn stress_plan_expands_range_args() {
     if !python_available() {
         return;
     }
 
-    let temp = TempWorkspace::new("cptool-stress-plan-placeholders");
+    let temp = TempWorkspace::new("cptool-stress-plan-range");
     run_cptool(
-        ["pkg", "init", "stress_plan_placeholders", "--root"],
+        ["pkg", "init", "stress_plan_range", "--root"],
         Some(temp.path()),
     );
-    let problem_dir = temp.path().join("stress_plan_placeholders");
+    let problem_dir = temp.path().join("stress_plan_range");
     configure_python_problem(&problem_dir);
-    overwrite_generator_for_stress_plan_placeholders(&problem_dir);
-    append_stress_plan_with_case_placeholders(&problem_dir);
+    overwrite_generator_for_range_args(&problem_dir);
+    append_expect_task_with_range_args(&problem_dir);
 
     let output = run_cptool(
         [
@@ -603,15 +612,15 @@ fn stress_plan_expands_case_placeholders() {
             "-w",
             problem_dir.to_str().unwrap(),
             "--name",
-            "case-placeholders",
+            "range-proof",
         ],
         None,
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    assert!(stdout.contains("plan `case-placeholders` case 1 ok"));
-    assert!(stdout.contains("plan `case-placeholders` case 2 ok"));
-    assert!(stdout.contains("stress plan `case-placeholders` passed: 2 cases"));
+    assert!(stdout.contains("plan `range-proof:pass:brute` case 1 ok"));
+    assert!(stdout.contains("plan `range-proof:pass:brute` case 2 ok"));
+    assert!(stdout.contains("expect task `range-proof` passed: 1 checks"));
 }
 
 #[test]
@@ -634,7 +643,7 @@ fn stress_plan_rejects_file_generator() {
   plans:
   - name: file-corners
     generator: :file
-    args: ["fixtures/input/{case}.in"]
+    args: ["fixtures/input/1.in"]
     against: [std, brute]
     cases: 2
     expect: pass
@@ -698,7 +707,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    assert!(stdout.contains("bad-is-detected: expected_fail observed=true case=1"));
+    assert!(stdout.contains("bad-is-detected:fail:bad: expected_fail observed=true case=1"));
     assert!(stdout.contains("reason=wrong_answer: output mismatch between `std` and `bad`"));
     assert!(stdout.contains("failed_cases=3"));
     assert!(stdout.contains("passed_cases=0"));

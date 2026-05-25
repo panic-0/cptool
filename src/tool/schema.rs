@@ -270,12 +270,28 @@ pub enum TestTaskType {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TestTask {
     pub name: String,
-    pub score: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
     #[serde(rename = "type")]
-    pub task_type: TestTaskType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_type: Option<TestTaskType>,
     pub bundles: Vec<String>,
     #[serde(default)]
     pub dependencies: Vec<String>,
+    #[serde(default, rename = "pass", skip_serializing_if = "Vec::is_empty")]
+    pub pass_programs: Vec<String>,
+    #[serde(default, rename = "fail", skip_serializing_if = "Vec::is_empty")]
+    pub fail_programs: Vec<String>,
+}
+
+impl TestTask {
+    pub fn is_official(&self) -> bool {
+        self.score.is_some()
+    }
+
+    pub fn has_expectations(&self) -> bool {
+        !self.pass_programs.is_empty() || !self.fail_programs.is_empty()
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -316,12 +332,17 @@ enum RawTestCase {
 #[derive(Deserialize)]
 struct RawTestTask {
     name: String,
-    score: f64,
+    #[serde(default)]
+    score: Option<f64>,
     #[serde(default, rename = "type")]
     task_type: Option<TestTaskType>,
     bundles: Vec<String>,
     #[serde(default)]
     dependencies: Vec<String>,
+    #[serde(default, rename = "pass")]
+    pass_programs: Vec<String>,
+    #[serde(default, rename = "fail")]
+    fail_programs: Vec<String>,
 }
 
 impl<'de> Deserialize<'de> for Test {
@@ -354,7 +375,10 @@ where
                 .map(|(case_index, case)| {
                     normalize_test_case(case, bundle_generator.as_deref(), &bundle_name, case_index)
                 })
-                .collect::<Result<Vec<_>, _>>()?;
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
             Ok((bundle_name, TestBundle { cases }))
         })
         .collect::<Result<HashMap<_, _>, E>>()?;
@@ -376,17 +400,23 @@ fn normalize_test_task<E>(
 where
     E: de::Error,
 {
-    let task_type = task.task_type.or(default_task_type).ok_or_else(|| {
-        E::custom(format!(
-            "test.tasks[{task_index}] is missing `type` and no default type is declared for test"
-        ))
-    })?;
+    let task_type = if task.score.is_some() {
+        Some(task.task_type.or(default_task_type).ok_or_else(|| {
+            E::custom(format!(
+                "test.tasks[{task_index}] is missing `type` and no default type is declared for test"
+            ))
+        })?)
+    } else {
+        task.task_type.or(default_task_type)
+    };
     Ok(TestTask {
         name: task.name,
         score: task.score,
         task_type,
         bundles: task.bundles,
         dependencies: task.dependencies,
+        pass_programs: task.pass_programs,
+        fail_programs: task.fail_programs,
     })
 }
 
@@ -395,7 +425,7 @@ fn normalize_test_case<E>(
     default_generator: Option<&str>,
     bundle_name: &str,
     case_index: usize,
-) -> Result<TestCase, E>
+) -> Result<Vec<TestCase>, E>
 where
     E: de::Error,
 {
@@ -407,10 +437,13 @@ where
                 )));
             };
             let args = raw_args_to_strings(args, bundle_name, case_index)?;
-            Ok(TestCase {
-                generator_name: generator_name.to_string(),
-                args,
-            })
+            Ok(args
+                .into_iter()
+                .map(|args| TestCase {
+                    generator_name: generator_name.to_string(),
+                    args,
+                })
+                .collect())
         }
         RawTestCase::Full {
             generator_name,
@@ -424,10 +457,13 @@ where
                     ))
                 })?;
             let args = raw_args_to_strings(args, bundle_name, case_index)?;
-            Ok(TestCase {
-                generator_name,
-                args,
-            })
+            Ok(args
+                .into_iter()
+                .map(|args| TestCase {
+                    generator_name: generator_name.clone(),
+                    args,
+                })
+                .collect())
         }
     }
 }
@@ -436,31 +472,60 @@ fn raw_args_to_strings<E>(
     args: Vec<Value>,
     bundle_name: &str,
     case_index: usize,
-) -> Result<Vec<String>, E>
+) -> Result<Vec<Vec<String>>, E>
 where
     E: de::Error,
 {
-    args.into_iter()
+    let choices = args
+        .into_iter()
         .enumerate()
         .map(|(arg_index, value)| {
-            raw_arg_to_string(value).ok_or_else(|| {
+            raw_arg_to_strings(value).ok_or_else(|| {
                 E::custom(format!(
                     "test.bundles.{bundle_name}.cases[{case_index}].args[{arg_index}] must be a string, number, boolean, or null"
                 ))
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, E>>()?;
+    Ok(cartesian_args(&choices))
 }
 
-fn raw_arg_to_string(value: Value) -> Option<String> {
+fn raw_arg_to_strings(value: Value) -> Option<Vec<String>> {
     match value {
-        Value::Null => Some("null".to_string()),
-        Value::Bool(value) => Some(value.to_string()),
-        Value::Number(value) => Some(value.to_string()),
-        Value::String(value) => Some(value),
-        Value::Tagged(tagged) => raw_arg_to_string(tagged.value),
+        Value::Null => Some(vec!["null".to_string()]),
+        Value::Bool(value) => Some(vec![value.to_string()]),
+        Value::Number(value) => Some(vec![value.to_string()]),
+        Value::String(value) => Some(expand_range_string(&value).unwrap_or_else(|| vec![value])),
+        Value::Tagged(tagged) => raw_arg_to_strings(tagged.value),
         Value::Sequence(_) | Value::Mapping(_) => None,
     }
+}
+
+fn cartesian_args(choices: &[Vec<String>]) -> Vec<Vec<String>> {
+    let mut expanded = vec![Vec::new()];
+    for values in choices {
+        let mut next = Vec::with_capacity(expanded.len() * values.len());
+        for prefix in &expanded {
+            for value in values {
+                let mut args = prefix.clone();
+                args.push(value.clone());
+                next.push(args);
+            }
+        }
+        expanded = next;
+    }
+    expanded
+}
+
+fn expand_range_string(value: &str) -> Option<Vec<String>> {
+    let inner = value.strip_prefix('{')?.strip_suffix('}')?;
+    let (start, end) = inner.split_once(':')?;
+    let start = start.parse::<i64>().ok()?;
+    let end = end.parse::<i64>().ok()?;
+    if start > end {
+        return Some(Vec::new());
+    }
+    Some((start..=end).map(|value| value.to_string()).collect())
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -868,7 +933,7 @@ tasks:
             test.bundles["explicit"].cases[0].generator_name,
             "special_gen"
         );
-        assert_eq!(test.tasks[0].task_type, TestTaskType::Min);
+        assert_eq!(test.tasks[0].task_type, Some(TestTaskType::Min));
     }
 
     #[test]
@@ -898,7 +963,7 @@ test:
 stress:
   plans:
   - name: small
-    args: [small, "{case}"]
+    args: [small]
     against: [std, std]
 "#,
         )
@@ -935,8 +1000,8 @@ tasks:
         )
         .unwrap();
 
-        assert_eq!(test.tasks[0].task_type, TestTaskType::Min);
-        assert_eq!(test.tasks[1].task_type, TestTaskType::Sum);
+        assert_eq!(test.tasks[0].task_type, Some(TestTaskType::Min));
+        assert_eq!(test.tasks[1].task_type, Some(TestTaskType::Sum));
     }
 
     #[test]

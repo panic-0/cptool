@@ -35,8 +35,13 @@ fn evidence_json_aggregates_check_gen_and_stress_plan() {
     assert_eq!(value["gen"]["status"], "ok");
     assert_eq!(value["gen"]["report"]["cases"], 1);
     assert_eq!(value["stress_plan"]["status"], "ok");
-    assert_eq!(value["stress_plan"]["report"][0]["plan_name"], "tiny");
-    assert_eq!(value["stress_plan"]["report"][0]["cases"], 2);
+    assert!(
+        value["stress_plan"]["report"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|plan| plan["plan_name"] == "tiny:pass:brute" && plan["cases"] == 2)
+    );
 }
 
 #[test]
@@ -81,9 +86,9 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     assert!(text.contains("### Generation"));
     assert!(text.contains("- validator_configured: false"));
     assert!(text.contains("### Positive Stress Plans"));
-    assert!(text.contains("`tiny-pass`: cases=2 unique_input_hashes=1"));
+    assert!(text.contains("`tiny-pass:pass:brute`: cases=2 unique_input_hashes=1"));
     assert!(text.contains("### Negative Stress Plans"));
-    assert!(text.contains("`bad-is-detected`: cases=2 unique_input_hashes=1"));
+    assert!(text.contains("`bad-is-detected:fail:bad`: cases=2 unique_input_hashes=1"));
     assert!(text.contains("failed_cases=2 passed_cases=0 failure_ratio=1.000"));
 }
 
@@ -256,14 +261,13 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     let value: Value = serde_json::from_slice(&evidence.stdout).unwrap();
 
     assert_eq!(value["stress_plan"]["status"], "ok");
-    assert_eq!(
-        value["stress_plan"]["report"][0]["plan_name"],
-        "bad-is-detected"
-    );
-    assert_eq!(
-        value["stress_plan"]["report"][0]["expected_failure"]["failed_cases"],
-        3
-    );
+    let reused_plan = value["stress_plan"]["report"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|plan| plan["plan_name"] == "bad-is-detected:fail:bad")
+        .unwrap();
+    assert_eq!(reused_plan["expected_failure"]["failed_cases"], 3);
     assert_eq!(count_failure_reports(&problem_dir), failure_reports_before);
     assert!(
         !problem_dir

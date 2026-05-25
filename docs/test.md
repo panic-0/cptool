@@ -25,13 +25,13 @@
 ## 临时 Stress
 
 ```bash
-./cptool test stress -w ./example/a_plus_b --generator gen --cases 100 std brute -- 10
-./cptool test stress -w ./example/a_plus_b --generator gen --cases 100 std brute -- 10 {case}
+./cptool test stress -w ./example/a_plus_b --generator gen --pass brute -- 10 "{1:100}"
+./cptool test stress -w ./example/a_plus_b --generator gen --fail wrong -- 10 "{1:100}"
 ```
 
-`test stress` 生成临时输入并比较两份已注册程序或源码。它不运行正式 bundle，也不假设 `brute` 能处理大数据。
+`test stress` 生成临时输入并运行临时 expect。它不运行正式 bundle，也不把数据写入 `data/`。默认参考答案是 `solution`，也可以用 `--answer PROGRAM` 覆盖。
 
-`--` 后的参数支持 `{case}`（从 1 开始）和 `{case0}`（从 0 开始）。不含占位符的固定参数会在每个 case 中原样传入。如果多个 case 的生成输入完全相同，stress 仍会通过，但会报告重复输入 warning。
+`--` 后的参数支持完整字符串 range：`"{L:R}"`。多个 range 做笛卡尔积展开；不含 range 的参数只生成一个临时 case。
 
 ## Stress 计划
 
@@ -44,4 +44,4 @@
 ./cptool test plan -w ./example/a_plus_b --wait-for-generation-lock 10
 ```
 
-`test plan` 运行 `problem.yaml` 中的 `stress.plans`。plan 默认 `expect: pass`；用 `expect: fail` 记录 wrong 程序证据。负向 plan 在至少观察到一个 `wrong_answer` 或 `program_failed` 时成功，并报告 `failed_cases`、`passed_cases` 和 `failure_ratio`。
+`test plan` 运行 `problem.yaml` 中 `test.tasks[].pass` 和 `test.tasks[].fail`。有 `score` 的 task 仍然是正式数据；无 `score` 的 task 是 verify-only，不落盘、不导出。`fail` 在至少观察到一个 WA/RE/TLE/OLE/UKE 时成功，并报告 `failed_cases`、`passed_cases` 和 `failure_ratio`。旧 `stress.plans` 会在读取时迁移到 task pass/fail。

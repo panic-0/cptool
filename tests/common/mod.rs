@@ -42,6 +42,7 @@ test:
     score: 100.0
     type: min
     bundles: [sample]
+    pass: [brute]
 "#,
     )
     .unwrap();
@@ -109,6 +110,8 @@ test:
     score: 100.0
     type: min
     bundles: [sample]
+    pass: [alt]
+    fail: [bad]
 "#,
     )
     .unwrap();
@@ -205,6 +208,7 @@ test:
     score: 100.0
     type: min
     bundles: [sample]
+    pass: [brute]
 "#,
     )
     .unwrap();
@@ -273,6 +277,7 @@ test:
     type: sum
     bundles: [main]
     dependencies: [sample]
+    pass: [brute]
 "#,
     )
     .unwrap();
@@ -295,16 +300,13 @@ sys.stdout.buffer.write(f"{value * value}\n".encode("ascii"))
     .unwrap();
 }
 
-pub fn overwrite_generator_for_stress_plan_placeholders(problem_dir: &Path) {
+pub fn overwrite_generator_for_range_args(problem_dir: &Path) {
     std::fs::write(
         problem_dir.join("src").join("gen.py"),
         r#"import sys
 
-case = int(sys.argv[1])
-case0 = int(sys.argv[2])
-if case != case0 + 1:
-    raise SystemExit(7)
-sys.stdout.buffer.write(f"{case} {case0}\n".encode("ascii"))
+value = int(sys.argv[1])
+sys.stdout.buffer.write(f"{value} 10\n".encode("ascii"))
 "#,
     )
     .unwrap();
@@ -326,18 +328,18 @@ pub fn append_stress_plan(problem_dir: &Path) {
     std::fs::write(yaml_path, yaml).unwrap();
 }
 
-pub fn append_stress_plan_with_case_placeholders(problem_dir: &Path) {
+pub fn append_expect_task_with_range_args(problem_dir: &Path) {
     let yaml_path = problem_dir.join("problem.yaml");
     let mut yaml = std::fs::read_to_string(&yaml_path).unwrap();
-    yaml.push_str(
-        r#"stress:
-  plans:
-  - name: case-placeholders
-    generator: gen
-    args: ["{case}", "{case0}"]
-    against: [std, brute]
-    cases: 2
-"#,
+    yaml = yaml.replacen(
+        "    sample:\n      cases:\n      - [\"3\", \"4\"]\n",
+        "    sample:\n      cases:\n      - [\"3\", \"4\"]\n    range:\n      cases:\n      - generator: gen\n        args: [\"{1:2}\"]\n",
+        1,
+    );
+    yaml = yaml.replacen(
+        "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n",
+        "  tasks:\n  - name: sample\n    score: 100.0\n    type: min\n    bundles: [sample]\n    pass: [brute]\n  - name: range-proof\n    bundles: [range]\n    pass: [brute]\n",
+        1,
     );
     std::fs::write(yaml_path, yaml).unwrap();
 }

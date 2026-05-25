@@ -1,5 +1,9 @@
 use super::data::{GenerateOptions, generate_data_with_options};
-use super::schema::{CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem};
+use super::schema::{
+    CaseSelector, DEFAULT_OUTPUT_LIMIT_BYTES, Problem, StressPlanExpectation, TestBundle, TestCase,
+    TestTask,
+};
+use super::stress_args::direct_stress_args_by_case;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -10,10 +14,72 @@ pub fn load_problem(work_dir: &Path) -> Result<Problem> {
     let path = work_dir.join("problem.yaml");
     let yaml = std::fs::read_to_string(&path)
         .with_context(|| format!("failed to read {}", path.display()))?;
-    let problem: Problem = serde_yml::from_str(&yaml)
+    let mut problem: Problem = serde_yml::from_str(&yaml)
         .with_context(|| format!("failed to parse {}", path.display()))?;
+    if migrate_legacy_stress_plans(&mut problem) {
+        let yaml = serde_yml::to_string(&problem)
+            .with_context(|| format!("failed to render migrated {}", path.display()))?;
+        std::fs::write(&path, yaml)
+            .with_context(|| format!("failed to write migrated {}", path.display()))?;
+    }
     validate_problem(&problem).with_context(|| format!("invalid {}", path.display()))?;
     Ok(problem)
+}
+
+fn migrate_legacy_stress_plans(problem: &mut Problem) -> bool {
+    if problem.stress.plans.is_empty() {
+        return false;
+    }
+    let plans = std::mem::take(&mut problem.stress.plans);
+    for plan in plans {
+        let mut bundle_name = format!("stress_{}", slugify_name(&plan.name));
+        let mut suffix = 2usize;
+        while problem.test.bundles.contains_key(&bundle_name) {
+            bundle_name = format!("stress_{}_{}", slugify_name(&plan.name), suffix);
+            suffix += 1;
+        }
+        let cases = direct_stress_args_by_case(&plan.args, plan.cases)
+            .into_iter()
+            .map(|args| TestCase {
+                generator_name: plan.generator.clone(),
+                args,
+            })
+            .collect();
+        problem
+            .test
+            .bundles
+            .insert(bundle_name.clone(), TestBundle { cases });
+        let mut pass_programs = Vec::new();
+        let mut fail_programs = Vec::new();
+        if let Some(target) = plan.against.get(1) {
+            match plan.expect {
+                StressPlanExpectation::Pass => pass_programs.push(target.clone()),
+                StressPlanExpectation::Fail => fail_programs.push(target.clone()),
+            }
+        }
+        problem.test.tasks.push(TestTask {
+            name: plan.name,
+            score: None,
+            task_type: None,
+            bundles: vec![bundle_name],
+            dependencies: Vec::new(),
+            pass_programs,
+            fail_programs,
+        });
+    }
+    true
+}
+
+fn slugify_name(name: &str) -> String {
+    let mut out = String::new();
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            out.push(ch);
+        } else if !out.ends_with('_') {
+            out.push('_');
+        }
+    }
+    out.trim_matches('_').to_string()
 }
 
 pub(crate) fn parse_case_selector(value: &str) -> Result<CaseSelector> {
@@ -161,7 +227,9 @@ fn validate_problem(problem: &Problem) -> Result<()> {
         .map(|task| task.name.as_str())
         .collect::<HashSet<_>>();
     for task in &problem.test.tasks {
-        validate_non_negative_finite(task.score, &format!("task `{}` score", task.name))?;
+        if let Some(score) = task.score {
+            validate_non_negative_finite(score, &format!("task `{}` score", task.name))?;
+        }
         for bundle_name in &task.bundles {
             if !problem.test.bundles.contains_key(bundle_name) {
                 anyhow::bail!(
@@ -177,6 +245,9 @@ fn validate_problem(problem: &Problem) -> Result<()> {
                     task.name
                 );
             }
+        }
+        for program in task.pass_programs.iter().chain(task.fail_programs.iter()) {
+            ensure_program_exists(problem, program, "expect program")?;
         }
     }
     Ok(())
@@ -308,10 +379,12 @@ mod tests {
                 )]),
                 tasks: vec![TestTask {
                     name: "sample".to_string(),
-                    score: 100.0,
-                    task_type: TestTaskType::Min,
+                    score: Some(100.0),
+                    task_type: Some(TestTaskType::Min),
                     bundles: vec!["sample".to_string()],
                     dependencies: Vec::new(),
+                    pass_programs: Vec::new(),
+                    fail_programs: Vec::new(),
                 }],
             },
             solution_name: "std".to_string(),

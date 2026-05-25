@@ -74,15 +74,22 @@ impl Exporter for SyzojExporter {
     ) -> Result<()> {
         use std::collections::HashMap;
         let mut task_id = HashMap::new();
-        problem.test.tasks.iter().enumerate().for_each(|(i, task)| {
-            task_id.insert(&task.name, i);
-        });
+        problem
+            .test
+            .tasks
+            .iter()
+            .filter(|task| task.is_official())
+            .enumerate()
+            .for_each(|(i, task)| {
+                task_id.insert(&task.name, i);
+            });
 
         let mut counter = 0usize;
         let subtasks = problem
             .test
             .tasks
             .iter()
+            .filter(|task| task.is_official())
             .map(|task| {
                 let cases = task
                     .bundles
@@ -129,8 +136,15 @@ impl Exporter for SyzojExporter {
                     })
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Subtask {
-                    subtask_type: task.task_type.into(),
-                    score: task.score,
+                    subtask_type: task
+                        .task_type
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("official task `{}` has no type", task.name)
+                        })?
+                        .into(),
+                    score: task.score.ok_or_else(|| {
+                        anyhow::anyhow!("official task `{}` has no score", task.name)
+                    })?,
                     cases,
                     dependencies: Some(dependencies),
                 })

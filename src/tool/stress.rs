@@ -58,7 +58,80 @@ pub fn stress_with_options(options: StressOptions<'_>) -> Result<StressSummary> 
         print_progress: options.print_progress,
         print_warnings: options.print_warnings,
         expect_failure: false,
+        allow_expected_failure_absent: false,
     })
+}
+
+pub struct StressExpectOptions<'a> {
+    pub work_dir: &'a Path,
+    pub generator: &'a str,
+    pub answer: &'a str,
+    pub pass_programs: &'a [String],
+    pub fail_programs: &'a [String],
+    pub args_by_case: Vec<Vec<String>>,
+    pub failure_dir: Option<&'a Path>,
+    pub output_limit_bytes: usize,
+    pub print_progress: bool,
+    pub print_warnings: bool,
+}
+
+pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Vec<StressSummary>> {
+    let StressExpectOptions {
+        work_dir,
+        generator,
+        answer,
+        pass_programs,
+        fail_programs,
+        args_by_case,
+        failure_dir,
+        output_limit_bytes,
+        print_progress,
+        print_warnings,
+    } = options;
+    if pass_programs.is_empty() && fail_programs.is_empty() {
+        anyhow::bail!("test stress requires at least one --pass or --fail program");
+    }
+    let problem = load_problem(work_dir)?;
+    let answer = if answer.is_empty() {
+        problem.solution_name.as_str()
+    } else {
+        answer
+    };
+    let mut summaries = Vec::new();
+    for program in pass_programs {
+        let against = vec![answer.to_string(), program.clone()];
+        summaries.push(run_stress(StressRunOptions {
+            work_dir,
+            generator,
+            against: &against,
+            args_by_case: args_by_case.clone(),
+            failure_dir,
+            output_limit_bytes,
+            plan_name: Some(&format!("stress:pass:{program}")),
+            print_progress,
+            print_warnings,
+            expect_failure: false,
+            allow_expected_failure_absent: false,
+        })?);
+    }
+    for program in fail_programs {
+        let against = vec![answer.to_string(), program.clone()];
+        let summary = run_stress(StressRunOptions {
+            work_dir,
+            generator,
+            against: &against,
+            args_by_case: args_by_case.clone(),
+            failure_dir,
+            output_limit_bytes,
+            plan_name: Some(&format!("stress:fail:{program}")),
+            print_progress,
+            print_warnings,
+            expect_failure: true,
+            allow_expected_failure_absent: false,
+        })?;
+        summaries.push(summary);
+    }
+    Ok(summaries)
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -213,6 +286,7 @@ pub(crate) struct StressRunOptions<'a> {
     pub(crate) print_progress: bool,
     pub(crate) print_warnings: bool,
     pub(crate) expect_failure: bool,
+    pub(crate) allow_expected_failure_absent: bool,
 }
 
 pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary> {
@@ -227,6 +301,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         print_progress,
         print_warnings,
         expect_failure,
+        allow_expected_failure_absent,
     } = options;
     let cases = args_by_case.len();
     if against.len() != 2 {
@@ -348,6 +423,9 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     };
     if expect_failure {
         let Some(mut failure) = expected_failure else {
+            if allow_expected_failure_absent {
+                return Ok(summary);
+            }
             let plan = plan_name
                 .map(|name| format!(" plan `{name}`"))
                 .unwrap_or_default();

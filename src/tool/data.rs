@@ -8,7 +8,7 @@ use super::schema::{CaseSelector, Problem};
 use super::unix_epoch_nanos;
 use anyhow::{Context, Result};
 use serde::Serialize;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -698,7 +698,11 @@ fn select_cases(
     }
 
     let mut selectors = Vec::new();
+    let official = official_bundle_names(problem);
     for (bundle, bundle_cases) in &problem.test.bundles {
+        if !official.contains(bundle) {
+            continue;
+        }
         for index in 0..bundle_cases.cases.len() {
             selectors.push(CaseSelector {
                 bundle: bundle.clone(),
@@ -707,6 +711,16 @@ fn select_cases(
         }
     }
     Ok(selectors)
+}
+
+pub(crate) fn official_bundle_names(problem: &Problem) -> HashSet<String> {
+    problem
+        .test
+        .tasks
+        .iter()
+        .filter(|task| task.is_official())
+        .flat_map(|task| task.bundles.iter().cloned())
+        .collect()
 }
 
 fn ensure_case_exists(problem: &Problem, selector: &CaseSelector) -> Result<()> {

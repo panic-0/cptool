@@ -277,23 +277,32 @@ pub(super) enum TestCommands {
     },
     #[command(
         about = "Stress test two programs on temporary generated inputs",
-        long_about = "Stress test two programs on temporary generated inputs. Generator args after -- support {case} and {case0}; {case} is 1-based and {case0} is 0-based."
+        long_about = "Stress test programs on temporary generated inputs. Generator args after -- support full-string {L:R} integer ranges."
     )]
     Stress {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
         #[arg(long, help = "Generator program name from problem.yaml or source path")]
         generator: String,
-        #[arg(value_name = "STD", help = "Standard program name or source path")]
-        std: String,
-        #[arg(value_name = "ALT", help = "Alternative program name or source path")]
-        alt: String,
         #[arg(
-            long,
-            default_value_t = 100,
-            help = "Number of generated cases to test"
+            value_name = "STD",
+            help = "Deprecated standard program name or source path"
         )]
-        cases: usize,
+        std: Option<String>,
+        #[arg(
+            value_name = "ALT",
+            help = "Deprecated alternative program name or source path"
+        )]
+        alt: Option<String>,
+        #[arg(long, help = "Reference answer program; defaults to problem solution")]
+        answer: Option<String>,
+        #[arg(long = "pass", help = "Program expected to match the answer program")]
+        pass: Vec<String>,
+        #[arg(
+            long = "fail",
+            help = "Program expected to fail on at least one generated case"
+        )]
+        fail: Vec<String>,
         #[arg(long, default_value_t = DEFAULT_OUTPUT_LIMIT_BYTES, help = "Per-stream stdout/stderr capture limit in bytes")]
         output_limit_bytes: usize,
         #[arg(long, help = "Directory for failed inputs and per-program outputs")]
@@ -302,14 +311,14 @@ pub(super) enum TestCommands {
         json: bool,
         #[arg(
             last = true,
-            help = "Arguments passed to the generator after --; supports {case} and {case0}"
+            help = "Arguments passed to the generator after --; new mode supports {L:R} ranges"
         )]
         args: Vec<String>,
     },
     #[command(
         name = "plan",
         about = "Run stress plans declared in problem.yaml",
-        long_about = "Run stress plans declared in problem.yaml. Plan args support {case} and {case0}; {case} is 1-based and {case0} is 0-based."
+        long_about = "Run task expect checks declared in problem.yaml."
     )]
     Plan {
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
@@ -335,13 +344,13 @@ pub(super) enum TestCommands {
         #[arg(
             long,
             conflicts_with = "negative_only",
-            help = "Run only expect: pass plans"
+            help = "Run only task pass checks"
         )]
         positive_only: bool,
         #[arg(
             long,
             conflicts_with = "positive_only",
-            help = "Run only expect: fail plans"
+            help = "Run only task fail checks"
         )]
         negative_only: bool,
         #[arg(long, help = "Print stress plan summaries as JSON")]
@@ -586,8 +595,8 @@ pub(super) enum AddCommands {
         name: String,
         #[arg(short, long, default_value = ".", help = "Problem package directory")]
         work_dir: PathBuf,
-        #[arg(long, help = "Task score")]
-        score: f64,
+        #[arg(long, help = "Task score; omit for verify-only task")]
+        score: Option<f64>,
         #[arg(long = "type", value_enum, default_value_t = AddTaskTypeArg::Min, help = "Task scoring aggregation type")]
         task_type: AddTaskTypeArg,
         #[arg(
@@ -598,6 +607,16 @@ pub(super) enum AddCommands {
         bundles: Vec<String>,
         #[arg(long = "depends", help = "Task dependency")]
         dependencies: Vec<String>,
+        #[arg(
+            long = "pass",
+            help = "Program expected to match the solution on this task"
+        )]
+        expect_pass: Vec<String>,
+        #[arg(
+            long = "fail",
+            help = "Program expected to fail on at least one case in this task"
+        )]
+        expect_fail: Vec<String>,
         #[arg(long, help = "Replace an existing task")]
         replace: bool,
     },

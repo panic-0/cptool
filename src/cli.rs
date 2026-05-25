@@ -156,7 +156,9 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
             generator,
             std,
             alt,
-            cases,
+            answer,
+            pass,
+            fail,
             output_limit_bytes,
             failure_dir,
             json,
@@ -164,8 +166,16 @@ fn handle_test(command: TestCommands) -> anyhow::Result<()> {
         } => handle_stress(StressCommandOptions {
             work_dir,
             generator,
-            against: vec![std, alt],
-            cases,
+            legacy_against: match (std, alt) {
+                (Some(std), Some(alt)) => Some(vec![std, alt]),
+                (None, None) => None,
+                _ => anyhow::bail!(
+                    "deprecated test stress positional mode requires both STD and ALT"
+                ),
+            },
+            answer,
+            pass,
+            fail,
             output_limit_bytes,
             failure_dir,
             json,
@@ -618,8 +628,10 @@ fn handle_clean(work_dir: PathBuf, data: bool, cache: bool, json: bool) -> anyho
 struct StressCommandOptions {
     work_dir: PathBuf,
     generator: String,
-    against: Vec<String>,
-    cases: usize,
+    legacy_against: Option<Vec<String>>,
+    answer: Option<String>,
+    pass: Vec<String>,
+    fail: Vec<String>,
     output_limit_bytes: usize,
     failure_dir: Option<PathBuf>,
     json: bool,
@@ -627,13 +639,64 @@ struct StressCommandOptions {
 }
 
 fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
+    if let Some(against) = options.legacy_against {
+        eprintln!(
+            "warning: deprecated test stress positional mode; use --answer {} --pass {}",
+            against[0], against[1]
+        );
+        return handle_legacy_stress(StressCommandOptions {
+            legacy_against: Some(against),
+            ..options
+        });
+    }
+    let answer = options.answer.unwrap_or_default();
+    let args_by_case = tool::range_args(&options.args)?;
+    let summaries = unwrap_or_print_compile_failure(
+        tool::stress_expect_with_options(tool::StressExpectOptions {
+            work_dir: &options.work_dir,
+            generator: &options.generator,
+            answer: &answer,
+            pass_programs: &options.pass,
+            fail_programs: &options.fail,
+            args_by_case,
+            failure_dir: options.failure_dir.as_deref(),
+            output_limit_bytes: options.output_limit_bytes,
+            print_progress: !options.json,
+            print_warnings: !options.json,
+        }),
+        options.json,
+    )?;
+    if options.json {
+        let summaries = display_stress_summaries(summaries, &options.work_dir);
+        let report = self::json::StressPlanJsonReport::from_summaries(&summaries);
+        self::json::print(&report)?;
+    } else {
+        let cases = summaries
+            .iter()
+            .map(|summary| summary.cases)
+            .max()
+            .unwrap_or(0);
+        println!(
+            "stress expect passed: {} cases checks={}",
+            cases,
+            summaries.len()
+        );
+    }
+    Ok(())
+}
+
+fn handle_legacy_stress(options: StressCommandOptions) -> anyhow::Result<()> {
+    let against = options
+        .legacy_against
+        .as_ref()
+        .expect("legacy stress requires positional programs");
     if options.json {
         let summary = unwrap_or_print_compile_failure(
             tool::stress_with_options(tool::StressOptions {
                 work_dir: &options.work_dir,
                 generator: &options.generator,
-                against: &options.against,
-                cases: options.cases,
+                against,
+                cases: 1,
                 args: &options.args,
                 failure_dir: options.failure_dir.as_deref(),
                 output_limit_bytes: options.output_limit_bytes,
@@ -649,8 +712,8 @@ fn handle_stress(options: StressCommandOptions) -> anyhow::Result<()> {
             tool::stress_with_summary(
                 &options.work_dir,
                 &options.generator,
-                &options.against,
-                options.cases,
+                against,
+                1,
                 &options.args,
                 options.failure_dir.as_deref(),
                 options.output_limit_bytes,
@@ -1493,6 +1556,8 @@ fn handle_add(command: AddCommands) -> anyhow::Result<()> {
             task_type,
             bundles,
             dependencies,
+            expect_pass,
+            expect_fail,
             replace,
         } => tool::add_task(tool::AddTaskOptions {
             work_dir,
@@ -1501,6 +1566,8 @@ fn handle_add(command: AddCommands) -> anyhow::Result<()> {
             task_type: convert_task_type(task_type),
             bundles,
             dependencies,
+            expect_pass,
+            expect_fail,
             replace,
         })?,
         AddCommands::Validator {

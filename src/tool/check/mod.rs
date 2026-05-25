@@ -1,6 +1,6 @@
 use super::data::{
     GenerateOptions, data_generation_status, format_duration, generate_data_with_options,
-    wait_for_generation_status,
+    official_bundle_names, wait_for_generation_status,
 };
 use super::judge::run_configured_checker_on_files;
 use super::problem::{load_problem, normalize_work_dir, resolve_path};
@@ -160,15 +160,45 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
             );
         }
         used_bundles.extend(task.bundles.iter().cloned());
+        if !task.is_official() && !task.has_expectations() {
+            report.error_at(
+                codes::TASK_EXPECT_EMPTY,
+                format!(
+                    "verify-only task `{}` must declare a non-empty pass or fail list",
+                    task.name
+                ),
+                Some(yaml_path.clone()),
+                format!("test.tasks[{index}]"),
+            );
+        }
+        for program in &task.pass_programs {
+            if task.fail_programs.contains(program) {
+                report.error_at(
+                    codes::TASK_EXPECT_CONFLICT,
+                    format!(
+                        "task `{}` expects program `{program}` to both pass and fail",
+                        task.name
+                    ),
+                    Some(yaml_path.clone()),
+                    format!("test.tasks[{index}]"),
+                );
+            }
+        }
     }
 
     let total_score = problem
         .test
         .tasks
         .iter()
-        .map(|task| task.score)
+        .filter_map(|task| task.score)
         .sum::<f64>();
-    if !problem.test.tasks.is_empty() && (total_score - 100.0).abs() > 1e-6 {
+    let official_tasks = problem
+        .test
+        .tasks
+        .iter()
+        .filter(|task| task.is_official())
+        .count();
+    if official_tasks > 0 && (total_score - 100.0).abs() > 1e-6 {
         report.warning_at(
             codes::TASK_SCORE_TOTAL_NOT_100,
             format!("task scores sum to {total_score}, expected 100.0"),
@@ -188,6 +218,8 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
         }
     }
 
+    check_program_expect_coverage(report, &yaml_path, problem);
+
     if let Some(cycle) = task_dependency_cycle(problem, &task_index_by_name) {
         report.error_at(
             codes::TASK_DEPENDENCY_CYCLE,
@@ -195,6 +227,47 @@ fn check_problem_structure(report: &mut CheckReport, work_dir: &Path, problem: &
             Some(yaml_path),
             "test.tasks",
         );
+    }
+}
+
+fn check_program_expect_coverage(report: &mut CheckReport, yaml_path: &Path, problem: &Problem) {
+    let mut role_programs = HashSet::new();
+    role_programs.insert(problem.solution_name.as_str());
+    if let Some(name) = &problem.validator_name {
+        role_programs.insert(name.as_str());
+    }
+    if let Some(name) = &problem.checker_name {
+        role_programs.insert(name.as_str());
+    }
+    if let Some(name) = &problem.generator_name {
+        role_programs.insert(name.as_str());
+    }
+    for bundle in problem.test.bundles.values() {
+        for case in &bundle.cases {
+            role_programs.insert(case.generator_name.as_str());
+        }
+    }
+    let expected_programs = problem
+        .test
+        .tasks
+        .iter()
+        .flat_map(|task| task.pass_programs.iter().chain(task.fail_programs.iter()))
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    for program in problem.programs.keys() {
+        if role_programs.contains(program.as_str()) {
+            continue;
+        }
+        if !expected_programs.contains(program.as_str()) {
+            report.error_at(
+                codes::PROGRAM_EXPECT_MISSING,
+                format!(
+                    "program `{program}` is not a solution/validator/checker/generator and must appear in at least one task pass or fail list"
+                ),
+                Some(yaml_path.to_path_buf()),
+                "test.tasks",
+            );
+        }
     }
 }
 
@@ -232,7 +305,11 @@ fn check_expected_data_files(report: &mut CheckReport, work_dir: &Path, problem:
         "missing"
     };
     let next_action = format!("cptool case gen -w {}", work_dir.display());
+    let official = official_bundle_names(problem);
     for (bundle_name, bundle) in &problem.test.bundles {
+        if !official.contains(bundle_name) {
+            continue;
+        }
         let mut details = Vec::new();
         for case_index in 0..bundle.cases.len() {
             for extension in ["in", "ans"] {
@@ -319,6 +396,16 @@ fn check_stale_data_files(report: &mut CheckReport, work_dir: &Path, problem: &P
             );
             continue;
         };
+        if !official_bundle_names(problem).contains(bundle_name) {
+            report.action_warning(
+                codes::STALE_DATA_FILE,
+                format!("data file references verify-only bundle `{bundle_name}`"),
+                Some(path),
+                "stale",
+                next_action.clone(),
+            );
+            continue;
+        }
         if case_index >= bundle.cases.len() {
             report.action_warning(
                 codes::STALE_DATA_FILE,
@@ -369,14 +456,14 @@ fn check_stress_plans(report: &mut CheckReport, work_dir: &Path, problem: &Probl
     let yaml_path = work_dir.join("problem.yaml");
     let plans = &problem.stress.plans;
     if plans.is_empty() {
-        report.warning_at(
-            codes::STRESS_PLANS_MISSING,
-            "`stress.plans` is not declared",
-            Some(yaml_path),
-            "stress.plans",
-        );
         return;
     }
+    report.warning_at(
+        codes::STRESS_PLANS_MISSING,
+        "`stress.plans` is deprecated and is migrated to test.tasks expect when problem.yaml is loaded",
+        Some(yaml_path.clone()),
+        "stress.plans",
+    );
 
     if !plans
         .iter()
@@ -879,7 +966,7 @@ mod tests {
         problem = minimal_problem();
         problem.test.bundles.get_mut("main").unwrap().cases.clear();
         problem.test.tasks[0].bundles.clear();
-        problem.test.tasks[0].score = 42.0;
+        problem.test.tasks[0].score = Some(42.0);
         let mut report = CheckReport::new(root.clone());
         check_problem_structure(&mut report, &root, &problem);
         assert_issue(&report, "bundle_empty", CheckSeverity::Error);
@@ -896,10 +983,12 @@ mod tests {
         let mut problem = minimal_problem();
         problem.test.tasks.push(TestTask {
             name: "extra".to_string(),
-            score: 0.0,
-            task_type: TestTaskType::Min,
+            score: Some(0.0),
+            task_type: Some(TestTaskType::Min),
             bundles: vec!["main".to_string()],
             dependencies: vec!["main".to_string()],
+            pass_programs: Vec::new(),
+            fail_programs: Vec::new(),
         });
         problem.test.tasks[0].dependencies = vec!["extra".to_string()];
 
@@ -919,7 +1008,7 @@ mod tests {
 
         let mut report = CheckReport::new(root.clone());
         check_stress_plans(&mut report, &root, &problem);
-        assert_issue(&report, "stress_plans_missing", CheckSeverity::Warning);
+        assert_no_issue(&report, "stress_plans_missing");
 
         problem.stress.plans.push(crate::tool::schema::StressPlan {
             name: "bad".to_string(),
@@ -932,6 +1021,7 @@ mod tests {
         let mut report = CheckReport::new(root.clone());
         check_stress_plans(&mut report, &root, &problem);
 
+        assert_issue(&report, "stress_plans_missing", CheckSeverity::Warning);
         assert_issue(
             &report,
             "stress_positive_plan_missing",
@@ -1148,10 +1238,12 @@ mod tests {
                 bundles,
                 tasks: vec![TestTask {
                     name: bundle_names[0].to_string(),
-                    score: 100.0,
-                    task_type: TestTaskType::Min,
+                    score: Some(100.0),
+                    task_type: Some(TestTaskType::Min),
                     bundles: vec![bundle_names[0].to_string()],
                     dependencies: Vec::new(),
+                    pass_programs: Vec::new(),
+                    fail_programs: Vec::new(),
                 }],
             },
             solution_name: "std".to_string(),

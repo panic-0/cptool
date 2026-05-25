@@ -1,6 +1,6 @@
 # 题包 YAML
 
-`problem.yaml` 描述程序、generator、正式数据、task、validator、checker 和 stress plan。
+`problem.yaml` 描述程序、generator、数据组、task pass/fail、validator 和 checker。
 
 ## 示例
 
@@ -17,6 +17,12 @@ programs:
     info: !cpp
       path: ./src/std.cpp
     time_limit_secs: 1.0
+  brute:
+    info: !cpp
+      path: ./src/brute.cpp
+  wrong:
+    info: !cpp
+      path: ./src/wrong.cpp
   val:
     info: !cpp
       path: ./src/val.cpp
@@ -40,6 +46,9 @@ test:
       cases:
       - generator: :file
         args: [fixtures/input/small.in]
+    proof:
+      cases:
+      - [10, "{1:100}"]
   tasks:
   - name: sample
     score: 1.0
@@ -48,12 +57,11 @@ test:
     score: 99.0
     bundles: [main, corner]
     dependencies: [sample]
-stress:
-  plans:
-  - name: small
-    args: ["10", "{case}"]
-    against: [std, brute]
-    cases: 100
+    pass: [brute]
+    fail: [wrong]
+  - name: proof-only
+    bundles: [proof]
+    fail: [wrong]
 ```
 
 ## 程序
@@ -66,21 +74,21 @@ C++ 编译会自动把源码所在目录加入 include path，因此源码旁边
 
 ## Generator 和用例
 
-顶层 `generator` 被正式数据 case 和 stress plan 共同继承。使用默认 generator 的测试 case 应优先写 args-only 简写（`- [...]`）或 args-only mapping（`args: [...]`）。只有某个 case 需要不同 generator 时，才写完整形式：
+顶层 `generator` 被 bundle case 继承。使用默认 generator 的测试 case 应优先写 args-only 简写（`- [...]`）或 args-only mapping（`args: [...]`）。只有某个 case 需要不同 generator 时，才写完整形式：
 
 ```yaml
 - generator: other_gen
   args: [100]
 ```
 
-bundle 级 `generator` 会覆盖顶层 generator，case 级 `generator` 会覆盖前两者。
+bundle 级 `generator` 会覆盖顶层 generator，case 级 `generator` 会覆盖前两者。完整字符串参数 `"{L:R}"` 会展开为整数闭区间；多个 range 参数会做笛卡尔积展开。
 
-保留 generator 名 `:file` 用于把手写输入 fixture 复制到正式数据。它只接受一个位于 `fixtures/input/` 下的 `.in` 路径。stress plan 不能使用 `:file`。
+保留 generator 名 `:file` 用于把手写输入 fixture 复制到正式数据。它只接受一个位于 `fixtures/input/` 下的 `.in` 路径。
 
 ## Task
 
-声明了 `test.type` 时，单个 task 可以省略 `type`。task 级 `type` 会覆盖该默认值。
+声明了 `test.type` 时，有 `score` 的正式 task 可以省略 `type`。task 级 `type` 会覆盖该默认值。
 
-## Stress 计划
+有 `score` 的 task 会落盘、导出并参与分值；没有 `score` 的 task 是 verify-only，只由 `test plan` 运行，不进入正式数据。`pass` 中的程序必须匹配 `solution`，`fail` 中的程序至少要在该 task 的一个 case 上失败。注册在 `programs` 中但不是 solution/validator/checker/generator 的程序，必须出现在至少一个 `pass` 或 `fail` 中。
 
-Stress 计划可以省略 `generator`，此时使用顶层默认 generator。`against` 必须正好包含两份程序或源码。plan 参数支持 `{case}`（从 1 开始）和 `{case0}`（从 0 开始）。plan 默认 `expect: pass`；用 `expect: fail` 记录 wrong 程序证据。
+旧 `stress.plans` 会在读取时迁移到 task pass/fail；新题包不要再编写 `stress.plans`。
