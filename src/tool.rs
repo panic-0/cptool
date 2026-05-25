@@ -47,8 +47,8 @@ pub(crate) use problem::resolve_path;
 pub use run::run;
 pub use schema::{
     CommandProgram, CompileFailure, CompileReport, CppProgram, DEFAULT_OUTPUT_LIMIT_BYTES,
-    OutputConfig, Problem, Program, ProgramInfo, RunOptions, RunResult, Stress, StressPlan,
-    StressPlanExpectation, Test, TestBundle, TestCase, TestTask, TestTaskType,
+    OutputConfig, Problem, Program, ProgramInfo, RunOptions, RunResult, Test, TestBundle, TestCase,
+    TestTask, TestTaskType,
 };
 pub use stress::{
     ExpectedCheckerOutput, ExpectedStressFailure, ExpectedStressOutput, StressExpectOptions,
