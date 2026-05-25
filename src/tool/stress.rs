@@ -128,7 +128,7 @@ impl StressSummary {
     }
 
     pub fn summary_line(&self) -> String {
-        let name = self.check_name.as_deref().unwrap_or("stress");
+        let name = self.check_name.as_deref().unwrap_or("expect");
         if let Some(failure) = &self.expected_failure {
             let checker = checker_summary(&self.checker, &self.answer_program);
             return format!(
@@ -264,7 +264,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     } = options;
     let cases = args_by_case.len();
     if against.len() != 2 {
-        anyhow::bail!("stress requires exactly two programs or sources");
+        anyhow::bail!("expect check requires exactly two programs or sources");
     }
     let work_dir = normalize_work_dir(work_dir)?;
     let problem = load_problem(&work_dir)?;
@@ -527,18 +527,18 @@ fn run_stress_case(
             if !gen_result.is_success() {
                 anyhow::bail!(
                     "{}",
-                    gen_result.failure_report(&format!("generator failed on stress case {index}"))
+                    gen_result.failure_report(&format!("generator failed on expect case {index}"))
                 );
             }
             if gen_result.truncated_stdout {
                 anyhow::bail!(
-                    "generator output on stress case {index} exceeded --output-limit-bytes ({output_limit_bytes})"
+                    "generator output on expect case {index} exceeded --output-limit-bytes ({output_limit_bytes})"
                 );
             }
             gen_result.stdout_bytes
         }
         StressGenerator::File => {
-            read_file_generator_input(work_dir, args, &format!("stress case {index}"))?.bytes
+            read_file_generator_input(work_dir, args, &format!("expect case {index}"))?.bytes
         }
     };
     let input_hash = Sha256::digest(&input).to_vec();
@@ -547,7 +547,7 @@ fn run_stress_case(
         let result = run_spec(work_dir, target, &[], Some(&input), output_limit_bytes)?;
         if result.truncated_stdout {
             anyhow::bail!(
-                "program `{}` output on stress case {index} exceeded --output-limit-bytes ({output_limit_bytes})",
+                "program `{}` output on expect case {index} exceeded --output-limit-bytes ({output_limit_bytes})",
                 result.label
             );
         }
@@ -837,7 +837,7 @@ fn write_checker_output(
     let base = stem
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("stress");
+        .unwrap_or("expect");
     let artifact_stem = stem.with_file_name(format!("{base}-checker"));
     let stdout_path = artifact_stem.with_extension("out");
     let stderr_path = artifact_stem.with_extension("err");
@@ -880,7 +880,7 @@ fn result_artifact_stem(stem: &Path, index: usize, _label: &str) -> PathBuf {
     let base = stem
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("stress");
+        .unwrap_or("expect");
     stem.with_file_name(format!("{base}-{}", index + 1))
 }
 
