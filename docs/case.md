@@ -14,7 +14,7 @@
 ./cptool case gen -w ./example/a_plus_b --output-limit-bytes 67108864
 ```
 
-`case gen` 默认把正式 `.in` 和 `.ans` 数据写到 `data/`。它会先写入 staging 目录，只有所选用例全部成功后才移动到最终位置。
+`case gen` 默认把正式 `.in` 和 `.ans` 数据写到 `data/`。默认选择正式 task 引用的 bundle，并按 task 顺序去重；verify-only inline cases 不会落盘。它会先写入 staging 目录，只有所选用例全部成功后才移动到最终位置。
 
 每次成功生成都会重建输出目录内容，只保留本轮新生成的文件。不要把手写输入放在 `data/`；长期保留的人工输入应放在 `fixtures/input/`，并通过 `:file` case 引用。
 

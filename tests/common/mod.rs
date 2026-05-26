@@ -272,7 +272,6 @@ test:
     type: sum
     bundles: [main]
     dependencies: [sample]
-    pass: [brute]
 "#,
     )
     .unwrap();

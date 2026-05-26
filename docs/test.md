@@ -44,6 +44,6 @@
 ./cptool test expect -w ./example/a_plus_b --wait-for-generation-lock 10
 ```
 
-`test expect` 运行 `problem.yaml` 中 `test.tasks[].pass` 和 `test.tasks[].fail`。有 `score` 的 task 仍然是正式数据；无 `score` 的 task 是 verify-only，不落盘、不导出。verify-only task 可以直接写 `cases`，这些临时 case 只服务于 `test expect`。
+`test expect` 运行 `problem.yaml` 中 `test.tasks[].pass` 和 `test.tasks[].fail`。有 `score` 的 task 仍然是正式数据；无 `score` 的 task 是 verify-only，不落盘、不导出。带 `pass`/`fail` 的 task 必须使用 `min`；verify-only task 可以直接写 `cases`，这些临时 case 只服务于 `test expect`，且 expect mode 固定为 `min`。
 
-`fail` 在至少观察到一个 WA/RE/TLE/OLE/UKE 时成功，并报告 `failed_cases`、`passed_cases` 和 `failure_ratio`。旧 `stress.plans` 会在读取时迁移到 task pass/fail。
+`test expect` 按 task 中引用 bundle/inline case 的顺序运行。`fail` 在至少观察到一个 WA/RE/TLE/OLE/UKE 时成功，并在首个有效失败后停止；报告中的 `cases`/`cases_run` 是实际运行数量。旧 `stress.plans` 会在读取时迁移到 task pass/fail。

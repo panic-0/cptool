@@ -1,9 +1,8 @@
 use super::data::{format_duration, wait_for_generation_status};
 use super::problem::load_problem;
-use super::schema::{Problem, TestTask};
+use super::schema::{Problem, TestTask, TestTaskType};
 use super::stress::{StressRunOptions, StressSummary, run_stress};
 use anyhow::{Context, Result};
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
@@ -24,6 +23,11 @@ struct TaskExpectRunContext<'a> {
     output_limit_bytes: usize,
     print_progress: bool,
     print_warnings: bool,
+}
+
+struct TaskCaseGroup {
+    generator_name: String,
+    args_by_case: Vec<Vec<String>>,
 }
 
 pub fn task_expect_with_options(options: TaskExpectOptions<'_>) -> Result<Vec<StressSummary>> {
@@ -90,16 +94,25 @@ fn run_task_expect(
         print_progress,
         print_warnings,
     } = *context;
-    let cases_by_generator = task_cases_by_generator(problem, task)?;
+    let case_groups = task_case_groups(problem, task)?;
+    if task
+        .task_type
+        .is_some_and(|task_type| task_type != TestTaskType::Min)
+    {
+        anyhow::bail!(
+            "expect task `{}` has type `sum`; test expect tasks must use `min`",
+            task.name
+        );
+    }
     let mut summaries = Vec::new();
     for program in &task.pass_programs {
-        for (generator, args_by_case) in &cases_by_generator {
+        for group in &case_groups {
             let against = vec![problem.solution_name.clone(), program.clone()];
             summaries.push(run_stress(StressRunOptions {
                 work_dir,
-                generator,
+                generator: &group.generator_name,
                 against: &against,
-                args_by_case: args_by_case.clone(),
+                args_by_case: group.args_by_case.clone(),
                 failure_dir,
                 output_limit_bytes,
                 check_name: Some(&format!("{}:pass:{program}", task.name)),
@@ -108,18 +121,20 @@ fn run_task_expect(
                 print_warnings,
                 expect_failure: false,
                 allow_expected_failure_absent: false,
+                stop_after_expected_failure: false,
             })?);
         }
     }
     for program in &task.fail_programs {
         let mut program_summaries = Vec::new();
-        for (generator, args_by_case) in &cases_by_generator {
+        let mut observed_expected_failure = false;
+        for group in &case_groups {
             let against = vec![problem.solution_name.clone(), program.clone()];
-            program_summaries.push(run_stress(StressRunOptions {
+            let summary = run_stress(StressRunOptions {
                 work_dir,
-                generator,
+                generator: &group.generator_name,
                 against: &against,
-                args_by_case: args_by_case.clone(),
+                args_by_case: group.args_by_case.clone(),
                 failure_dir,
                 output_limit_bytes,
                 check_name: Some(&format!("{}:fail:{program}", task.name)),
@@ -128,12 +143,15 @@ fn run_task_expect(
                 print_warnings,
                 expect_failure: true,
                 allow_expected_failure_absent: true,
-            })?);
+                stop_after_expected_failure: true,
+            })?;
+            observed_expected_failure = summary.expected_failure.is_some();
+            program_summaries.push(summary);
+            if observed_expected_failure {
+                break;
+            }
         }
-        if !program_summaries
-            .iter()
-            .any(|summary| summary.expected_failure.is_some())
-        {
+        if !observed_expected_failure {
             anyhow::bail!(
                 "fail program `{program}` passed all cases in task `{}`",
                 task.name
@@ -144,11 +162,8 @@ fn run_task_expect(
     Ok(summaries)
 }
 
-fn task_cases_by_generator(
-    problem: &Problem,
-    task: &TestTask,
-) -> Result<BTreeMap<String, Vec<Vec<String>>>> {
-    let mut cases = BTreeMap::<String, Vec<Vec<String>>>::new();
+fn task_case_groups(problem: &Problem, task: &TestTask) -> Result<Vec<TaskCaseGroup>> {
+    let mut groups = Vec::<TaskCaseGroup>::new();
     for bundle_name in &task.bundles {
         let bundle = problem
             .test
@@ -156,19 +171,29 @@ fn task_cases_by_generator(
             .get(bundle_name)
             .with_context(|| format!("bundle `{bundle_name}` not found"))?;
         for case in &bundle.cases {
-            cases
-                .entry(case.generator_name.clone())
-                .or_default()
-                .extend(case.expanded_args());
+            push_case_group(&mut groups, &case.generator_name, case.expanded_args());
         }
     }
     for case in &task.cases {
-        cases
-            .entry(case.generator_name.clone())
-            .or_default()
-            .extend(case.expanded_args());
+        push_case_group(&mut groups, &case.generator_name, case.expanded_args());
     }
-    Ok(cases)
+    Ok(groups)
+}
+
+fn push_case_group(groups: &mut Vec<TaskCaseGroup>, generator_name: &str, args: Vec<Vec<String>>) {
+    if args.is_empty() {
+        return;
+    }
+    if let Some(last) = groups.last_mut()
+        && last.generator_name == generator_name
+    {
+        last.args_by_case.extend(args);
+        return;
+    }
+    groups.push(TaskCaseGroup {
+        generator_name: generator_name.to_string(),
+        args_by_case: args,
+    });
 }
 
 fn wait_for_generation_lock(work_dir: &Path, timeout: Option<Duration>) -> Result<()> {

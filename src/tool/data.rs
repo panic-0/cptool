@@ -755,11 +755,13 @@ fn select_cases(
     }
 
     let mut selectors = Vec::new();
-    let official = official_bundle_names(problem);
-    for (bundle, bundle_cases) in &problem.test.bundles {
-        if !official.contains(bundle) {
-            continue;
-        }
+    let official = official_bundle_order(problem);
+    for bundle in official {
+        let bundle_cases = problem
+            .test
+            .bundles
+            .get(&bundle)
+            .with_context(|| format!("bundle `{bundle}` not found"))?;
         for index in 0..bundle_cases.expansion_count() {
             selectors.push(CaseSelector {
                 bundle: bundle.clone(),
@@ -771,13 +773,25 @@ fn select_cases(
 }
 
 pub(crate) fn official_bundle_names(problem: &Problem) -> HashSet<String> {
+    official_bundle_order(problem).into_iter().collect()
+}
+
+fn official_bundle_order(problem: &Problem) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
     problem
         .test
         .tasks
         .iter()
         .filter(|task| task.is_official())
-        .flat_map(|task| task.bundles.iter().cloned())
-        .collect()
+        .for_each(|task| {
+            for bundle in &task.bundles {
+                if seen.insert(bundle.clone()) {
+                    result.push(bundle.clone());
+                }
+            }
+        });
+    result
 }
 
 fn ensure_case_exists(problem: &Problem, selector: &CaseSelector) -> Result<()> {
@@ -899,6 +913,49 @@ fn remove_file_if_exists(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn select_cases_follows_official_task_bundle_order_with_dedup() {
+        let problem: Problem = serde_yml::from_str(
+            r#"
+name: order
+programs:
+  gen: ./src/gen.cpp
+  std: ./src/std.cpp
+solution: std
+generator: gen
+test:
+  type: min
+  bundles:
+    shared:
+    - [shared]
+    late:
+    - [late]
+    early:
+    - [early]
+  tasks:
+  - name: first
+    score: 40.0
+    bundles: [late, shared]
+  - name: second
+    score: 60.0
+    bundles: [early, shared]
+  - name: proof
+    cases:
+    - [verify]
+    pass: [std]
+"#,
+        )
+        .unwrap();
+
+        let selectors = select_cases(&problem, None, None).unwrap();
+        let rendered = selectors
+            .iter()
+            .map(|selector| format!("{}[{}]", selector.bundle, selector.index))
+            .collect::<Vec<_>>();
+
+        assert_eq!(rendered, vec!["late[0]", "shared[0]", "early[0]"]);
+    }
 
     #[test]
     fn commit_replaces_output_dir_contents() {

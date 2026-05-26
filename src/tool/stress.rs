@@ -61,6 +61,7 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
             print_warnings,
             expect_failure: false,
             allow_expected_failure_absent: false,
+            stop_after_expected_failure: false,
         })?);
     }
     for program in fail_programs {
@@ -78,6 +79,7 @@ pub fn stress_expect_with_options(options: StressExpectOptions<'_>) -> Result<Ve
             print_warnings,
             expect_failure: true,
             allow_expected_failure_absent: false,
+            stop_after_expected_failure: false,
         })?;
         summaries.push(summary);
     }
@@ -244,6 +246,7 @@ pub(crate) struct StressRunOptions<'a> {
     pub(crate) print_warnings: bool,
     pub(crate) expect_failure: bool,
     pub(crate) allow_expected_failure_absent: bool,
+    pub(crate) stop_after_expected_failure: bool,
 }
 
 pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary> {
@@ -260,8 +263,9 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         print_warnings,
         expect_failure,
         allow_expected_failure_absent,
+        stop_after_expected_failure,
     } = options;
-    let cases = args_by_case.len();
+    let planned_cases = args_by_case.len();
     if against.len() != 2 {
         anyhow::bail!("expect check requires exactly two programs or sources");
     }
@@ -289,6 +293,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
     let mut empty_stdout_cases = 0;
     let mut all_empty_stdout_cases = 0;
     let mut failed_cases = 0usize;
+    let mut cases_run = 0usize;
     let mut expected_failure = None;
     for (case0, args) in args_by_case.iter().enumerate() {
         let index = case0 + 1;
@@ -301,6 +306,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
             index,
             output_limit_bytes,
         )?;
+        cases_run += 1;
         input_hashes.insert(outcome.input_hash.clone());
         if let Some(failure) = outcome.failure {
             if expect_failure && !failure.satisfies_expect_fail {
@@ -340,6 +346,9 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
                         println!("case {case_index} expected failure observed");
                     }
                 }
+                if stop_after_expected_failure {
+                    break;
+                }
                 continue;
             }
             save_stress_failure(&failure_dir, check_name, failure)?;
@@ -371,7 +380,7 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
         check_name: check_name.map(str::to_string),
         checker: checker_name,
         answer_program,
-        cases,
+        cases: cases_run,
         elapsed_ms: start.elapsed().as_millis(),
         against: against.to_vec(),
         empty_stdout_cases,
@@ -389,15 +398,15 @@ pub(crate) fn run_stress(options: StressRunOptions<'_>) -> Result<StressSummary>
                 .unwrap_or_default();
             anyhow::bail!(
                 "expect check{check} expected failure but all {} cases passed",
-                summary.cases
+                planned_cases
             );
         };
         failure.failed_cases = failed_cases;
-        failure.passed_cases = cases.saturating_sub(failed_cases);
-        failure.failure_ratio = if cases == 0 {
+        failure.passed_cases = cases_run.saturating_sub(failed_cases);
+        failure.failure_ratio = if cases_run == 0 {
             0.0
         } else {
-            failed_cases as f64 / cases as f64
+            failed_cases as f64 / cases_run as f64
         };
         summary.expected_failure = Some(failure);
         return Ok(summary);

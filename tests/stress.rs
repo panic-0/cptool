@@ -366,8 +366,107 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
         .iter()
         .find(|plan| plan["task_name"] == "bad-is-detected:fail:bad")
         .unwrap();
-    assert_eq!(negative["expected_failure"]["failed_cases"], 2);
+    assert_eq!(negative["expected_failure"]["failed_cases"], 1);
+    assert_eq!(negative["cases"], 1);
 }
+
+#[test]
+fn task_expect_preserves_task_case_order_across_generators() {
+    if !python_available() {
+        return;
+    }
+
+    let temp = TempWorkspace::new("cptool-task-expect-case-order");
+    run_cptool(
+        ["pkg", "init", "task_expect_case_order", "--root"],
+        Some(temp.path()),
+    );
+    let problem_dir = temp.path().join("task_expect_case_order");
+    std::fs::write(
+        problem_dir.join("problem.yaml"),
+        r#"name: task_expect_case_order
+programs:
+  gen:
+    info: !python
+      path: ./src/gen.py
+  alt:
+    info: !python
+      path: ./src/alt.py
+  std:
+    info: !python
+      path: ./src/solve.py
+  bad:
+    info: !python
+      path: ./src/bad.py
+solution: std
+test:
+  generator: gen
+  bundles: {}
+  tasks:
+  - name: order-proof
+    cases:
+    - [1]
+    - {generator: alt, args: [2]}
+    fail: [bad]
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("gen.py"),
+        r#"import sys
+sys.stdout.write(f"{sys.argv[1]} 0\n")
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("alt.py"),
+        r#"import sys
+sys.stdout.write(f"{sys.argv[1]} 0\n")
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("solve.py"),
+        r#"import sys
+a, _ = map(int, sys.stdin.read().split())
+sys.stdout.write(f"{a}\n")
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        problem_dir.join("src").join("bad.py"),
+        r#"import sys
+a, _ = map(int, sys.stdin.read().split())
+sys.stdout.write(f"{1 if a == 1 else 0}\n")
+"#,
+    )
+    .unwrap();
+
+    let output = run_cptool(
+        [
+            "test",
+            "expect",
+            "-w",
+            problem_dir.to_str().unwrap(),
+            "--name",
+            "order-proof",
+            "--summary-only",
+            "--json",
+        ],
+        None,
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let tasks = value["tasks"].as_array().unwrap();
+
+    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks[0]["task_name"], "order-proof:fail:bad");
+    assert_eq!(tasks[0]["expected_failure"], Value::Null);
+    assert_eq!(tasks[0]["cases"], 1);
+    assert_eq!(tasks[1]["task_name"], "order-proof:fail:bad");
+    assert_eq!(tasks[1]["expected_failure"]["case_index"], 1);
+    assert_eq!(tasks[1]["cases"], 1);
+}
+
 #[test]
 fn stress_warns_when_all_against_stdout_is_empty_on_non_empty_input() {
     if !python_available() {
@@ -742,10 +841,10 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
 
     assert!(stdout.contains("bad-is-detected:fail:bad: expected_fail observed=true case=1"));
     assert!(stdout.contains("reason=wrong_answer: output mismatch between `std` and `bad`"));
-    assert!(stdout.contains("failed_cases=3"));
+    assert!(stdout.contains("failed_cases=1"));
     assert!(stdout.contains("passed_cases=0"));
     assert!(stdout.contains("failure_ratio=1.000"));
-    assert!(stdout.contains("cases_run=3"));
+    assert!(stdout.contains("cases_run=1"));
     assert!(stdout.contains("unique_input_hashes=1"));
     assert!(
         problem_dir
@@ -772,9 +871,9 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     let value: Value = serde_json::from_slice(&json_output.stdout).unwrap();
     let failure = &value["tasks"][0]["expected_failure"];
 
-    assert_eq!(value["tasks"][0]["cases"], 3);
+    assert_eq!(value["tasks"][0]["cases"], 1);
     assert_eq!(value["tasks"][0]["unique_input_hashes"], 1);
-    assert_eq!(failure["failed_cases"], 3);
+    assert_eq!(failure["failed_cases"], 1);
     assert_eq!(failure["passed_cases"], 0);
     assert_eq!(failure["failure_ratio"], 1.0);
     assert!(failure["input_sha256"].as_str().unwrap().len() == 64);

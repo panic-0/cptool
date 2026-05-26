@@ -574,8 +574,26 @@ where
             ))
         })?)
     } else {
-        task.task_type.or(default_task_type)
+        match task.task_type {
+            Some(TestTaskType::Sum) => {
+                return Err(E::custom(format!(
+                    "test.tasks[{task_index}] is verify-only and cannot use `type: sum`; test expect tasks must use `min`"
+                )));
+            }
+            Some(TestTaskType::Min) => Some(TestTaskType::Min),
+            None => {
+                let _ = default_task_type;
+                None
+            }
+        }
     };
+    if (!task.pass_programs.is_empty() || !task.fail_programs.is_empty())
+        && task_type == Some(TestTaskType::Sum)
+    {
+        return Err(E::custom(format!(
+            "test.tasks[{task_index}] has pass/fail expectations and cannot use `type: sum`; test expect tasks must use `min`"
+        )));
+    }
     Ok(TestTask {
         name: task.name,
         score: task.score,
@@ -1392,6 +1410,81 @@ tasks:
 
         assert_eq!(test.tasks[0].task_type, Some(TestTaskType::Min));
         assert_eq!(test.tasks[1].task_type, Some(TestTaskType::Sum));
+    }
+
+    #[test]
+    fn verify_only_tasks_do_not_inherit_global_sum_type() {
+        let test: Test = serde_yml::from_str(
+            r#"
+generator: gen
+type: sum
+bundles:
+  main:
+    cases:
+    - []
+tasks:
+- name: official
+  score: 100.0
+  bundles: [main]
+- name: proof
+  cases:
+  - []
+  pass: [brute]
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(test.tasks[0].task_type, Some(TestTaskType::Sum));
+        assert_eq!(test.tasks[1].task_type, None);
+    }
+
+    #[test]
+    fn verify_only_task_rejects_sum_type() {
+        let err = serde_yml::from_str::<Test>(
+            r#"
+generator: gen
+type: min
+bundles:
+  main:
+    cases:
+    - []
+tasks:
+- name: proof
+  type: sum
+  cases:
+  - []
+  pass: [brute]
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("verify-only"));
+        assert!(err.contains("type: sum"));
+    }
+
+    #[test]
+    fn expect_task_rejects_sum_type() {
+        let err = serde_yml::from_str::<Test>(
+            r#"
+generator: gen
+type: sum
+bundles:
+  main:
+    cases:
+    - []
+tasks:
+- name: official
+  score: 100.0
+  bundles: [main]
+  pass: [brute]
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("pass/fail expectations"));
+        assert!(err.contains("type: sum"));
     }
 
     #[test]

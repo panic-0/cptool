@@ -88,8 +88,8 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
     assert!(text.contains("### Positive Task Checks"));
     assert!(text.contains("`tiny-pass:pass:brute`: cases=2 unique_input_hashes=1"));
     assert!(text.contains("### Negative Task Checks"));
-    assert!(text.contains("`bad-is-detected:fail:bad`: cases=2 unique_input_hashes=1"));
-    assert!(text.contains("failed_cases=2 passed_cases=0 failure_ratio=1.000"));
+    assert!(text.contains("`bad-is-detected:fail:bad`: cases=1 unique_input_hashes=1"));
+    assert!(text.contains("failed_cases=1 passed_cases=0 failure_ratio=1.000"));
 }
 
 #[test]
@@ -267,7 +267,7 @@ sys.stdout.buffer.write(f"{a + b + 1}\n".encode("ascii"))
         .iter()
         .find(|plan| plan["task_name"] == "bad-is-detected:fail:bad")
         .unwrap();
-    assert_eq!(reused_plan["expected_failure"]["failed_cases"], 3);
+    assert_eq!(reused_plan["expected_failure"]["failed_cases"], 1);
     assert_eq!(count_failure_reports(&problem_dir), failure_reports_before);
     assert!(
         !problem_dir

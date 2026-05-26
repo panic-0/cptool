@@ -217,6 +217,18 @@ fn validate_problem(problem: &Problem) -> Result<()> {
         if let Some(score) = task.score {
             validate_non_negative_finite(score, &format!("task `{}` score", task.name))?;
         }
+        if task.score.is_none() && task.task_type == Some(super::schema::TestTaskType::Sum) {
+            anyhow::bail!(
+                "task `{}` is verify-only and cannot use `type: sum`; test expect tasks must use `min`",
+                task.name
+            );
+        }
+        if task.has_expectations() && task.task_type == Some(super::schema::TestTaskType::Sum) {
+            anyhow::bail!(
+                "task `{}` has pass/fail expectations and cannot use `type: sum`; test expect tasks must use `min`",
+                task.name
+            );
+        }
         if task.score.is_some() && !task.cases.is_empty() {
             anyhow::bail!(
                 "task `{}` has `score` and cannot declare inline `cases`; use `bundles` for official data",
